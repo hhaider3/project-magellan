@@ -1,0 +1,890 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap');
+:root {
+  color-scheme:dark;
+  --cream:#f5f1df;
+  --faint:rgba(245,241,223,.63);
+  --line:rgba(245,241,223,.25);
+  --yellow:#e9c98a;
+  --ink:#253d39;
+  font-family:'DM Sans',sans-serif;
+  color:var(--cream);
+}
+
+* {
+  box-sizing:border-box;
+}
+
+body,html {
+  width:100%;
+  height:100%;
+  margin:0;
+  overflow:hidden;
+  background:#9fb9bd;
+}
+
+button,a {
+  -webkit-tap-highlight-color:transparent;
+}
+
+button {
+  font:inherit;
+  color:inherit;
+  cursor:pointer;
+}
+
+button:focus-visible,a:focus-visible {
+  outline:2px solid var(--yellow);
+  outline-offset:5px;
+}
+
+button:disabled {
+  opacity:.6;
+  cursor:wait;
+}
+
+button[hidden],[hidden] {
+  display:none!important;
+}
+
+#game, #game canvas {
+  position:fixed;
+  inset:0;
+  width:100%;
+  height:100%;
+  display:block;
+}
+
+#game canvas:focus {
+  outline:none;
+}
+
+.vignette {
+  position:fixed;
+  inset:0;
+  pointer-events:none;
+  background:linear-gradient(180deg,rgba(23,45,44,.17),transparent 25%,transparent 65%,rgba(23,40,37,.5));
+  z-index:1;
+}
+
+header {
+  position:fixed;
+  top:max(32px,env(safe-area-inset-top));
+  left:max(40px,env(safe-area-inset-left));
+  right:max(40px,env(safe-area-inset-right));
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  z-index:12;
+  pointer-events:none;
+}
+
+.brand {
+  display:flex;
+  gap:12px;
+  color:var(--cream);
+  text-decoration:none;
+  align-items:center;
+  pointer-events:auto;
+}
+
+.brand>svg {
+  width:36px;
+  height:36px;
+  stroke:var(--cream);
+  fill:none;
+  stroke-width:1.7;
+}
+
+.brand>span {
+  font-family:'Manrope',sans-serif;
+  font-size:16px;
+  letter-spacing:.16em;
+  line-height:1.3;
+}
+
+.brand b {
+  font-weight:800;
+}
+
+.brand small {
+  display:block;
+  font-size:8px;
+  letter-spacing:.32em;
+  margin-top:6px;
+  opacity:.64;
+}
+
+.top-actions {
+  display:flex;
+  gap:10px;
+  pointer-events:auto;
+}
+
+.icon-button {
+  border:1px solid var(--line);
+  background:rgba(27,51,46,.14);
+  backdrop-filter:blur(12px);
+  width:42px;
+  height:42px;
+  border-radius:50%;
+  display:grid;
+  place-items:center;
+}
+
+.icon-button:hover {
+  background:rgba(27,51,46,.4);
+}
+
+svg {
+  width:18px;
+  height:18px;
+  fill:none;
+  stroke:currentColor;
+  stroke-width:1.5;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
+
+#menu {
+  position:fixed;
+  inset:0;
+  z-index:10;
+  background:linear-gradient(90deg,rgba(19,43,36,.86),rgba(24,46,39,.58) 34%,rgba(24,46,39,.04) 72%);
+  display:flex;
+  align-items:center;
+  padding:100px 8vw 105px;
+  transition:opacity .5s;
+}
+
+#menu.closed {
+  opacity:0;
+  pointer-events:none;
+}
+
+.intro {
+  max-width:600px;
+}
+
+.eyebrow {
+  display:flex;
+  align-items:center;
+  gap:10px;
+  font-size:9px;
+  letter-spacing:.24em;
+  color:#e2d7b9;
+  font-weight:600;
+}
+
+.eyebrow>span {
+  width:6px;
+  height:6px;
+  background:var(--yellow);
+  border-radius:50%;
+}
+
+h1 {
+  font-family:'Manrope',sans-serif;
+  font-size:clamp(66px,7.4vw,112px);
+  line-height:1.03;
+  letter-spacing:-.065em;
+  font-weight:500;
+  margin:28px 0 25px;
+}
+
+h1 em {
+  font-style:normal;
+  color:var(--yellow);
+}
+
+.intro>p {
+  font-size:15px;
+  line-height:1.9;
+  letter-spacing:.015em;
+  color:var(--faint);
+  margin:0 0 30px;
+}
+
+.primary {
+  width:240px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  border:0;
+  background:var(--yellow);
+  color:#283c32;
+  border-radius:3px;
+  padding:18px 22px;
+  font-size:13px;
+  font-weight:700;
+  transition:background .2s,transform .2s;
+}
+
+.primary:hover {
+  background:#f4daaa;
+  transform:translateY(-2px);
+}
+
+.primary>span:last-child {
+  font-size:21px;
+  font-weight:400;
+}
+
+.world-row {
+  display:flex;
+  align-items:center;
+  gap:18px;
+  margin-top:23px;
+  font-size:9px;
+  color:var(--faint);
+  letter-spacing:.15em;
+}
+
+.world-row b {
+  font-weight:500;
+  color:var(--cream);
+  letter-spacing:.07em;
+  margin-left:6px;
+}
+
+.world-row button {
+  border:0;
+  background:none;
+  padding:7px 0;
+  font-size:10px;
+  letter-spacing:.02em;
+}
+
+.world-row button:hover {
+  color:white;
+}
+
+.world-row svg {
+  width:14px;
+  height:14px;
+}
+
+.world-row>span {
+  border-right:1px solid var(--line);
+  padding-right:18px;
+}
+
+.edition {
+  position:absolute;
+  right:40px;
+  bottom:104px;
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+  text-align:right;
+}
+
+.edition>span:first-child {
+  font-size:9px;
+  letter-spacing:.24em;
+}
+
+.edition>span:last-child {
+  font-size:12px;
+  line-height:1.7;
+  color:var(--faint);
+}
+
+.menu-controls {
+  position:absolute;
+  bottom:max(35px,env(safe-area-inset-bottom));
+  left:8vw;
+  right:40px;
+  border-top:1px solid var(--line);
+  padding-top:24px;
+  display:flex;
+  gap:28px;
+  font-size:8px;
+  letter-spacing:.15em;
+  color:var(--faint);
+  align-items:center;
+}
+
+.menu-controls>span {
+  display:flex;
+  align-items:center;
+  gap:10px;
+}
+
+kbd {
+  font:inherit;
+  font-size:9px;
+  letter-spacing:.03em;
+  color:var(--cream);
+  padding:5px 7px;
+  border:1px solid var(--line);
+  border-radius:3px;
+}
+
+#menuStats {
+  display:flex;
+  gap:20px;
+  margin-top:22px;
+  color:var(--faint);
+  font-size:10px;
+}
+
+#menuStats b {
+  color:var(--cream);
+  font-size:14px;
+  margin-right:3px;
+  font-weight:500;
+}
+
+#loadError {
+  max-width:300px;
+  font-size:12px;
+  color:#ffcda5;
+  margin-top:20px;
+}
+
+#loadError button {
+  background:none;
+  border:0;
+  text-decoration:underline;
+  padding:0;
+}
+
+.in-game {
+  opacity:0;
+  pointer-events:none;
+  transition:opacity .4s;
+}
+
+body.driving .in-game {
+  opacity:1;
+}
+
+#compass {
+  position:fixed;
+  top:40px;
+  left:50%;
+  transform:translateX(-50%);
+  z-index:4;
+  display:flex;
+  gap:15px;
+  align-items:center;
+  font-size:9px;
+  letter-spacing:.19em;
+}
+
+#headingTxt {
+  font-size:12px;
+  font-weight:700;
+  color:var(--yellow);
+}
+
+#compass i {
+  height:14px;
+  width:1px;
+  background:var(--line);
+}
+
+#mapPanel {
+  position:fixed;
+  left:max(40px,env(safe-area-inset-left));
+  bottom:max(34px,env(safe-area-inset-bottom));
+  width:170px;
+  z-index:4;
+  background:rgba(22,41,35,.55);
+  backdrop-filter:blur(12px);
+  border:1px solid var(--line);
+  border-radius:5px;
+  overflow:hidden;
+}
+
+.map-heading,.map-footer {
+  display:flex;
+  justify-content:space-between;
+  font-size:7px;
+  letter-spacing:.12em;
+  padding:11px 12px;
+  color:var(--faint);
+}
+
+.map-heading {
+  border-bottom:1px solid rgba(245,241,223,.12);
+}
+
+#mapNorth {
+  color:var(--yellow);
+}
+
+#minimap {
+  display:block;
+  width:100%;
+  height:132px;
+  opacity:.88;
+}
+
+.map-footer {
+  border-top:1px solid rgba(245,241,223,.12);
+  font-variant-numeric:tabular-nums;
+}
+
+#driveHint {
+  position:fixed;
+  bottom:39px;
+  left:50%;
+  transform:translateX(-50%);
+  display:flex;
+  gap:18px;
+  z-index:4;
+  white-space:nowrap;
+  font-size:10px;
+  color:var(--faint);
+}
+
+#driveHint kbd {
+  margin-right:6px;
+}
+
+#dashboard {
+  position:fixed;
+  right:max(40px,env(safe-area-inset-right));
+  bottom:max(35px,env(safe-area-inset-bottom));
+  width:240px;
+  z-index:4;
+}
+
+#surfaceState {
+  font-size:8px;
+  letter-spacing:.2em;
+  color:var(--yellow);
+  text-align:right;
+  margin-bottom:2px;
+}
+
+.speed-row {
+  display:flex;
+  align-items:baseline;
+  justify-content:flex-end;
+  gap:12px;
+}
+
+.speed-row strong {
+  font-family:'Manrope',sans-serif;
+  font-weight:400;
+  font-size:82px;
+  line-height:1.18;
+  letter-spacing:-.07em;
+  font-variant-numeric:tabular-nums;
+  text-shadow:0 2px 18px #253d3944;
+}
+
+.unit {
+  font-size:8px;
+  letter-spacing:.15em;
+  color:var(--faint);
+}
+
+#gear {
+  border:1px solid var(--line);
+  padding:4px 6px;
+  font-size:10px;
+  color:var(--yellow);
+  margin-right:auto;
+}
+
+.speed-track {
+  height:2px;
+  width:100%;
+  background:var(--line);
+  margin:8px 0 16px;
+}
+
+.speed-track i {
+  display:block;
+  height:100%;
+  width:0;
+  background:var(--yellow);
+  transition:width .1s;
+}
+
+.trip {
+  display:flex;
+  justify-content:space-between;
+  font-size:8px;
+  letter-spacing:.1em;
+  color:var(--faint);
+}
+
+.trip b {
+  font-weight:600;
+  color:var(--cream);
+  margin:0 4px;
+  font-variant-numeric:tabular-nums;
+}
+
+#airtime {
+  color:var(--yellow);
+  font-size:7px;
+}
+
+#toast {
+  position:fixed;
+  left:50%;
+  bottom:110px;
+  transform:translate(-50%,10px);
+  opacity:0;
+  pointer-events:none;
+  z-index:30;
+  border:1px solid var(--line);
+  background:rgba(25,44,36,.85);
+  backdrop-filter:blur(12px);
+  border-radius:4px;
+  padding:12px 20px;
+  font-size:11px;
+  letter-spacing:.03em;
+  transition:.2s;
+  white-space:nowrap;
+}
+
+#toast.show {
+  opacity:1;
+  transform:translate(-50%,0);
+}
+
+#touch {
+  display:none;
+  position:fixed;
+  bottom:max(18px,env(safe-area-inset-bottom));
+  left:16px;
+  right:16px;
+  z-index:6;
+  justify-content:space-between;
+  pointer-events:none;
+}
+
+#touch>div {
+  display:flex;
+  gap:8px;
+}
+
+#touch button {
+  pointer-events:auto;
+  background:rgba(25,44,36,.5);
+  border:1px solid var(--line);
+  width:58px;
+  height:58px;
+  border-radius:12px;
+  touch-action:none;
+  user-select:none;
+  -webkit-user-select:none;
+  font-size:24px;
+  backdrop-filter:blur(8px);
+}
+
+#touch button.active {
+  background:var(--yellow);
+  color:var(--ink);
+}
+
+#touch .touch-center button {
+  font-size:9px;
+  width:48px;
+}
+
+body.touch.driving #touch {
+  display:flex;
+}
+
+body.touch #driveHint {
+  display:none;
+}
+
+body.touch #dashboard {
+  bottom:105px;
+}
+
+body.touch #mapPanel {
+  bottom:100px;
+  width:130px;
+}
+
+body.touch #minimap {
+  height:90px;
+}
+
+body.touch .menu-controls {
+  display:none;
+}
+
+@media(max-width:800px) {
+  header {
+    left:24px;
+    right:24px;
+    top:24px;
+  }
+  .brand>span {
+    font-size:13px;
+  }
+  .brand>svg {
+    width:29px;
+  }
+  .brand small {
+    font-size:7px;
+  }
+  #menu {
+    padding-left:7vw;
+  }
+  h1 {
+    font-size:76px;
+  }
+  .edition {
+    right:24px;
+  }
+  .menu-controls {
+    gap:16px;
+    left:7vw;
+    right:24px;
+  }
+  #dashboard {
+    right:24px;
+    width:185px;
+  }
+  .speed-row strong {
+    font-size:68px;
+  }
+  #mapPanel {
+    left:24px;
+    width:145px;
+  }
+  #minimap {
+    height:108px;
+  }
+  #driveHint {
+    bottom:25px;
+    font-size:9px;
+  }
+  #compass {
+    top:82px;
+  }
+}
+
+@media(max-width:540px) {
+  header {
+    left:20px;
+    right:20px;
+    top:20px;
+  }
+  .brand>span {
+    font-size:12px;
+  }
+  #menu {
+    padding:105px 24px 90px;
+    align-items:center;
+    background:linear-gradient(90deg,rgba(19,43,36,.82),rgba(24,46,39,.25));
+  }
+  h1 {
+    font-size:70px;
+    margin-top:20px;
+  }
+  .intro>p {
+    font-size:13px;
+  }
+  .eyebrow {
+    font-size:8px;
+    letter-spacing:.13em;
+  }
+  .edition {
+    display:none;
+  }
+  .menu-controls {
+    gap:14px;
+    flex-wrap:wrap;
+    font-size:7px;
+    padding-top:16px;
+    bottom:20px;
+    left:24px;
+  }
+  .menu-controls>span {
+    gap:6px;
+  }
+  .menu-controls>span:last-child {
+    display:none;
+  }
+  #dashboard {
+    width:175px;
+    right:20px;
+  }
+  #mapPanel {
+    left:20px;
+  }
+  #compass {
+    top:78px;
+    font-size:8px;
+    gap:10px;
+  }
+  #driveHint {
+    display:none;
+  }
+  .trip {
+    font-size:7px;
+  }
+  .primary {
+    width:225px;
+  }
+  .world-row {
+    gap:12px;
+  }
+  .world-row>span {
+    padding-right:12px;
+  }
+}
+
+@media(max-height:600px) {
+  #menu {
+    padding-top:80px;
+    padding-bottom:75px;
+  }
+  h1 {
+    font-size:56px;
+    margin:13px 0;
+  }
+  .intro>p {
+    margin-bottom:18px;
+    font-size:12px;
+  }
+  .eyebrow {
+    font-size:8px;
+  }
+  .primary {
+    padding:12px 18px;
+  }
+  .world-row {
+    margin-top:10px;
+  }
+  .menu-controls {
+    bottom:18px;
+    padding-top:14px;
+  }
+  .edition {
+    bottom:86px;
+  }
+  #menuStats {
+    margin-top:12px;
+  }
+  .brand small {
+    display:none;
+  }
+  .speed-row strong {
+    font-size:56px;
+  }
+  body.touch #mapPanel {
+    display:none;
+  }
+  body.touch #dashboard {
+    bottom:95px;
+    width:180px;
+  }
+  #compass {
+    top:35px;
+  }
+  header {
+    top:20px;
+  }
+  #mapPanel {
+    width:130px;
+  }
+  #minimap {
+    height:90px;
+  }
+}
+
+@media(prefers-reduced-motion:reduce) {
+  * {
+    transition:none!important;
+  }
+  .primary:hover {
+    transform:none;
+  }
+}
+
+/* Compact windows also offer touch controls, even with a mouse attached. */
+@media(max-width:700px) {
+  body.driving #touch {
+    display:flex;
+  }
+  #dashboard,body.touch #dashboard {
+    bottom:105px;
+  }
+  #mapPanel,body.touch #mapPanel {
+    bottom:105px;
+    width:125px;
+  }
+  #minimap,body.touch #minimap {
+    height:85px;
+  }
+  #driveHint {
+    display:none;
+  }
+  .menu-controls {
+    display:none;
+  }
+  .touch-center {
+    gap:5px!important;
+  }
+  #touch {
+    left:12px;
+    right:12px;
+  }
+  #touch>div {
+    gap:5px;
+  }
+  #touch button {
+    width:52px;
+    height:56px;
+  }
+  #touch .touch-center button {
+    width:43px;
+  }
+  #dashboard {
+    width:166px;
+  }
+}
+
+header,#compass {
+  text-shadow:0 1px 8px rgba(22,42,37,.3);
+}
+
+#pauseTools {
+  display:flex;
+  gap:18px;
+  margin-top:17px;
+}
+
+#pauseTools button {
+  background:none;
+  border:0;
+  border-bottom:1px solid var(--line);
+  padding:5px 0;
+  font-size:11px;
+  color:var(--faint);
+}
+
+#pauseTools button:hover {
+  color:var(--cream);
+}
+
+#rampHint {
+  position: fixed;
+  top: 68px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 4;
+  color: #ffd298;
+  background: rgba(39, 54, 37, .45);
+  border: 1px solid rgba(255, 204, 130, .28);
+  border-radius: 3px;
+  padding: 7px 11px;
+  font-size: 9px;
+  letter-spacing: .15em;
+  white-space: nowrap;
+}
+@media (max-width: 800px) { #rampHint { top: 109px; } }
+@media (max-height: 600px) { #rampHint { top: 60px; } }

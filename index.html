@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#253d39">
+  <meta name="description" content="Take the long way. An endless driving escape through a new procedural wilderness on every visit.">
+  <title>Endless Drive — Take the long way</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' rx='10' fill='%23253d39'/%3E%3Cpath d='m10 29 8-19h4l8 19M14 23h12' fill='none' stroke='%23f3dfba' stroke-width='3'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="style.css">
+  <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"}}</script>
+</head>
+<body>
+  <div id="game"></div>
+  <div class="vignette" aria-hidden="true"></div>
+  <header>
+    <a class="brand" href="#" aria-label="Open pause menu"><svg viewBox="0 0 38 38" aria-hidden="true"><path d="m5 29 11-22h6l11 22M11 23h16M19 7v8m0 6v8"/></svg><span>ENDLESS <b>DRIVE</b><small>THE GREAT OUT THERE</small></span></a>
+    <div class="top-actions"><button id="soundBtn" class="icon-button" aria-label="Unmute sound" title="Sound · M"></button><button id="pauseBtn" class="icon-button" aria-label="Pause game" title="Pause · Esc" hidden><svg viewBox="0 0 24 24"><path d="M9 5v14M15 5v14"/></svg></button></div>
+  </header>
+  <div id="compass" class="in-game"><span id="headingTxt">N</span><i></i><span id="biomeTxt">OPEN MEADOW</span></div>
+  <div id="rampHint" class="in-game">↑ RAMP AHEAD</div>
+  <main id="menu" role="dialog" aria-modal="true" aria-labelledby="menuTitle">
+    <section class="intro">
+      <div class="eyebrow"><span></span> A LITTLE FURTHER, EVERY TIME</div>
+      <h1 id="menuTitle">Take the<br><em>long way.</em></h1>
+      <p id="menuCopy">Chase the orange ramps. Find the hidden camps.<br>Take on the ridges, or open it up on the road.</p>
+      <button id="startBtn" class="primary" disabled><span>Preparing your world</span><span aria-hidden="true">↗</span></button>
+      <div id="menuStats" hidden><span><b id="runDistance">0.00</b> km this drive</span><span><b id="bestDistance">0.00</b> km personal best</span></div>
+      <div id="pauseTools" hidden><button id="recoverBtn">↻ Recover car</button><button id="cameraBtn">Camera: Chase</button></div>
+      <div class="world-row"><span>WORLD <b id="seedTxt">—</b></span><button id="newWorld" title="Generate a new world · N">↻ New world</button><button id="copySeed" aria-label="Copy world link" title="Copy world link"><svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-2 2M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l2-2"/></svg></button></div>
+      <div id="loadError" hidden role="alert">The game couldn’t load. Check your connection and <button onclick="location.reload()">try again</button>.</div>
+    </section>
+    <div class="edition"><span>FREE ROAM / 002</span><span>Bigger jumps. Wilder terrain.<br>A new adventure in every direction.</span></div>
+    <div class="menu-controls"><span><kbd>W A S D</kbd> DRIVE</span><span><kbd>SPACE</kbd> JUMP</span><span><kbd>SHIFT</kbd> DRIFT</span><span><kbd>C</kbd> CAMERA</span></div>
+  </main>
+  <section id="mapPanel" class="in-game" aria-label="Navigation">
+    <div class="map-heading"><span>EXPLORE FREELY</span><span id="mapNorth">N ↑</span></div>
+    <canvas id="minimap" width="288" height="240" aria-label="Nearby roads and terrain"></canvas>
+    <div class="map-footer"><span id="coordinates">0 E · 0 N</span><span id="elevation">12 M</span></div>
+  </section>
+  <div id="driveHint" class="in-game"><span><kbd>SPACE</kbd> jump</span><span><kbd>SHIFT</kbd> drift</span><span><kbd>R</kbd> recover</span></div>
+  <section id="dashboard" class="in-game" aria-label="Driving instruments">
+    <div id="surfaceState">ON THE ROAD</div>
+    <div class="speed-row"><span id="gear">N</span><strong id="speed">0</strong><span class="unit">KM/H</span></div>
+    <div class="speed-track"><i id="speedBar"></i></div>
+    <div class="trip"><span>TRIP <b id="distance">0.00</b> KM</span><span id="airtime">READY TO ROAM</span></div>
+  </section>
+  <div id="toast" role="status" aria-live="polite"></div>
+  <div id="touch" aria-label="Touch driving controls"><div><button data-control="left" aria-label="Steer left">←</button><button data-control="right" aria-label="Steer right">→</button></div><div class="touch-center"><button data-control="jump" aria-label="Jump">JUMP</button><button data-control="brake" aria-label="Drift">DRIFT</button></div><div><button data-control="down" aria-label="Brake or reverse">↓</button><button data-control="up" aria-label="Accelerate">↑</button></div></div>
+  <script type="module" src="game.mjs"></script>
+  <script>window.addEventListener('error',()=>{if(document.querySelector('#startBtn').disabled)document.querySelector('#loadError').hidden=false;});</script>
+</body>
+</html>

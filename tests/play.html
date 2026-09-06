@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Endless Drive · integration checks</title>
+<style>
+body{margin:0;background:#22392f;color:#fff;font:12px system-ui}iframe{position:fixed;inset:0;width:100%;height:100%;border:0}.panel{position:fixed;left:12px;top:110px;background:#18362fe8;padding:15px;z-index:2;border:1px solid #acb697;max-width:320px;border-radius:5px}button{padding:10px 12px;margin:0 5px 5px 0;border:0;background:#e9c98a;color:#253d39;cursor:pointer}button:disabled{opacity:.5;cursor:wait}li{margin:6px 0}.passed{color:#bde0a8}.failed{color:#ffb599}
+</style>
+<iframe id="game" title="Game under test" src="../?seed=1&test=drive"></iframe>
+<div class="panel">
+  <button id="run" disabled>Run driving check</button><button id="ramp" disabled>Run ramp check</button>
+  <ol id="results"></ol><p id="status">Tests real input, physics, rendering and streamed terrain. Keep this tab focused.</p>
+</div>
+<script type="module">
+const iframe = document.querySelector('iframe'), driveButton = document.querySelector('#run'), rampButton = document.querySelector('#ramp');
+const results = document.querySelector('#results'), status = document.querySelector('#status');
+const wait = ms => new Promise(r => setTimeout(r, ms));
+let testing = false;
+iframe.addEventListener('load', () => { if (!testing) driveButton.disabled = rampButton.disabled = iframe.contentDocument.getElementById('startBtn')?.disabled ?? true; });
+async function run(mode) {
+  testing = true; driveButton.disabled = rampButton.disabled = true; results.replaceChildren();
+  let frameTimes = [], measuring = true, lastFrame = performance.now();
+  function measure(now) { if (!measuring) return; frameTimes.push(now - lastFrame); lastFrame = now; requestAnimationFrame(measure); }
+  let win;
+  const key = (code, down) => win.dispatchEvent(new win.KeyboardEvent(down ? 'keydown' : 'keyup', { code, bubbles: true, cancelable: true }));
+  const tap = code => { key(code, true); key(code, false); };
+  const check = (ok, text) => { const li = document.createElement('li'); li.textContent = (ok ? 'PASS: ' : 'FAIL: ') + text; li.className = ok ? 'passed' : 'failed'; results.append(li); if (!ok) throw Error(text); };
+  try {
+    await new Promise(resolve => { iframe.addEventListener('load', resolve, { once: true }); iframe.src = '../?seed=1&test=' + mode; });
+    win = iframe.contentWindow; const doc = iframe.contentDocument, read = id => doc.getElementById(id).textContent;
+    iframe.focus(); doc.getElementById('startBtn').click(); lastFrame = performance.now(); requestAnimationFrame(measure);
+    if (mode === 'ramp') {
+      status.textContent = 'Driving into the first ramp — no Jump input…';
+      key('KeyW', true); let sawAir = false, longestAir = 0;
+      for (let i = 0; i < 65; i++) { await wait(100); if (read('surfaceState') === 'A LITTLE AIR') { sawAir = true; const seconds = read('airtime').match(/([\d.]+) S/); if (seconds) longestAir = Math.max(longestAir, Number(seconds[1])); } }
+      key('KeyW', false);
+      check(sawAir, 'ramp launches using throttle only');
+      check(longestAir > 1.2, 'ramp produces over 1.2 seconds of airtime');
+      const best = Number(read('airtime').match(/BEST JUMP (\d+)/)?.[1] || 0);
+      check(best > 60, 'landing records a jump longer than 60 m');
+      check(Number(read('distance')) > .2, 'car keeps moving through landing and streaming');
+      check(Number(read('speed')) > 180, 'faster car reaches 180+ km/h');
+    } else {
+      status.textContent = 'Checking a quick jump tap…'; tap('Space'); await wait(1150);
+      check(read('airtime').includes('BEST AIR'), 'quick Space tap launches and lands');
+      status.textContent = 'Accelerating across streamed chunks…'; key('KeyW', true); await wait(5000);
+      check(Number(read('speed')) > 170, 'accelerates above 170 km/h');
+      key('KeyA', true); await wait(1000); key('KeyA', false); tap('Space'); await wait(300);
+      check(read('surfaceState') === 'A LITTLE AIR', 'moving jump leaves the ground');
+      status.textContent = 'Driving off-road through new terrain…'; await wait(7000);
+      check(Number(read('distance')) > .4, 'travels over 400 m while streaming terrain');
+      check(read('surfaceState') !== 'ON THE ROAD', 'can leave the road and traverse rough terrain');
+      key('ShiftLeft', true); await wait(400); key('ShiftLeft', false); key('KeyW', false);
+      key('KeyS', true); await wait(4500); key('KeyS', false);
+      check(read('gear') === 'R', 'braking transitions to reverse');
+      const distance = read('distance'); tap('KeyR'); await wait(250);
+      check(Number(read('speed')) === 0 && read('distance') === distance, 'recovery stops safely and preserves distance');
+      tap('Escape'); await wait(300); const stopped = read('distance'); await wait(700);
+      check(!doc.getElementById('menu').classList.contains('closed') && read('distance') === stopped, 'pause freezes the drive');
+      doc.getElementById('startBtn').click(); await wait(200);
+      check(doc.getElementById('menu').classList.contains('closed'), 'resume returns to driving');
+    }
+    const fps = Math.round(1000 / (frameTimes.reduce((a, b) => a + b, 0) / frameTimes.length));
+    status.textContent = `All ${mode} checks passed. ${fps} FPS average; longest frame ${Math.round(Math.max(...frameTimes))} ms.`;
+  } catch (error) { status.textContent = 'Check failed: ' + error.message; }
+  finally { measuring = false; if (win) for (const code of ['KeyW', 'KeyA', 'KeyS', 'ShiftLeft', 'Space']) key(code, false); testing = false; driveButton.disabled = rampButton.disabled = false; }
+}
+driveButton.onclick = () => run('drive'); rampButton.onclick = () => run('ramp');
+</script>
+</html>
