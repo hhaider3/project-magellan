@@ -69,11 +69,23 @@ scene.add(sky);
 // Paint roads directly onto the terrain surface. Geometry, collision height and
 // asphalt now share one surface: no raised ribbons, cuttings, seams or walls.
 const terrainMaterial = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, metalness: 0 });
+const streamUniforms = { uStreamCenter: { value: new THREE.Vector2() } };
 const roadUniforms = { uRoadPhase: { value: world.phase } };
+// Geometry is already coarse at the streaming boundary. Moving the boundary
+// therefore changes tessellation only, never the silhouette or lighting.
+const lodDeclaration = `uniform vec2 uStreamCenter;
+attribute float coarseHeight;
+attribute vec3 coarseNormal;
+attribute vec3 coarseColor;
+float terrainBlend(){return smoothstep(220.0,360.0,distance((modelMatrix*vec4(position,1.0)).xz,uStreamCenter));}
+`;
+
 terrainMaterial.onBeforeCompile = shader => {
-  Object.assign(shader.uniforms, roadUniforms);
-  shader.vertexShader = 'varying vec2 vGroundXZ;\n' + shader.vertexShader;
-  shader.vertexShader = shader.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\nvGroundXZ=(modelMatrix*vec4(position,1.0)).xz;');
+  Object.assign(shader.uniforms, roadUniforms, streamUniforms);
+  shader.vertexShader = lodDeclaration + 'varying vec2 vGroundXZ;\n' + shader.vertexShader;
+  shader.vertexShader = shader.vertexShader.replace('#include <beginnormal_vertex>', '#include <beginnormal_vertex>\nobjectNormal=mix(objectNormal,coarseNormal,terrainBlend());');
+  shader.vertexShader = shader.vertexShader.replace('#include <color_vertex>', '#include <color_vertex>\nvColor=mix(vColor,coarseColor,terrainBlend());');
+  shader.vertexShader = shader.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\ntransformed.y=mix(position.y,coarseHeight,terrainBlend());\nvGroundXZ=(modelMatrix*vec4(position,1.0)).xz;');
   shader.fragmentShader = `varying vec2 vGroundXZ;
     uniform float uRoadPhase;
     float centerAt(float s,float band,float axis){
@@ -102,21 +114,48 @@ terrainMaterial.onBeforeCompile = shader => {
 };
 const groundColors = { grass: new THREE.Color('#7e9059'), lush: new THREE.Color('#536e48'), dry: new THREE.Color('#b2a477'), rock: new THREE.Color('#8e9385'), snow: new THREE.Color('#dddeda') };
 const tmpColor = new THREE.Color();
+const coarseSamples = new Map();
+function terrainSample(x, z, step) {
+  const key = `${x},${z}`;
+  if (step === 24 && coarseSamples.has(key)) return coarseSamples.get(key);
+  const h = world.height(x, z), delta = step / 2;
+  const gx = (world.height(x + delta, z) - world.height(x - delta, z)) / step;
+  const gz = (world.height(x, z + delta) - world.height(x, z - delta)) / step;
+  const length = Math.hypot(gx, 1, gz);
+  tmpColor.copy(groundColors.grass).lerp(groundColors.lush, smoothstep(.3, .8, world.woodlandAt(x, z)) * .65);
+  tmpColor.lerp(groundColors.dry, smoothstep(.5, .85, hash(Math.floor(x / 36), Math.floor(z / 36), seed + 18)) * .11);
+  tmpColor.lerp(groundColors.rock, smoothstep(.26, .65, Math.hypot(gx, gz)) * .65 + world.mountainAt(x, z) * .12);
+  tmpColor.lerp(groundColors.snow, smoothstep(117, 168, h) * .87);
+  const sample = { height: h, normal: [-gx / length, 1 / length, -gz / length], color: [tmpColor.r, tmpColor.g, tmpColor.b] };
+  if (step === 24) {
+    if (coarseSamples.size >= 30000) coarseSamples.delete(coarseSamples.keys().next().value);
+    coarseSamples.set(key, sample);
+  }
+  return sample;
+}
+function coarseSample(x, z) {
+  const ix = Math.floor(x / 24) * 24, iz = Math.floor(z / 24) * 24;
+  const u = (x - ix) / 24, v = (z - iz) / 24;
+  const corners = u + v <= 1 ? [[ix, iz, 1-u-v], [ix+24, iz, u], [ix, iz+24, v]]
+    : [[ix+24, iz+24, u+v-1], [ix, iz+24, 1-u], [ix+24, iz, 1-v]];
+  const result = { height: 0, normal: [0,0,0], color: [0,0,0] };
+  for (const [px, pz, weight] of corners) {
+    const sample = terrainSample(px, pz, 24);
+    result.height += sample.height * weight;
+    for (let i=0; i<3; i++) { result.normal[i] += sample.normal[i]*weight; result.color[i] += sample.color[i]*weight; }
+  }
+  return result;
+}
 function terrainGeometry(wx, wz, size, step, exclude = null) {
-  const positions = [], colors = [], normals = [], indices = [];
+  const positions = [], colors = [], normals = [], indices = [], coarseHeights = [], coarseNormals = [], coarseColors = [];
   const n = Math.round(size / step);
   for (let iz = 0; iz <= n; iz++) for (let ix = 0; ix <= n; ix++) {
     const x = wx + ix * step, z = wz + iz * step, h = world.height(x, z);
     positions.push(ix * step, h, iz * step);
-    const gx = step === GRID ? (world.height(x + 2, z) - world.height(x - 2, z)) / 4 : 0;
-    const gz = step === GRID ? (world.height(x, z + 2) - world.height(x, z - 2)) / 4 : 0;
-    const length = Math.hypot(gx, 1, gz); normals.push(-gx / length, 1 / length, -gz / length);
-    const woodland = world.woodlandAt(x, z), mountain = world.mountainAt(x, z);
-    tmpColor.copy(groundColors.grass).lerp(groundColors.lush, smoothstep(.3, .8, woodland) * .65);
-    tmpColor.lerp(groundColors.dry, smoothstep(.5, .85, hash(Math.floor(x / 36), Math.floor(z / 36), seed + 18)) * .11);
-    tmpColor.lerp(groundColors.rock, smoothstep(.26, .65, Math.hypot(gx, gz)) * .65 + mountain * .12);
-    tmpColor.lerp(groundColors.snow, smoothstep(117, 168, h) * .87);
-    colors.push(tmpColor.r, tmpColor.g, tmpColor.b);
+    const fine = terrainSample(x, z, step);
+    normals.push(...fine.normal); colors.push(...fine.color);
+    const distant = step === GRID ? coarseSample(x, z) : fine;
+    coarseHeights.push(distant.height); coarseNormals.push(...distant.normal); coarseColors.push(...distant.color);
   }
   for (let iz = 0; iz < n; iz++) for (let ix = 0; ix < n; ix++) {
     const x = wx + (ix + .5) * step, z = wz + (iz + .5) * step;
@@ -129,7 +168,9 @@ function terrainGeometry(wx, wz, size, step, exclude = null) {
   geometry.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
   geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
   geometry.setIndex(indices);
-  if (step > GRID) geometry.computeVertexNormals();
+  geometry.setAttribute('coarseHeight', new THREE.Float32BufferAttribute(coarseHeights, 1));
+  geometry.setAttribute('coarseNormal', new THREE.Float32BufferAttribute(coarseNormals, 3));
+  geometry.setAttribute('coarseColor', new THREE.Float32BufferAttribute(coarseColors, 3));
   geometry.computeBoundingSphere();
   return geometry;
 }
@@ -144,8 +185,36 @@ const boulderGeo = new THREE.DodecahedronGeometry(1, 0).scale(1.2, 1.1, .85).tra
 const bushGeo = new THREE.IcosahedronGeometry(1, 0).scale(1.1, .7, .9).translate(0, .45, 0);
 const postGeo = new THREE.BoxGeometry(.18, .95, .18).translate(0, .48, 0);
 const matrix = new THREE.Matrix4(), quaternion = new THREE.Quaternion(), upAxis = new THREE.Vector3(0, 1, 0), scaleVec = new THREE.Vector3(), pointVec = new THREE.Vector3();
+const fadingMaterials = new WeakSet();
+function softenScenery(mat) {
+  if (fadingMaterials.has(mat)) return;
+  fadingMaterials.add(mat);
+  mat.onBeforeCompile = shader => {
+    Object.assign(shader.uniforms, streamUniforms);
+    shader.vertexShader = 'attribute float groundDelta; uniform vec2 uStreamCenter; varying vec2 vSceneryXZ;\n' + shader.vertexShader;
+    shader.vertexShader = shader.vertexShader.replace('#include <project_vertex>', `
+      vec4 sceneryPosition=vec4(transformed,1.0);
+      #ifdef USE_INSTANCING
+        sceneryPosition=instanceMatrix*sceneryPosition;
+      #endif
+      vSceneryXZ=(modelMatrix*sceneryPosition).xz;
+      float groundBlend=smoothstep(220.0,360.0,distance(vSceneryXZ,uStreamCenter));
+      // Group transforms preserve the vertical axis and have unit scale.
+      sceneryPosition.y+=groundDelta*groundBlend;
+      vec4 mvPosition=modelViewMatrix*sceneryPosition;
+      gl_Position=projectionMatrix*mvPosition;`);
+    shader.fragmentShader = 'uniform vec2 uStreamCenter; varying vec2 vSceneryXZ;\n' + shader.fragmentShader;
+    shader.fragmentShader = shader.fragmentShader.replace('#include <alphatest_fragment>', `
+      #include <alphatest_fragment>
+      float coverage=1.0-smoothstep(220.0,350.0,distance(vSceneryXZ,uStreamCenter));
+      float threshold=fract(52.9829189*fract(dot(gl_FragCoord.xy,vec2(.06711056,.00583715))));
+      if(coverage<=threshold) discard;`);
+  };
+  mat.customProgramCacheKey = () => 'scenery-distance-fade-v1';
+  mat.needsUpdate = true;
+}
 const chunks = new Map();
-const view = 3;
+const view = 4;
 let farGround = null, lastCX = Infinity, lastCZ = Infinity;
 function buildChunk(cx, cz) {
   const group = new THREE.Group(); group.position.set(cx * CHUNK, 0, cz * CHUNK);
@@ -175,22 +244,49 @@ function buildChunk(cx, cz) {
     const landmark = buildLandmark(feature, world);
     landmark.position.x -= cx * CHUNK; landmark.position.z -= cz * CHUNK; group.add(landmark);
   }
+  group.updateMatrixWorld(true);
+  group.traverse(o => {
+    if (!o.isMesh || o === ground) return;
+    // Match the terrain's gradual height change so distant trees stay rooted.
+    if (!o.geometry.userData.owned) { o.geometry = o.geometry.clone(); o.geometry.userData.owned = true; }
+    const deltas = [], position = o.geometry.getAttribute('position');
+    for (let i = 0; i < (o.isInstancedMesh ? o.count : position.count); i++) {
+      if (o.isInstancedMesh) { o.getMatrixAt(i, matrix); pointVec.setFromMatrixPosition(matrix); }
+      else pointVec.fromBufferAttribute(position, i);
+      pointVec.applyMatrix4(o.matrixWorld);
+      deltas.push(coarseSample(pointVec.x, pointVec.z).height - world.surface(pointVec.x, pointVec.z));
+    }
+    o.geometry.setAttribute('groundDelta', o.isInstancedMesh ? new THREE.InstancedBufferAttribute(new Float32Array(deltas), 1) : new THREE.Float32BufferAttribute(deltas, 1));
+    softenScenery(o.material);
+  });
   scene.add(group); chunks.set(`${cx},${cz}`, { cx, cz, group, ground, props, features });
 }
 function disposeChunk(chunk) {
   scene.remove(chunk.group);
   chunk.group.traverse(o => { if (o.geometry?.userData.owned) o.geometry.dispose(); if (o.isInstancedMesh) o.dispose(); });
 }
+// Prepare the next ring a chunk at a time while driving. At top speed there
+// are still many frames to prepare a row before it enters the rendered square.
+function prefetchChunk(cx, cz) {
+  const ring = view + 1;
+  for (let dx = -ring; dx <= ring; dx++) for (let dz = -ring; dz <= ring; dz++) {
+    if (Math.abs(dx) !== ring && Math.abs(dz) !== ring) continue;
+    const x = cx + dx, z = cz + dz;
+    if (!chunks.has(`${x},${z}`)) { buildChunk(x, z); chunks.get(`${x},${z}`).group.visible = false; return; }
+  }
+}
 function streamWorld(force = false) {
   const cx = Math.floor(vehicle.x / CHUNK), cz = Math.floor(vehicle.z / CHUNK);
-  if (!force && cx === lastCX && cz === lastCZ) return;
+  if (!force && cx === lastCX && cz === lastCZ) { prefetchChunk(cx, cz); return; }
   lastCX = cx; lastCZ = cz;
   for (let dx = -view; dx <= view; dx++) for (let dz = -view; dz <= view; dz++) {
     const x = cx + dx, z = cz + dz;
     if (!chunks.has(`${x},${z}`)) buildChunk(x, z);
   }
-  for (const [key, c] of chunks) if (Math.abs(c.cx - cx) > view || Math.abs(c.cz - cz) > view) {
-    disposeChunk(c); chunks.delete(key);
+  for (const [key, c] of chunks) {
+    const ring = Math.max(Math.abs(c.cx - cx), Math.abs(c.cz - cz));
+    c.group.visible = ring <= view;
+    if (ring > view + 1) { disposeChunk(c); chunks.delete(key); }
   }
   // A single coarse mesh gives the world a long horizon without hundreds of
   // distant objects or draw calls. Its hole aligns with the fine chunk grid.
@@ -198,7 +294,7 @@ function streamWorld(force = false) {
   const geometry = terrainGeometry(wx, wz, CHUNK * 33, 24, { x0: (cx - view) * CHUNK, x1: (cx + view + 1) * CHUNK, z0: (cz - view) * CHUNK, z1: (cz + view + 1) * CHUNK });
   if (farGround) { farGround.geometry.dispose(); farGround.geometry = geometry; }
   else { farGround = new THREE.Mesh(geometry, terrainMaterial); farGround.receiveShadow = true; scene.add(farGround); }
-  farGround.position.set(wx, -.08, wz);
+  farGround.position.set(wx, 0, wz);
 }
 function nearbyObstacles() {
   const cx = Math.floor(vehicle.x / CHUNK), cz = Math.floor(vehicle.z / CHUNK), result = [];
@@ -326,7 +422,7 @@ function resetCamera() {
 function newWorld() {
   saveRecord(); clearInput(); seed = freshSeed(); world = createWorld(seed); vehicle = createVehicle(world); roadUniforms.uRoadPhase.value = world.phase;
   const url = new URL(location.href); url.searchParams.set('seed', seed); history.replaceState(null, '', url);
-  for (const c of chunks.values()) disposeChunk(c); chunks.clear();
+  for (const c of chunks.values()) disposeChunk(c); chunks.clear(); coarseSamples.clear();
   streamWorld(true); resetCamera(); syncSeed(); updateHUD(); drawMap();
   reportedLanding = 0; $('runDistance').textContent = '0.00'; toast('A new road ahead. World ' + seed);
 }
@@ -440,6 +536,7 @@ function updateHUD() {
 const cameraPosition = new THREE.Vector3(), cameraTarget = new THREE.Vector3(), desiredCamera = new THREE.Vector3(), forward = new THREE.Vector3(), look = new THREE.Vector3();
 let previousTime = performance.now(), accumulator = 0, uiTime = 0, mapTime = 0, idleRenderAt = 0, wheelAngle = 0, reportedLanding = 0;
 function render(dt) {
+  streamUniforms.uStreamCenter.value.set(vehicle.x, vehicle.z);
   car.position.set(vehicle.x, vehicle.y, vehicle.z); car.rotation.set(vehicle.pitch, vehicle.heading, vehicle.roll);
   body.position.y = -vehicle.impact * .3;
   body.rotation.z = -vehicle.steer * Math.min(Math.abs(vehicle.speed) / 25, 1) * .055;
