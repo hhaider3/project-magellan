@@ -189,6 +189,15 @@ const fadingMaterials = new WeakSet();
 function softenScenery(mat) {
   if (fadingMaterials.has(mat)) return;
   fadingMaterials.add(mat);
+  // Use stable multisample coverage instead of screen-space noise, which
+  // sparkles during motion and on browsers with different pixel ratios.
+  // Keep alpha in the output (transparent), but retain opaque depth and
+  // blending when MSAA is available. Fall back to ordinary alpha blending.
+  const multisampled = renderer.getContext().getContextAttributes().antialias;
+  mat.transparent = true;
+  mat.alphaToCoverage = multisampled;
+  mat.blending = multisampled ? THREE.NoBlending : THREE.NormalBlending;
+  mat.depthWrite = multisampled;
   mat.onBeforeCompile = shader => {
     Object.assign(shader.uniforms, streamUniforms);
     shader.vertexShader = 'attribute float groundDelta; uniform vec2 uStreamCenter; varying vec2 vSceneryXZ;\n' + shader.vertexShader;
@@ -207,10 +216,10 @@ function softenScenery(mat) {
     shader.fragmentShader = shader.fragmentShader.replace('#include <alphatest_fragment>', `
       #include <alphatest_fragment>
       float coverage=1.0-smoothstep(220.0,350.0,distance(vSceneryXZ,uStreamCenter));
-      float threshold=fract(52.9829189*fract(dot(gl_FragCoord.xy,vec2(.06711056,.00583715))));
-      if(coverage<=threshold) discard;`);
+      if(coverage<=0.001) discard;
+      diffuseColor.a*=coverage;`);
   };
-  mat.customProgramCacheKey = () => 'scenery-distance-fade-v1';
+  mat.customProgramCacheKey = () => 'scenery-distance-fade-v2';
   mat.needsUpdate = true;
 }
 const chunks = new Map();
