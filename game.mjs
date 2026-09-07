@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import { CHUNK, GRID, ROAD_SPACING, ROAD_HALF, FIXED_DT, featurePoint, clamp, mix, smoothstep, hash, createWorld, createVehicle, stepVehicle, recoverVehicle } from './world.mjs';
-import { buildLandmark } from './scenery.mjs';
+import { CHUNK, GRID, ROAD_SPACING, ROAD_HALF, FIXED_DT, featurePoint, clamp, mix, smoothstep, hash, createWorld, createVehicle, stepVehicle, recoverVehicle } from './world.mjs?v=geometry-ownership-1';
+import { buildLandmark, cloneOwnedGeometry } from './scenery.mjs?v=geometry-ownership-1';
 
 const $ = id => document.getElementById(id);
 const coarse = matchMedia('(pointer:coarse)').matches || navigator.maxTouchPoints > 0;
@@ -257,7 +257,7 @@ function buildChunk(cx, cz) {
   group.traverse(o => {
     if (!o.isMesh || o === ground) return;
     // Match the terrain's gradual height change so distant trees stay rooted.
-    if (!o.geometry.userData.owned) { o.geometry = o.geometry.clone(); o.geometry.userData.owned = true; }
+    if (!o.geometry.userData.owned) o.geometry = cloneOwnedGeometry(o.geometry);
     const deltas = [], position = o.geometry.getAttribute('position');
     for (let i = 0; i < (o.isInstancedMesh ? o.count : position.count); i++) {
       if (o.isInstancedMesh) { o.getMatrixAt(i, matrix); pointVec.setFromMatrixPosition(matrix); }

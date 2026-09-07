@@ -1,5 +1,13 @@
 import * as THREE from 'three';
-import { featurePoint } from './world.mjs';
+import { featurePoint } from './world.mjs?v=geometry-ownership-1';
+
+// Three.js BufferGeometry.clone() shares userData with its source. Detach it
+// before marking ownership, or the shared template becomes disposable too.
+export function cloneOwnedGeometry(source) {
+  const geometry = source.clone();
+  geometry.userData = { ...source.userData, owned: true };
+  return geometry;
+}
 
 const unitBox = new THREE.BoxGeometry(1, 1, 1);
 const materials = {

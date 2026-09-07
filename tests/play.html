@@ -5,9 +5,11 @@
 <style>
 body{margin:0;background:#22392f;color:#fff;font:12px system-ui}iframe{position:fixed;inset:0;width:100%;height:100%;border:0}.panel{position:fixed;left:12px;top:110px;background:#18362fe8;padding:15px;z-index:2;border:1px solid #acb697;max-width:320px;border-radius:5px}button{padding:10px 12px;margin:0 5px 5px 0;border:0;background:#e9c98a;color:#253d39;cursor:pointer}button:disabled{opacity:.5;cursor:wait}li{margin:6px 0}.passed{color:#bde0a8}.failed{color:#ffb599}
 </style>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"}}</script>
 <iframe id="game" title="Game under test" src="../?seed=1&test=drive"></iframe>
 <div class="panel">
   <button id="run" disabled>Run driving check</button><button id="ramp" disabled>Run ramp check</button>
+  <button id="geometry">Run geometry check</button>
   <ol id="results"></ol><p id="status">Tests real input, physics, rendering and streamed terrain. Keep this tab focused.</p>
 </div>
 <script type="module">
@@ -67,3 +69,27 @@ async function run(mode) {
 driveButton.onclick = () => run('drive'); rampButton.onclick = () => run('ramp');
 </script>
 </html>
+
+<script type="module">
+import * as THREE from 'three';
+import { cloneOwnedGeometry } from '../scenery.mjs?v=geometry-ownership-1';
+document.getElementById('geometry').onclick = () => {
+  const results = document.getElementById('results'); results.replaceChildren();
+  const check = (ok, text) => { const li = document.createElement('li'); li.className = ok ? 'passed' : 'failed'; li.textContent = `${ok ? 'PASS' : 'FAIL'}: ${text}`; results.append(li); if (!ok) throw Error(text); };
+  const template = new THREE.BoxGeometry();
+  const first = cloneOwnedGeometry(template), second = cloneOwnedGeometry(template);
+  try {
+    check(!template.userData.owned && first.userData !== template.userData && second.userData !== first.userData, 'chunk ownership never changes the shared template');
+    first.setAttribute('groundDelta', new THREE.InstancedBufferAttribute(new Float32Array([1, 2]), 1));
+    second.setAttribute('groundDelta', new THREE.InstancedBufferAttribute(new Float32Array([3, 4, 5]), 1));
+    check(!template.hasAttribute('groundDelta') && first.getAttribute('groundDelta').count === 2 && second.getAttribute('groundDelta').count === 3, 'chunks keep independent per-instance buffers');
+    let templateDisposed = false, secondDisposed = false;
+    template.addEventListener('dispose', () => { templateDisposed = true; });
+    second.addEventListener('dispose', () => { secondDisposed = true; });
+    first.dispose();
+    check(!templateDisposed && !secondDisposed && second.getAttribute('groundDelta').array[0] === 3, 'unloading a chunk preserves all other geometry');
+    document.getElementById('status').textContent = 'All geometry ownership checks passed using the game’s Three.js version.';
+  } catch (error) { document.getElementById('status').textContent = 'Check failed: ' + error.message; }
+  finally { first.dispose(); second.dispose(); template.dispose(); }
+};
+</script>
