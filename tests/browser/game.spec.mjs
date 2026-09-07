@@ -11,17 +11,22 @@ async function openGame(page, seed = 1) {
   return errors;
 }
 const snapshot = page => page.evaluate(() => window.__driveTest.snapshot());
-test('worker loading, actual WebGL rendering, and stationary scenery stay stable', async ({ page }) => {
+test('worker loading, actual WebGL rendering, and stationary scenery stay stable', async ({ page }, testInfo) => {
   const errors = await openGame(page, 100003);
   const state = await snapshot(page);
   expect(state.loading).toBe(false); expect(state.carMeshes).toBeLessThan(40); expect(state.farTiles).toBe(81);
   expect(state.metrics.workerBuild.count).toBeGreaterThanOrEqual(162);
   await page.getByRole('button', { name: 'Start exploring', exact: true }).click();
+  // The menu camera is already settled. Wait for gameplay to render before
+  // checking convergence, otherwise a slow GPU can pass on that stale state.
+  await expect.poll(async () => (await snapshot(page)).metrics.frame?.count ?? 0, { timeout: 20000 }).toBeGreaterThan(1);
   await expect.poll(async () => (await snapshot(page)).cameraError, { timeout: 20000 }).toBeLessThan(1e-7);
   // The exact pixels may differ across GPUs; within one settled session they must not flicker.
   const first = await page.locator('#game canvas').screenshot();
   await page.waitForTimeout(500);
   const second = await page.locator('#game canvas').screenshot();
+  await testInfo.attach('stationary-before', { body: first, contentType: 'image/png' });
+  await testInfo.attach('stationary-after', { body: second, contentType: 'image/png' });
   const a = PNG.sync.read(first), b = PNG.sync.read(second);
   let changed = 0;
   for (let i = 0; i < a.data.length; i += 4) if (Math.max(...[0, 1, 2].map(channel => Math.abs(a.data[i + channel] - b.data[i + channel]))) > 8) changed++;
