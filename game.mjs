@@ -1,11 +1,12 @@
-import { createTerrain } from './terrain.mjs?v=stunts-1';
-import { FAR_SIZE, FAR_VIEW, NEAR_VIEW, farIndices } from './streaming-layout.mjs?v=stunts-1';
-import { batchStaticMeshes } from './batching.mjs?v=stunts-1';
-import { createProfiler } from './profiling.mjs?v=stunts-1';
-import { createDebris } from './debris.mjs?v=stunts-1';
+import { createTerrain } from './terrain.mjs?v=motion-1';
+import { FAR_SIZE, FAR_VIEW, NEAR_VIEW, farIndices } from './streaming-layout.mjs?v=motion-1';
+import { batchStaticMeshes } from './batching.mjs?v=motion-1';
+import { createProfiler } from './profiling.mjs?v=motion-1';
+import { createDebris } from './debris.mjs?v=motion-1';
+import { createVehiclePresentation } from './vehicle-presentation.mjs?v=motion-1';
 import * as THREE from 'three';
-import { CHUNK, GRID, ROAD_SPACING, ROAD_HALF, FIXED_DT, featurePoint, clamp, mix, smoothstep, hash, createWorld, createVehicle, stepVehicle, recoverVehicle } from './world.mjs?v=stunts-1';
-import { buildLandmark, cloneOwnedGeometry, createCactusGeometry } from './scenery.mjs?v=stunts-1';
+import { CHUNK, GRID, ROAD_SPACING, ROAD_HALF, FIXED_DT, featurePoint, clamp, mix, smoothstep, hash, createWorld, createVehicle, stepVehicle, recoverVehicle } from './world.mjs?v=motion-1';
+import { buildLandmark, cloneOwnedGeometry, createCactusGeometry } from './scenery.mjs?v=motion-1';
 
 const $ = id => document.getElementById(id);
 const coarse = matchMedia('(pointer:coarse)').matches || navigator.maxTouchPoints > 0;
@@ -339,7 +340,7 @@ function beginWorldLoad(continueDriving = false) {
   for (const chunk of chunks.values()) disposeChunk(chunk); chunks.clear();
   for (const tile of farTiles.values()) { scene.remove(tile); tile.geometry.dispose(); } farTiles.clear();
   terrain = createTerrain(world);
-  worker = new Worker(new URL('./world-worker.mjs?v=stunts-1', import.meta.url), { type: 'module' });
+  worker = new Worker(new URL('./world-worker.mjs?v=motion-1', import.meta.url), { type: 'module' });
   const failed = message => { streamError = message; running = false; $('loadError').hidden = false; $('startBtn').firstElementChild.textContent = 'Unable to prepare the world'; };
   worker.onerror = error => failed(error.message);
   worker.onmessage = ({ data }) => {
@@ -474,6 +475,7 @@ function pause() {
 function resetTiming() {
   accumulator = 0; previousTime = performance.now(); frame.lastNow = previousTime;
   uiTime = mapTime = 0;
+  vehiclePresentation.reset(vehicle);
 }
 function resetCamera() {
   updateDesiredCamera();
@@ -600,50 +602,51 @@ function updateHUD() {
 }
 const vehiclePosition = new THREE.Vector3(), cameraPosition = new THREE.Vector3(), cameraTarget = new THREE.Vector3(), desiredCamera = new THREE.Vector3(), forward = new THREE.Vector3(), look = new THREE.Vector3();
 const debris = createDebris(scene), rollPivot = new THREE.Vector3();
-let previousTime = performance.now(), accumulator = 0, uiTime = 0, mapTime = 0, idleRenderAt = 0, wheelAngle = 0, reportedLanding = 0;
-function updateDesiredCamera() {
-  vehiclePosition.set(vehicle.x, vehicle.y, vehicle.z);
-  forward.set(Math.sin(vehicle.heading), 0, Math.cos(vehicle.heading));
+const vehiclePresentation = createVehiclePresentation(vehicle);
+let previousTime = performance.now(), accumulator = 0, uiTime = 0, mapTime = 0, idleRenderAt = 0, reportedLanding = 0;
+function updateDesiredCamera(pose = vehicle) {
+  vehiclePosition.set(pose.x, pose.y, pose.z);
+  forward.set(Math.sin(pose.heading), 0, Math.cos(pose.heading));
   if (!started) {
-    desiredCamera.set(vehicle.x - 8.5, vehicle.y + 4.6, vehicle.z - 11.8);
-    look.set(vehicle.x + 2.7, vehicle.y + 1.2, vehicle.z + 3.5);
+    desiredCamera.set(pose.x - 8.5, pose.y + 4.6, pose.z - 11.8);
+    look.set(pose.x + 2.7, pose.y + 1.2, pose.z + 3.5);
   } else if (cameraMode === 2 && running) {
     desiredCamera.copy(vehiclePosition).addScaledVector(forward, .7); desiredCamera.y += 1.91;
     look.copy(vehiclePosition).addScaledVector(forward, 25); look.y += 1.65;
   } else {
     const compact = camera.aspect < .85;
-    const distance = (cameraMode === 1 ? 18 : 10.6 + Math.abs(vehicle.speed) * .027) * (compact ? 1.4 : 1);
+    const distance = (cameraMode === 1 ? 18 : 10.6 + Math.abs(pose.speed) * .027) * (compact ? 1.4 : 1);
     desiredCamera.copy(vehiclePosition).addScaledVector(forward, -distance); desiredCamera.y += cameraMode === 1 ? 10 : compact ? 5.8 : 4.7;
     look.copy(vehiclePosition).addScaledVector(forward, cameraMode === 1 ? 5 : 7); look.y += 1.4;
   }
 }
 function render(dt) {
-  streamUniforms.uStreamCenter.value.set(vehicle.x, vehicle.z);
-  car.rotation.set(vehicle.pitch, vehicle.heading, vehicle.roll, 'YXZ');
+  const pose = vehiclePresentation.sample(running ? accumulator / FIXED_DT : 1);
+  streamUniforms.uStreamCenter.value.set(pose.x, pose.z);
+  car.rotation.set(pose.pitch, pose.heading, pose.roll, 'YXZ');
   rollPivot.set(0, 1, 0).applyEuler(car.rotation);
-  car.position.set(vehicle.x - rollPivot.x, vehicle.y + 1 - rollPivot.y, vehicle.z - rollPivot.z);
-  body.position.y = -vehicle.impact * .3;
-  body.rotation.z = -vehicle.steer * Math.min(Math.abs(vehicle.speed) / 25, 1) * .055;
+  car.position.set(pose.x - rollPivot.x, pose.y + 1 - rollPivot.y, pose.z - rollPivot.z);
+  body.position.y = -pose.impact * .3;
+  body.rotation.z = -pose.steer * Math.min(Math.abs(pose.speed) / 25, 1) * .055;
   body.rotation.x = (input.up ? -.012 : input.down ? .024 : 0);
-  wheelAngle += vehicle.speed / .57 * dt;
-  wheelSpinners.forEach(w => w.rotation.x = wheelAngle);
-  wheelPivots.forEach(p => { if (p.position.z > 0) p.rotation.y = vehicle.steer * .4; });
+  wheelSpinners.forEach(w => w.rotation.x = pose.wheelAngle);
+  wheelPivots.forEach(p => { if (p.position.z > 0) p.rotation.y = pose.steer * .4; });
   brakeMat.emissiveIntensity = input.down || input.brake ? 2 : .25;
   car.visible = cameraMode !== 2 || !running;
-  contact.position.set(vehicle.x, world.surface(vehicle.x, vehicle.z) + .035, vehicle.z);
-  contact.rotation.set(-Math.PI / 2 + vehicle.pitch, 0, -vehicle.heading, 'YXZ');
-  contact.material.opacity = clamp(1 - (vehicle.y - vehicle.groundY) * .13, .25, 1);
-  updateDesiredCamera();
+  contact.position.set(pose.x, world.surface(pose.x, pose.z) + .035, pose.z);
+  contact.rotation.set(-Math.PI / 2 + pose.pitch, 0, -pose.heading, 'YXZ');
+  contact.material.opacity = clamp(1 - (pose.y - pose.groundY) * .13, .25, 1);
+  updateDesiredCamera(pose);
   if (!started || cameraMode === 2 && running) cameraPosition.copy(desiredCamera);
   else cameraPosition.lerp(desiredCamera, 1 - Math.exp(-5 * dt));
   cameraPosition.y = Math.max(cameraPosition.y, world.surface(cameraPosition.x, cameraPosition.z) + 1.8);
   camera.position.copy(cameraPosition);
   cameraTarget.lerp(look, !started || dt === 0 ? 1 : 1 - Math.exp(-8 * dt));
   camera.lookAt(cameraTarget);
-  const targetFov = cameraMode === 2 ? 67 : 57 + (reducedMotion ? 0 : Math.min(Math.abs(vehicle.speed) * .15, 10));
-  if (Math.abs(camera.fov - targetFov) > .01) { camera.fov = mix(camera.fov, targetFov, .04); camera.updateProjectionMatrix(); }
+  const targetFov = cameraMode === 2 ? 67 : 57 + (reducedMotion ? 0 : Math.min(Math.abs(pose.speed) * .15, 10));
+  if (Math.abs(camera.fov - targetFov) > .01) { camera.fov = mix(camera.fov, targetFov, dt ? 1 - Math.exp(-2.45 * dt) : 1); camera.updateProjectionMatrix(); }
   sky.position.copy(camera.position);
-  sun.position.set(vehicle.x - 65, vehicle.y + 100, vehicle.z + 45); sun.target.position.copy(car.position); sun.target.updateMatrixWorld();
+  sun.position.set(pose.x - 65, pose.y + 100, pose.z + 45); sun.target.position.copy(car.position); sun.target.updateMatrixWorld();
   if (audio && running) {
     const t = audio.context.currentTime, speed = Math.abs(vehicle.speed);
     audio.gain.gain.setTargetAtTime(muted ? 0 : .008 + speed * .00045 + (input.up ? .006 : 0), t, .12);
@@ -666,7 +669,10 @@ function frame(now) {
   if (running && drivable()) {
     accumulator += dt;
     const obstacles = nearbyObstacles();
-    while (accumulator >= FIXED_DT) { stepVehicle(vehicle, input, world, obstacles); accumulator -= FIXED_DT; }
+    while (accumulator >= FIXED_DT) {
+      stepVehicle(vehicle, input, world, obstacles);
+      vehiclePresentation.advance(vehicle, FIXED_DT); accumulator -= FIXED_DT;
+    }
     processBreakage(); debris.update(dt, world);
     if (vehicle.landings > reportedLanding) {
       reportedLanding = vehicle.landings;
@@ -693,5 +699,5 @@ if (testMode) window.__driveTest = { snapshot: () => {
     const hidden = refs.every(({ mesh, index }) => { mesh.getMatrixAt(index, matrix); return matrix.elements[0] === 0 && matrix.elements[5] === 0 && matrix.elements[10] === 0; });
     if (hidden) hiddenProps++;
   }
-  return { metrics: profiler.snapshot(), draws: renderer.info.render.calls, triangles: renderer.info.render.triangles, carMeshes, chunks: chunks.size, farTiles: farTiles.size, loading, generation, streamError, pending: pending.size, queued: jobs.length, carBatching: carBatching.map(({ before, after }) => ({ before, after })), vehicle: { ...vehicle }, debris: debris.count, brokenProps: world.brokenProps.size, hiddenProps, accumulator, cameraError: cameraPosition.distanceTo(desiredCamera) + cameraTarget.distanceTo(look), camera: cameraPosition.toArray(), target: cameraTarget.toArray() };
+  return { metrics: profiler.snapshot(), draws: renderer.info.render.calls, triangles: renderer.info.render.triangles, carMeshes, chunks: chunks.size, farTiles: farTiles.size, loading, generation, streamError, pending: pending.size, queued: jobs.length, carBatching: carBatching.map(({ before, after }) => ({ before, after })), vehicle: { ...vehicle }, renderPose: { ...vehiclePresentation.pose }, debris: debris.count, brokenProps: world.brokenProps.size, hiddenProps, accumulator, cameraError: cameraPosition.distanceTo(desiredCamera) + cameraTarget.distanceTo(look), camera: cameraPosition.toArray(), target: cameraTarget.toArray() };
 } };

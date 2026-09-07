@@ -53,6 +53,7 @@ Touch devices and compact windows show steering, throttle, reverse, **Jump**, an
 - `game.mjs`: rendering, car model, streaming, audio and input.
 - `terrain.mjs` / `world-worker.mjs` / `streaming-layout.mjs`: reusable terrain data, background generation and seam-free near/far coverage.
 - `batching.mjs`: merges static meshes within the car body and each wheel animation group.
+- `vehicle-presentation.mjs`: interpolates fixed-step poses for smooth car, wheel, camera and shadow motion across display refresh rates.
 - `debris.mjs`: bounded instanced breakage particles with terrain bounce and cleanup.
 - `profiling.mjs`: opt-in, bounded CPU timing measurements.
 - `scenery.mjs`: ramp decks and the instanced cabin/lookout models.
@@ -85,3 +86,5 @@ Recovery caches each chunk once per search. The minimap reuses its elevation whe
 To update the pinned graphics dependency deliberately, run `npm run vendor` and commit the vendor files along with the lockfile. Hosting remains static: Cloudflare Pages can continue serving the repository root without a build step.
 
 Stunt test approaches are available at `?seed=1&test=twist` and `?seed=1&test=smash`; these isolate trip records just like the other browser harness modes.
+
+The rendered car interpolates the two latest physics poses (at most one 120 Hz tick of visual delay). Camera tracking, wheel rotation and shadows use that same pose. Tests cover 60–240 Hz rendering, uneven frame intervals, barrel-roll angle wrapping and teleport resets.

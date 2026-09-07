@@ -70,6 +70,9 @@ test('keyboard jump, driving across chunks, recovery, and new-world reset', asyn
   await expect.poll(async () => (await snapshot(page)).vehicle.grounded, { timeout: 10000 }).toBe(true);
   await page.keyboard.down('KeyW');
   await expect.poll(async () => (await snapshot(page)).vehicle.distance, { timeout: 45000 }).toBeGreaterThan(430);
+  const moving = await snapshot(page);
+  const renderLag = Math.hypot(moving.vehicle.x - moving.renderPose.x, moving.vehicle.z - moving.renderPose.z);
+  expect(renderLag).toBeGreaterThan(0); expect(renderLag).toBeLessThan(1);
   await page.keyboard.up('KeyW'); await page.keyboard.press('KeyR');
   const recovered = await snapshot(page);
   expect(Math.abs(recovered.vehicle.speed)).toBeLessThan(.01);
