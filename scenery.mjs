@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { featurePoint } from './world.mjs?v=performance-1';
+import { featurePoint } from './world.mjs?v=stunts-1';
 
 // Three.js BufferGeometry.clone() shares userData with its source. Detach it
 // before marking ownership, or the shared template becomes disposable too.
@@ -44,20 +44,28 @@ const materials = {
   green: new THREE.MeshStandardMaterial({ color: '#4c7162', roughness: .8 }),
   glass: new THREE.MeshStandardMaterial({ color: '#466b72', metalness: .2, roughness: .35 }),
 };
-let deckMaterial;
-function getDeckMaterial() {
-  if (deckMaterial) return deckMaterial;
+const deckMaterials = new Map();
+function getDeckMaterial(twist = 0) {
+  if (deckMaterials.has(twist)) return deckMaterials.get(twist);
   const canvas = document.createElement('canvas'); canvas.width = 256; canvas.height = 512;
   const g = canvas.getContext('2d');
-  g.fillStyle = '#bc7542'; g.fillRect(0, 0, 256, 512);
+  g.fillStyle = twist ? '#8758ae' : '#bc7542'; g.fillRect(0, 0, 256, 512);
   g.fillStyle = '#553e2c'; for (let y = 0; y < 512; y += 18) g.fillRect(0, y, 256, 2);
   g.fillStyle = '#f1d789'; g.fillRect(6, 0, 10, 512); g.fillRect(240, 0, 10, 512);
   g.strokeStyle = '#f8e5ab'; g.lineWidth = 14;
   for (let y = 125; y < 480; y += 120) { g.beginPath(); g.moveTo(70, y); g.lineTo(128, y - 42); g.lineTo(186, y); g.stroke(); }
+  if (twist) {
+    g.strokeStyle = '#fff2bc'; g.lineWidth = 9;
+    for (let y = 180; y < 490; y += 170) {
+      g.beginPath(); g.arc(128, y, 55, .3, Math.PI * 1.8); g.stroke();
+      const x = twist > 0 ? 181 : 75;
+      g.beginPath(); g.moveTo(x - 14, y + 8); g.lineTo(x, y - 14); g.lineTo(x + 14, y + 8); g.stroke();
+    }
+  }
   for (let x = 0; x < 256; x += 32) { g.fillStyle = x % 64 ? '#e9c875' : '#343c32'; g.fillRect(x, 0, 32, 22); }
   const map = new THREE.CanvasTexture(canvas); map.colorSpace = THREE.SRGBColorSpace; map.anisotropy = 4;
-  deckMaterial = new THREE.MeshStandardMaterial({ map, roughness: .9, polygonOffset: true, polygonOffsetFactor: -2 });
-  return deckMaterial;
+  const material = new THREE.MeshStandardMaterial({ map, roughness: .9, polygonOffset: true, polygonOffsetFactor: -2 });
+  deckMaterials.set(twist, material); return material;
 }
 
 export function buildLandmark(feature, world) {
@@ -90,7 +98,7 @@ export function buildLandmark(feature, world) {
     }
     const geometry = new THREE.BufferGeometry(); geometry.userData.owned = true;
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3)); geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); geometry.setIndex(indices); geometry.computeVertexNormals();
-    const deck = new THREE.Mesh(geometry, getDeckMaterial()); deck.receiveShadow = true; group.add(deck);
+    const deck = new THREE.Mesh(geometry, getDeckMaterial(feature.twist)); deck.receiveShadow = true; group.add(deck);
     for (const side of [-1, 1]) {
       flag(side * (feature.width / 2 + 1), feature.length - .8);
       for (const z of [-20, -10, 0]) {

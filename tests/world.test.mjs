@@ -182,3 +182,50 @@ test('dense recovery evaluates each chunk only once per attempt', () => {
   assert.equal(calls.size, 16); assert.ok([...calls.values()].every(count => count === 1)); assert.deepEqual(car, original);
   recoverVehicle(car, blocked); assert.ok([...calls.values()].every(count => count === 2), 'cache is limited to each recovery attempt');
 });
+
+test('high-speed impacts shatter scenery once, preserve momentum, and persist on revisits', () => {
+  for (const type of ['cactus', 'tree', 'rock', 'boulder']) {
+    const world = createWorld(1), car = createVehicle(flat, 0, -1);
+    const prop = { id: 'test-prop', type, x: 0, z: 0, y: 0, h: 6, size: 1, r: type === 'rock' ? 0 : .5 };
+    car.vz = 40; resolveObstacles(car, [prop], world);
+    assert.equal(car.smashed, 1); assert.equal(world.brokenProps.has(prop.id), true);
+    assert.ok(car.vz > 30); assert.equal(car.z, -1, 'breakage does not push the car away');
+    resolveObstacles(car, [{ ...prop }], world);
+    assert.equal(world.drainBreakEvents().length, 1); assert.equal(car.smashed, 1);
+  }
+  const world = createWorld(1), prop = world.props(0, 0)[0];
+  world.breakProp(prop, 0, 40);
+  assert.ok(!world.props(0, 0).some(p => p.id === prop.id));
+  assert.ok(createWorld(1).props(0, 0).some(p => p.id === prop.id), 'a new world restores scenery');
+});
+
+test('slow, glancing, and above-canopy impacts do not break scenery', () => {
+  const prop = { id: 'tree', type: 'tree', x: 0, z: 0, y: 0, h: 6, size: 1, r: .5 };
+  for (const [vx, vz, y] of [[0, 10, .06], [40, 1, .06], [0, 40, 8]]) {
+    const world = createWorld(1), car = createVehicle(flat, 0, -1); Object.assign(car, { vx, vz, y });
+    resolveObstacles(car, [prop], world); assert.equal(car.smashed, 0); assert.equal(world.brokenProps.size, 0);
+  }
+});
+
+test('twisted ramps bank the rendered terrain and launch a roll with safe landing', () => {
+  for (const seed of [1, 77, 100003, 483921]) {
+    const world = createWorld(seed), ramp = world.twistRamp, p = featurePoint(ramp, 0, -35);
+    const left = featurePoint(ramp, -4, ramp.length), right = featurePoint(ramp, 4, ramp.length);
+    assert.ok(Math.abs(world.rampLift(ramp, left.x, left.z) - world.rampLift(ramp, right.x, right.z)) > 5);
+    const car = createVehicle(world, p.x, p.z, ramp.heading); let rotation = 0;
+    for (let i = 0; i < 960; i++) { stepVehicle(car, { up: true }, world, []); rotation = Math.max(rotation, car.airRoll); assert.ok(car.y >= car.groundY); }
+    assert.ok(rotation > Math.PI * 1.7, `seed ${seed} rotates through ${rotation} radians`);
+    assert.ok(car.landings > 0); assert.equal(car.rollVelocity, 0); assert.ok(Math.abs(car.roll) < .6);
+    recoverVehicle(car, world); assert.equal(car.rollVelocity, 0); assert.equal(car.airRoll, 0);
+  }
+});
+
+test('jumping from an upper twisted deck inherits its handedness only at speed', () => {
+  for (const twist of [-1, 1]) for (const speed of [5, 35]) {
+    const world = createWorld(1), ramp = world.twistRamp; ramp.twist = twist;
+    const p = featurePoint(ramp, 0, ramp.length * .7), car = createVehicle(world, p.x, p.z, ramp.heading);
+    car.vz = speed; stepVehicle(car, { jump: true }, world, []);
+    assert.equal(car.grounded, false);
+    assert.equal(Math.sign(car.rollVelocity), speed > 12 ? twist : 0);
+  }
+});

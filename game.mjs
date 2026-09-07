@@ -1,15 +1,16 @@
-import { createTerrain } from './terrain.mjs?v=performance-1';
-import { FAR_SIZE, FAR_VIEW, NEAR_VIEW, farIndices } from './streaming-layout.mjs?v=performance-1';
-import { batchStaticMeshes } from './batching.mjs?v=performance-1';
-import { createProfiler } from './profiling.mjs?v=performance-1';
+import { createTerrain } from './terrain.mjs?v=stunts-1';
+import { FAR_SIZE, FAR_VIEW, NEAR_VIEW, farIndices } from './streaming-layout.mjs?v=stunts-1';
+import { batchStaticMeshes } from './batching.mjs?v=stunts-1';
+import { createProfiler } from './profiling.mjs?v=stunts-1';
+import { createDebris } from './debris.mjs?v=stunts-1';
 import * as THREE from 'three';
-import { CHUNK, GRID, ROAD_SPACING, ROAD_HALF, FIXED_DT, featurePoint, clamp, mix, smoothstep, hash, createWorld, createVehicle, stepVehicle, recoverVehicle } from './world.mjs?v=performance-1';
-import { buildLandmark, cloneOwnedGeometry, createCactusGeometry } from './scenery.mjs?v=performance-1';
+import { CHUNK, GRID, ROAD_SPACING, ROAD_HALF, FIXED_DT, featurePoint, clamp, mix, smoothstep, hash, createWorld, createVehicle, stepVehicle, recoverVehicle } from './world.mjs?v=stunts-1';
+import { buildLandmark, cloneOwnedGeometry, createCactusGeometry } from './scenery.mjs?v=stunts-1';
 
 const $ = id => document.getElementById(id);
 const coarse = matchMedia('(pointer:coarse)').matches || navigator.maxTouchPoints > 0;
 const reducedMotion = matchMedia('(prefers-reduced-motion:reduce)').matches;
-const testMode = ['drive', 'ramp', 'browser'].includes(new URLSearchParams(location.search).get('test'));
+const testMode = ['drive', 'ramp', 'twist', 'smash', 'browser'].includes(new URLSearchParams(location.search).get('test'));
 const profiler = createProfiler(testMode);
 const bootStarted = performance.now();
 if (coarse) document.body.classList.add('touch');
@@ -21,6 +22,14 @@ let world = createWorld(seed), vehicle = createVehicle(world);
 if (new URLSearchParams(location.search).get('test') === 'ramp') {
   const p = featurePoint(world.starterRamp, 0, -35);
   vehicle = createVehicle(world, p.x, p.z, world.starterRamp.heading);
+}
+if (new URLSearchParams(location.search).get('test') === 'twist') {
+  const p = featurePoint(world.twistRamp, 0, -35);
+  vehicle = createVehicle(world, p.x, p.z, world.twistRamp.heading);
+}
+if (new URLSearchParams(location.search).get('test') === 'smash') {
+  const prop = world.props(0, 0).find(p => ['cactus', 'tree', 'boulder'].includes(p.type));
+  if (prop) vehicle = createVehicle(world, prop.x, prop.z - 32, 0);
 }
 let running = false, started = false, cameraMode = 0, muted = true, lightsOn = false, bestDistance = 0;
 if (!testMode) try { muted = localStorage.getItem('endless-drive-muted') !== '0'; bestDistance = Number(JSON.parse(localStorage.getItem('endless-drive-records') || '{}').distance) || 0; } catch {}
@@ -186,13 +195,18 @@ let loading = true, resumeAfterLoad = false, loadingStarted = bootStarted, strea
 function buildChunk({ cx, cz, ground: groundData, props, features, roadside }) {
   const buildStart = performance.now();
   const group = new THREE.Group(); group.position.set(cx * CHUNK, 0, cz * CHUNK);
+  props = props.filter(p => !world.brokenProps.has(p.id));
+  const propInstances = new Map();
   const ground = new THREE.Mesh(geometryFromData(groundData), terrainMaterial);
   ground.geometry.userData.owned = true;
   ground.receiveShadow = true; group.add(ground);
   function instances(type, geometry, mat) {
     const list = (type === 'post' ? roadside : props).filter(p => p.type === type); if (!list.length) return;
     const mesh = new THREE.InstancedMesh(geometry, mat, list.length);
-    list.forEach((p, i) => { pointVec.set(p.x - cx * CHUNK, p.y - .08, p.z - cz * CHUNK); quaternion.setFromAxisAngle(upAxis, p.turn); scaleVec.setScalar(p.size); matrix.compose(pointVec, quaternion, scaleVec); mesh.setMatrixAt(i, matrix); });
+    list.forEach((p, i) => {
+      pointVec.set(p.x - cx * CHUNK, p.y - .08, p.z - cz * CHUNK); quaternion.setFromAxisAngle(upAxis, p.turn); scaleVec.setScalar(p.size); matrix.compose(pointVec, quaternion, scaleVec); mesh.setMatrixAt(i, matrix);
+      if (p.id) { if (!propInstances.has(p.id)) propInstances.set(p.id, []); propInstances.get(p.id).push({ mesh, index: i }); }
+    });
     mesh.castShadow = true; mesh.receiveShadow = true; group.add(mesh);
   }
   instances('cactus', cactusGeo, cactusMaterial);
@@ -218,7 +232,16 @@ function buildChunk({ cx, cz, ground: groundData, props, features, roadside }) {
     softenScenery(o.material);
   });
   profiler.record('chunkBuild', performance.now() - buildStart);
-  scene.add(group); chunks.set(`${cx},${cz}`, { cx, cz, group, ground, props, features });
+  scene.add(group); chunks.set(`${cx},${cz}`, { cx, cz, group, ground, props, features, propInstances });
+}
+function processBreakage() {
+  for (const prop of world.drainBreakEvents()) {
+    const chunk = chunks.get(`${Math.floor(prop.x / CHUNK)},${Math.floor(prop.z / CHUNK)}`);
+    for (const { mesh, index } of chunk?.propInstances.get(prop.id) || []) {
+      mesh.getMatrixAt(index, matrix); matrix.scale(scaleVec.set(0, 0, 0)); mesh.setMatrixAt(index, matrix); mesh.instanceMatrix.needsUpdate = true;
+    }
+    debris.burst(prop);
+  }
 }
 function disposeChunk(chunk) {
   scene.remove(chunk.group);
@@ -316,7 +339,7 @@ function beginWorldLoad(continueDriving = false) {
   for (const chunk of chunks.values()) disposeChunk(chunk); chunks.clear();
   for (const tile of farTiles.values()) { scene.remove(tile); tile.geometry.dispose(); } farTiles.clear();
   terrain = createTerrain(world);
-  worker = new Worker(new URL('./world-worker.mjs?v=performance-1', import.meta.url), { type: 'module' });
+  worker = new Worker(new URL('./world-worker.mjs?v=stunts-1', import.meta.url), { type: 'module' });
   const failed = message => { streamError = message; running = false; $('loadError').hidden = false; $('startBtn').firstElementChild.textContent = 'Unable to prepare the world'; };
   worker.onerror = error => failed(error.message);
   worker.onmessage = ({ data }) => {
@@ -461,6 +484,7 @@ function resetCamera() {
 function newWorld() {
   const continueDriving = running || resumeAfterLoad && loading;
   saveRecord(); clearInput(); seed = freshSeed(); world = createWorld(seed); vehicle = createVehicle(world); roadUniforms.uRoadPhase.value = world.phase;
+  debris.clear();
   const url = new URL(location.href); url.searchParams.set('seed', seed); history.replaceState(null, '', url);
   beginWorldLoad(continueDriving); resetCamera(); syncSeed(); updateHUD(); drawMap();
   reportedLanding = 0; $('runDistance').textContent = '0.00'; toast('A new road ahead. World ' + seed);
@@ -546,7 +570,7 @@ function drawMap() {
   for (let i = 24; i < h; i += 48) { ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(w, i); ctx.stroke(); }
   for (const f of world.featuresNear(vehicle.x, vehicle.z, range * 1.4)) {
     const mx = w / 2 - (f.x - vehicle.x) * scale, my = h / 2 - (f.z - vehicle.z) * scale;
-    ctx.save(); ctx.translate(mx, my); ctx.fillStyle = f.type === 'ramp' ? '#ffb15e' : '#d8e4ce'; ctx.strokeStyle = '#24382e'; ctx.lineWidth = 2;
+    ctx.save(); ctx.translate(mx, my); ctx.fillStyle = f.type === 'ramp' ? f.twist ? '#c69bf0' : '#ffb15e' : '#d8e4ce'; ctx.strokeStyle = '#24382e'; ctx.lineWidth = 2;
     if (f.type === 'ramp') { ctx.rotate(-f.heading); ctx.beginPath(); ctx.moveTo(0, -9); ctx.lineTo(7, 5); ctx.lineTo(-7, 5); ctx.closePath(); ctx.fill(); ctx.stroke(); }
     else { ctx.fillRect(-4, -4, 8, 8); ctx.strokeRect(-4, -4, 8, 8); }
     ctx.restore();
@@ -566,7 +590,7 @@ function updateHUD() {
   const ramps = world.featuresNear(vehicle.x, vehicle.z, 450).filter(f => f.type === 'ramp').sort((a, b) => Math.hypot(a.x - vehicle.x, a.z - vehicle.z) - Math.hypot(b.x - vehicle.x, b.z - vehicle.z));
   if (ramps.length) {
     const ramp = ramps[0], angle = Math.atan2(ramp.x - vehicle.x, ramp.z - vehicle.z) - vehicle.heading;
-    $('rampHint').textContent = `${Math.sin(angle) > .2 ? '↖' : Math.sin(angle) < -.2 ? '↗' : Math.cos(angle) < 0 ? '↓' : '↑'} RAMP ${Math.round(Math.hypot(ramp.x - vehicle.x, ramp.z - vehicle.z))} M`;
+    $('rampHint').textContent = `${Math.sin(angle) > .2 ? '↖' : Math.sin(angle) < -.2 ? '↗' : Math.cos(angle) < 0 ? '↓' : '↑'} ${ramp.twist ? 'ROLL RAMP' : 'RAMP'} ${Math.round(Math.hypot(ramp.x - vehicle.x, ramp.z - vehicle.z))} M`;
   } else $('rampHint').textContent = 'EXPLORE FOR MORE RAMPS';
   const headings = ['N', 'NW', 'W', 'SW', 'S', 'SE', 'E', 'NE'];
   $('headingTxt').textContent = headings[((Math.round(vehicle.heading / (Math.PI / 4)) % 8) + 8) % 8];
@@ -575,6 +599,7 @@ function updateHUD() {
   $('elevation').textContent = Math.round(world.surface(vehicle.x, vehicle.z)) + ' M';
 }
 const vehiclePosition = new THREE.Vector3(), cameraPosition = new THREE.Vector3(), cameraTarget = new THREE.Vector3(), desiredCamera = new THREE.Vector3(), forward = new THREE.Vector3(), look = new THREE.Vector3();
+const debris = createDebris(scene), rollPivot = new THREE.Vector3();
 let previousTime = performance.now(), accumulator = 0, uiTime = 0, mapTime = 0, idleRenderAt = 0, wheelAngle = 0, reportedLanding = 0;
 function updateDesiredCamera() {
   vehiclePosition.set(vehicle.x, vehicle.y, vehicle.z);
@@ -594,7 +619,9 @@ function updateDesiredCamera() {
 }
 function render(dt) {
   streamUniforms.uStreamCenter.value.set(vehicle.x, vehicle.z);
-  car.position.set(vehicle.x, vehicle.y, vehicle.z); car.rotation.set(vehicle.pitch, vehicle.heading, vehicle.roll);
+  car.rotation.set(vehicle.pitch, vehicle.heading, vehicle.roll, 'YXZ');
+  rollPivot.set(0, 1, 0).applyEuler(car.rotation);
+  car.position.set(vehicle.x - rollPivot.x, vehicle.y + 1 - rollPivot.y, vehicle.z - rollPivot.z);
   body.position.y = -vehicle.impact * .3;
   body.rotation.z = -vehicle.steer * Math.min(Math.abs(vehicle.speed) / 25, 1) * .055;
   body.rotation.x = (input.up ? -.012 : input.down ? .024 : 0);
@@ -640,9 +667,10 @@ function frame(now) {
     accumulator += dt;
     const obstacles = nearbyObstacles();
     while (accumulator >= FIXED_DT) { stepVehicle(vehicle, input, world, obstacles); accumulator -= FIXED_DT; }
+    processBreakage(); debris.update(dt, world);
     if (vehicle.landings > reportedLanding) {
       reportedLanding = vehicle.landings;
-      if (vehicle.airDistance > 25) toast(`${Math.round(vehicle.airDistance)} m jump · ${vehicle.airtime.toFixed(1)} seconds of air`);
+      if (vehicle.airDistance > 25) toast(`${vehicle.airRoll > Math.PI ? 'Barrel roll! · ' : ''}${Math.round(vehicle.airDistance)} m jump · ${vehicle.airtime.toFixed(1)} seconds of air`);
     }
     streamWorld(); uiTime += dt; mapTime += dt;
     if (uiTime > .12) { uiTime = 0; updateHUD(); }
@@ -659,5 +687,11 @@ requestAnimationFrame(frame);
 profiler.record('initialLoad', performance.now() - bootStarted);
 if (testMode) window.__driveTest = { snapshot: () => {
   let carMeshes = 0; car.traverse(o => { if (o.isMesh) carMeshes++; });
-  return { metrics: profiler.snapshot(), draws: renderer.info.render.calls, triangles: renderer.info.render.triangles, carMeshes, chunks: chunks.size, farTiles: farTiles.size, loading, generation, streamError, pending: pending.size, queued: jobs.length, carBatching: carBatching.map(({ before, after }) => ({ before, after })), vehicle: { ...vehicle }, accumulator, cameraError: cameraPosition.distanceTo(desiredCamera) + cameraTarget.distanceTo(look), camera: cameraPosition.toArray(), target: cameraTarget.toArray() };
+  let hiddenProps = 0;
+  for (const chunk of chunks.values()) for (const [id, refs] of chunk.propInstances) {
+    if (!world.brokenProps.has(id)) continue;
+    const hidden = refs.every(({ mesh, index }) => { mesh.getMatrixAt(index, matrix); return matrix.elements[0] === 0 && matrix.elements[5] === 0 && matrix.elements[10] === 0; });
+    if (hidden) hiddenProps++;
+  }
+  return { metrics: profiler.snapshot(), draws: renderer.info.render.calls, triangles: renderer.info.render.triangles, carMeshes, chunks: chunks.size, farTiles: farTiles.size, loading, generation, streamError, pending: pending.size, queued: jobs.length, carBatching: carBatching.map(({ before, after }) => ({ before, after })), vehicle: { ...vehicle }, debris: debris.count, brokenProps: world.brokenProps.size, hiddenProps, accumulator, cameraError: cameraPosition.distanceTo(desiredCamera) + cameraTarget.distanceTo(look), camera: cameraPosition.toArray(), target: cameraTarget.toArray() };
 } };

@@ -50,3 +50,20 @@ test('worker terrain retains exact fine triangles and matching coarse boundaries
   assert.ok([...cactus.attributes.position.array].every(Number.isFinite));
   assert.ok(cactus.boundingSphere.radius > 2); cactus.dispose();
 });
+
+test('debris remains bounded, falls onto terrain, expires and clears on world reset', async () => {
+  const { createDebris } = await import('../debris.mjs');
+  const scene = new THREE.Scene(), debris = createDebris(scene, 24);
+  const prop = { type: 'tree', x: 0, y: 0, z: 0, size: 1, h: 6, vx: 40, vz: 0 };
+  for (let i = 0; i < 10; i++) debris.burst(prop);
+  assert.equal(debris.count, 24); assert.equal(scene.children.length, 1);
+  const matrix = new THREE.Matrix4();
+  for (let i = 0; i < 100; i++) {
+    debris.update(1 / 60, { surface: () => 0 });
+    scene.children[0].getMatrixAt(0, matrix);
+    assert.ok(matrix.elements.every(Number.isFinite)); assert.ok(matrix.elements[13] >= 0);
+  }
+  for (let i = 0; i < 150; i++) debris.update(1 / 60, { surface: () => 0 });
+  assert.equal(debris.count, 0); assert.equal(scene.children[0].count, 0);
+  debris.burst(prop); debris.clear(); assert.equal(debris.count, 0); assert.equal(scene.children[0].count, 0);
+});

@@ -1,5 +1,5 @@
 import * as THREE from './vendor/three.module.js';
-import { GRID, hash, smoothstep } from './world.mjs?v=performance-1';
+import { GRID, hash, smoothstep } from './world.mjs?v=stunts-1';
 export function createTerrain(world) {
   const seed = world.seed;
   const groundColors = { grass: new THREE.Color('#7e9059'), sand: new THREE.Color('#d9b873'), lush: new THREE.Color('#536e48'), dry: new THREE.Color('#b2a477'), rock: new THREE.Color('#8e9385'), snow: new THREE.Color('#dddeda') };

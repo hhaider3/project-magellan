@@ -1,5 +1,5 @@
-import { createWorld, CHUNK, GRID, ROAD_SPACING } from './world.mjs?v=performance-1';
-import { createTerrain } from './terrain.mjs?v=performance-1';
+import { createWorld, CHUNK, GRID, ROAD_SPACING } from './world.mjs?v=stunts-1';
+import { createTerrain } from './terrain.mjs?v=stunts-1';
 let world, terrain;
 self.onmessage = ({ data: job }) => {
   try {

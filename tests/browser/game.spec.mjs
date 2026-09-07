@@ -1,12 +1,12 @@
 import { PNG } from 'pngjs';
 import { test, expect } from '@playwright/test';
-async function openGame(page, seed = 1) {
+async function openGame(page, seed = 1, mode = 'browser') {
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
   page.on('console', message => { if (message.type() === 'error' && /WebGL|shader|buffer|drawElements|worker/i.test(message.text())) errors.push(message.text()); });
   // Gameplay must remain functional without external fonts/CDNs.
   await page.route('https://**/*', route => route.abort());
-  await page.goto(`/?seed=${seed}&test=browser`);
+  await page.goto(`/?seed=${seed}&test=${mode}`);
   await expect(page.getByRole('button', { name: 'Start exploring', exact: true })).toBeEnabled({ timeout: 60000 });
   return errors;
 }
@@ -32,6 +32,34 @@ test('worker loading, actual WebGL rendering, and stationary scenery stay stable
   for (let i = 0; i < a.data.length; i += 4) if (Math.max(...[0, 1, 2].map(channel => Math.abs(a.data[i + channel] - b.data[i + channel]))) > 8) changed++;
   expect(changed / (a.width * a.height), 'stationary scenery should not disappear between frames').toBeLessThan(.0005);
   expect((await snapshot(page)).draws).toBeGreaterThan(0);
+  expect(errors).toEqual([]);
+});
+
+test('high-speed scenery impact hides every instance and releases bounded debris', async ({ page }, testInfo) => {
+  const errors = await openGame(page, 1, 'smash');
+  await page.getByRole('button', { name: 'Start exploring', exact: true }).click();
+  await page.keyboard.down('KeyW');
+  await expect.poll(async () => (await snapshot(page)).vehicle.smashed, { timeout: 30000, intervals: [100] }).toBeGreaterThan(0);
+  await page.keyboard.up('KeyW');
+  const hit = await snapshot(page);
+  expect(hit.brokenProps).toBeGreaterThan(0); expect(hit.hiddenProps).toBeGreaterThan(0);
+  expect(hit.debris).toBeGreaterThan(0); expect(hit.debris).toBeLessThanOrEqual(192);
+  await testInfo.attach('impact', { body: await page.screenshot(), contentType: 'image/png' });
+  await expect.poll(async () => (await snapshot(page)).debris, { timeout: 30000 }).toBe(0);
+  expect(errors).toEqual([]);
+});
+
+test('a purple ramp launches the car into a barrel roll and lands driveable', async ({ page }, testInfo) => {
+  const errors = await openGame(page, 1, 'twist');
+  await page.getByRole('button', { name: 'Start exploring', exact: true }).click();
+  await testInfo.attach('twisted-ramp', { body: await page.screenshot(), contentType: 'image/png' });
+  await page.keyboard.down('KeyW');
+  await expect.poll(async () => Math.abs((await snapshot(page)).vehicle.rollVelocity), { timeout: 30000, intervals: [100] }).toBeGreaterThan(1);
+  await expect.poll(async () => (await snapshot(page)).vehicle.airRoll, { timeout: 15000, intervals: [100] }).toBeGreaterThan(Math.PI);
+  await testInfo.attach('airborne-roll', { body: await page.screenshot(), contentType: 'image/png' });
+  await expect.poll(async () => (await snapshot(page)).vehicle.landings, { timeout: 30000 }).toBeGreaterThan(0);
+  await page.keyboard.up('KeyW');
+  expect((await snapshot(page)).vehicle.rollVelocity).toBe(0);
   expect(errors).toEqual([]);
 });
 test('keyboard jump, driving across chunks, recovery, and new-world reset', async ({ page }) => {

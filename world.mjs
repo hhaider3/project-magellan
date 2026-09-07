@@ -44,8 +44,14 @@ export function createWorld(seed) {
   }
   function mountainAt(x, z) { return smoothstep(.43, .75, noise(x * .00048 + 8.3, z * .00048 - 9.4, seed + 51)); }
   const featureCache = new Map();
+  const brokenProps = new Set(), breakEvents = [];
+  function breakProp(prop, vx, vz) {
+    if (brokenProps.has(prop.id)) return;
+    brokenProps.add(prop.id); breakEvents.push({ ...prop, vx, vz });
+  }
   const starterRamp = { id: 'first-jump', type: 'ramp', x: roadCenter(68, 0, 'z') - 19, z: 68, heading: Math.atan2(roadCenter(69, 0, 'z') - roadCenter(67, 0, 'z'), 2), width: 10, length: 24, rise: 5.2, back: 10 };
   const starterTower = { id: 'first-lookout', type: 'lookout', x: roadCenter(145, 0, 'z') + 37, z: 145, heading: .15 };
+  const twistRamp = { id: 'first-roll', type: 'ramp', x: roadCenter(225, 0, 'z') + 24, z: 225, heading: 0, width: 12, length: 30, rise: 8, back: 14, twist: -1 };
   function featureAtCell(cx, cz) {
     const key = `${cx},${cz}`;
     if (featureCache.has(key)) return featureCache.get(key);
@@ -67,13 +73,17 @@ export function createWorld(seed) {
     const kind = rng(), type = kind < .58 ? 'ramp' : kind < .82 ? 'camp' : 'lookout';
     const heading = (road.dir === 'x' ? Math.PI / 2 : 0) + (rng() - .5) * .6;
     const feature = { id: `site:${cx},${cz}`, type, x, z, heading, width: 9 + rng() * 3, length: 22 + rng() * 8, rise: 4.5 + rng() * 3, back: 12 };
+    if (type === 'ramp' && hash(cx, cz, seed + 804) < .4) {
+      feature.twist = hash(cx, cz, seed + 805) < .5 ? -1 : 1;
+      feature.rise += 2; feature.width = 12;
+    }
     // A bounded cache speeds up terrain sampling without changing revisits.
     if (featureCache.size >= 256) featureCache.delete(featureCache.keys().next().value);
     featureCache.set(key, feature);
     return feature;
   }
   function featuresNear(x, z, radius = 190) {
-    const result = [starterRamp, starterTower];
+    const result = [starterRamp, starterTower, twistRamp];
     for (let cx = Math.floor((x - radius) / FEATURE_SPACING); cx <= Math.floor((x + radius) / FEATURE_SPACING); cx++) {
       for (let cz = Math.floor((z - radius) / FEATURE_SPACING); cz <= Math.floor((z + radius) / FEATURE_SPACING); cz++) result.push(featureAtCell(cx, cz));
     }
@@ -86,10 +96,11 @@ export function createWorld(seed) {
     const profile = along <= ramp.length ? Math.pow(along / ramp.length, 1.7) : 1 - smoothstep(0, ramp.back, along - ramp.length);
     // Dirt embankments blend every side into the landscape. The orange deck
     // is rendered on these same triangles, so no invisible ramp collider exists.
-    return ramp.rise * profile * (1 - smoothstep(ramp.width / 2, ramp.width / 2 + 7, Math.abs(across)));
+    const bank = (ramp.twist || 0) * across * .72 * smoothstep(0, ramp.length, along);
+    return Math.max(0, ramp.rise + bank) * profile * (1 - smoothstep(ramp.width / 2, ramp.width / 2 + 7, Math.abs(across)));
   }
   function rampAt(x, z) {
-    for (const ramp of [starterRamp, featureAtCell(Math.floor(x / FEATURE_SPACING), Math.floor(z / FEATURE_SPACING))]) {
+    for (const ramp of [starterRamp, twistRamp, featureAtCell(Math.floor(x / FEATURE_SPACING), Math.floor(z / FEATURE_SPACING))]) {
       if (ramp.type !== 'ramp') continue;
       const p = featureLocal(ramp, x, z);
       if (Math.abs(p.across) < ramp.width / 2 && p.along >= 0 && p.along <= ramp.length + 2) return ramp;
@@ -116,7 +127,7 @@ export function createWorld(seed) {
     // Keep the natural height at spawn too. Flattening an arbitrary mountain
     // down to zero creates an artificial bowl with steep walls around the car.
     const feature = featureAtCell(Math.floor(x / FEATURE_SPACING), Math.floor(z / FEATURE_SPACING));
-    return 12 + highland + hills + rollers + relief + gullies + rampLift(feature, x, z) + rampLift(starterRamp, x, z);
+    return 12 + highland + hills + rollers + relief + gullies + rampLift(feature, x, z) + rampLift(starterRamp, x, z) + rampLift(twistRamp, x, z);
   }
   // Chunk boundaries revisit most of the same terrain samples. Retain those
   // heights so a faster car doesn't rebuild the whole horizon every 96 m.
@@ -173,9 +184,9 @@ export function createWorld(seed) {
       if (Math.floor(f.x / CHUNK) !== cx || Math.floor(f.z / CHUNK) !== cz || f.type === 'ramp') continue;
       list.push({ ...f, y: surface(f.x, f.z), size: 1, turn: f.heading, r: f.type === 'camp' ? 3.6 : 2.1, h: f.type === 'camp' ? 5 : 11 });
     }
-    return list;
+    return list.filter(p => !brokenProps.has(p.id));
   }
-  return { seed, phase, height, surface, gradient, mountainAt, woodlandAt, desertAt, roadCenter, roadAt, props, featuresNear, rampLift, rampAt, reserved, starterRamp };
+  return { seed, phase, height, surface, gradient, mountainAt, woodlandAt, desertAt, roadCenter, roadAt, props, featuresNear, rampLift, rampAt, reserved, starterRamp, twistRamp, brokenProps, breakProp, drainBreakEvents: () => breakEvents.splice(0) };
 }
 
 export function featureLocal(feature, x, z) {
@@ -195,21 +206,37 @@ export function groundAt(world, x, z, heading) {
 }
 export function createVehicle(world, x = 0, z = 0, heading = 0) {
   const g = groundAt(world, x, z, heading);
-  return { x, z, y: g.y, vx: 0, vz: 0, vy: 0, heading, steer: 0, grounded: true, groundY: g.y, pitch: g.pitch, roll: g.roll, distance: 0, airtime: 0, bestAir: 0, airDistance: 0, bestJump: 0, landings: 0, jumps: 0, jumpBuffer: 0, coyote: .1, jumpHeld: false, landLock: 0, impact: 0, speed: 0, onRoad: true };
+  return { x, z, y: g.y, vx: 0, vz: 0, vy: 0, heading, steer: 0, grounded: true, groundY: g.y, pitch: g.pitch, roll: g.roll, rollVelocity: 0, airRoll: 0, rolls: 0, smashed: 0, distance: 0, airtime: 0, bestAir: 0, airDistance: 0, bestJump: 0, landings: 0, jumps: 0, jumpBuffer: 0, coyote: .1, jumpHeld: false, landLock: 0, impact: 0, speed: 0, onRoad: true };
 }
-export function resolveObstacles(car, obstacles) {
+export function resolveObstacles(car, obstacles, world) {
   for (let pass = 0; pass < 3; pass++) for (const o of obstacles) {
     // Small rocks are forgiving ground detail. Trees collide only with their
     // trunks; airborne cars can clear props, and canopies never form walls.
-    if (!o.r || car.y + .2 > o.y + o.h || car.y + 2.3 < o.y) continue;
-    const dx = car.x - o.x, dz = car.z - o.z, radius = o.r + .93;
+    if (world?.brokenProps?.has(o.id) || car.y + .2 > o.y + o.h || car.y + 2.3 < o.y) continue;
+    const breakable = ['tree', 'cactus', 'rock', 'boulder'].includes(o.type);
+    const obstacleRadius = o.r || (o.type === 'rock' ? .55 * o.size : 0);
+    if (!obstacleRadius) continue;
+    const dx = car.x - o.x, dz = car.z - o.z, radius = obstacleRadius + .93;
     const d = Math.hypot(dx, dz);
     if (d >= radius) continue;
     const nx = d > 1e-6 ? dx / d : -Math.sin(car.heading), nz = d > 1e-6 ? dz / d : -Math.cos(car.heading);
+    const impactSpeed = -(car.vx * nx + car.vz * nz);
+    if (breakable && world?.breakProp && impactSpeed >= (o.type === 'boulder' ? 26 : 18)) {
+      world.breakProp(o, car.vx, car.vz); car.smashed++;
+      car.vx *= .88; car.vz *= .88; car.impact = Math.max(car.impact, .2);
+      continue;
+    }
+    if (!o.r) continue; // Small stones remain forgiving at low speed.
     car.x += nx * (radius - d + .002); car.z += nz * (radius - d + .002);
     const approach = car.vx * nx + car.vz * nz;
     if (approach < 0) { car.vx -= nx * approach * 1.08; car.vz -= nz * approach * 1.08; car.impact = Math.max(car.impact, -approach * .012); }
   }
+}
+function launchRoll(car, ramp, speed) {
+  if (!ramp?.twist || speed < 12) return;
+  // One turn over the estimated ballistic flight, with gentle landing recovery.
+  car.rollVelocity = ramp.twist * Math.PI * 2 / clamp(2 * car.vy / 22, .85, 2.5);
+  car.airRoll = 0;
 }
 export function stepVehicle(car, input, world, obstacles, dt = FIXED_DT) {
   const throttle = Number(!!input.up) - Number(!!input.down), brake = !!input.brake;
@@ -220,7 +247,9 @@ export function stepVehicle(car, input, world, obstacles, dt = FIXED_DT) {
   car.coyote = car.grounded ? .1 : Math.max(0, car.coyote - dt);
   if (car.jumpBuffer > 0 && car.coyote > 0) {
     car.vy = 10 + clamp(car.vy, 0, 2); car.grounded = false; car.coyote = 0;
-    car.jumpBuffer = 0; car.landLock = .16; car.airtime = 0; car.airDistance = 0; car.jumps++;
+    car.jumpBuffer = 0; car.landLock = .16; car.airtime = 0; car.airDistance = 0; car.airRoll = 0; car.jumps++;
+    const launchRamp = world.rampAt?.(car.x, car.z);
+    if (launchRamp && featureLocal(launchRamp, car.x, car.z).along > launchRamp.length * .4) launchRoll(car, launchRamp, car.vx * Math.sin(launchRamp.heading) + car.vz * Math.cos(launchRamp.heading));
   }
   const fx = Math.sin(car.heading), fz = Math.cos(car.heading);
   const forward = car.vx * fx + car.vz * fz, speed = Math.abs(forward);
@@ -250,7 +279,7 @@ export function stepVehicle(car, input, world, obstacles, dt = FIXED_DT) {
   const oldX = car.x, oldZ = car.z;
   car.x += car.vx * dt; car.z += car.vz * dt;
   if (!car.grounded) { car.vy -= 22 * dt; car.y += car.vy * dt; car.airtime += dt; car.airDistance += Math.hypot(car.vx, car.vz) * dt; car.bestAir = Math.max(car.bestAir, car.airtime); }
-  resolveObstacles(car, obstacles);
+  resolveObstacles(car, obstacles, world);
   const g = groundAt(world, car.x, car.z, car.heading);
   const ramp = world.rampAt?.(car.x, car.z);
   const rampPosition = ramp && featureLocal(ramp, car.x, car.z);
@@ -258,23 +287,30 @@ export function stepVehicle(car, input, world, obstacles, dt = FIXED_DT) {
   if (car.grounded) {
     const rampSpeed = ramp ? car.vx * Math.sin(ramp.heading) + car.vz * Math.cos(ramp.heading) : 0;
     if (ramp && rampSpeed > 8 && rampPosition.along >= ramp.length - 1.5 && featureLocal(ramp, oldX, oldZ).along < ramp.length - 1.5) {
-      car.grounded = false; car.airtime = 0; car.airDistance = 0; car.coyote = 0; car.landLock = .06;
+      car.grounded = false; car.airtime = 0; car.airDistance = 0; car.airRoll = 0; car.coyote = 0; car.landLock = .06;
       car.vy = clamp(Math.max(car.vy, rampSpeed * ramp.rise * 1.7 / ramp.length), 6, 28); car.y = Math.max(car.y, g.y) + .03;
+      launchRoll(car, ramp, rampSpeed);
     }
     // Ballistic separation at crests; no synthetic boost or per-frame snapback.
     else if (!ramp && !car.landLock && horizontal > 9 && car.y + car.vy * dt - 11 * dt * dt > g.y + .018) {
-      car.grounded = false; car.airtime = 0; car.airDistance = 0; car.vy = clamp(car.vy, -3, 28); car.y += car.vy * dt;
+      car.grounded = false; car.airtime = 0; car.airDistance = 0; car.airRoll = 0; car.vy = clamp(car.vy, -3, 28); car.y += car.vy * dt;
     } else { car.y = g.y; car.vy = surfaceVy; }
   } else if (car.y <= g.y && (!car.landLock || car.vy < 0)) {
     car.impact = Math.max(car.impact, clamp(-car.vy * .016, 0, .3));
     car.bestJump = Math.max(car.bestJump, car.airDistance); car.landings++;
     car.y = g.y; car.vy = surfaceVy; car.grounded = true; car.landLock = .1;
+    car.rollVelocity = 0;
+    car.roll = Math.atan2(Math.sin(car.roll), Math.cos(car.roll));
   }
   // Rising terrain always supports the car, even during a jump's launch lock.
   car.y = Math.max(car.y, g.y);
   car.groundY = g.y;
   car.pitch = mix(car.pitch, car.grounded ? g.pitch : clamp(-car.vy * .025, -.28, .24), 1 - Math.exp(-(car.grounded ? 14 : 3) * dt));
-  car.roll = mix(car.roll, car.grounded ? g.roll : 0, 1 - Math.exp(-12 * dt));
+  if (!car.grounded && car.rollVelocity) {
+    const before = Math.floor(car.airRoll / (Math.PI * 2));
+    car.roll += car.rollVelocity * dt; car.airRoll += Math.abs(car.rollVelocity) * dt;
+    car.rolls += Math.floor(car.airRoll / (Math.PI * 2)) - before;
+  } else car.roll = mix(car.roll, car.grounded ? g.roll : 0, 1 - Math.exp(-12 * dt));
   car.impact *= Math.exp(-8 * dt);
   car.speed = car.vx * nx + car.vz * nz;
   car.distance += Math.hypot(car.x - oldX, car.z - oldZ);
@@ -298,8 +334,8 @@ export function recoverVehicle(car, world) {
     if (nearby.some(o => o.r && Math.hypot(x - o.x, z - o.z) < o.r + 3)) continue;
     const slope = world.gradient(x, z);
     if (Math.hypot(slope.x, slope.z) > .6) continue;
-    const { distance, bestAir, jumps, bestJump, landings } = car;
-    Object.assign(car, createVehicle(world, x, z, car.heading), { distance, bestAir, jumps, bestJump, landings });
+    const { distance, bestAir, jumps, bestJump, landings, rolls, smashed } = car;
+    Object.assign(car, createVehicle(world, x, z, car.heading), { distance, bestAir, jumps, bestJump, landings, rolls, smashed });
     return true;
   }
   return false;

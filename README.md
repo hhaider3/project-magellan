@@ -36,12 +36,13 @@ Touch devices and compact windows show steering, throttle, reverse, **Jump**, an
 
 - Mountains are continuous terrain with broad foothills. Random cone mountains, abrupt biome switches, terrain walls, and deep-water barriers are gone.
 - Roads are painted directly onto the terrain, so there are no raised road ribbons or mismatched road collision surfaces.
-- Denser seeded pine clusters, shrubs, small rocks, boulders, roadside markers, cabins and lookout towers give the world more places to explore. Road and ramp approach clearances keep the extra scenery from blocking the route. Small rocks and shrubs are forgiving details; trees collide at the trunk, and larger boulders need to be avoided or jumped.
+- Denser seeded pine clusters, shrubs, small rocks, boulders, roadside markers, cabins and lookout towers give the world more places to explore. Road and ramp approach clearances keep the extra scenery from blocking the route. Small rocks and shrubs are forgiving details; trees collide at the trunk. Cacti, trees and small rocks break above a direct impact speed of **65 km/h**; boulders require **94 km/h**. The car keeps most of its momentum while fragments scatter, bounce, and shrink away. Broken props stay gone for this world visit, including after chunk reloads; a new world or page reload restores them. Debris uses one instanced draw call and a 192-piece cap.
 - Jumping uses a real impulse, gravity, buffered input and a short grace period after leaving a crest. Quick taps are queued before the next physics tick. Holding Jump does not bounce the car repeatedly.
 - Fixed 120 Hz physics handles acceleration, hill climbing, drift, airborne motion, landing and collision sliding. Top speed on level asphalt is approximately **242 km/h**, with stronger braking and speed-sensitive steering. Recovery finds clear nearby ground without erasing trip or best-jump distance.
 - Steeper rolling hills, gullies and closely spaced off-road ridges demand more care at speed. Roads retain smoother profiles.
 - Orange ramps have curved decks, chevrons, flags and approach markers. Drive up one to launch automatically; Space is optional. The first ramp is about **70 m ahead, just right of the starting road**. More ramps regenerate throughout the world. Their dirt embankments use the same heightfield as the visible ground.
-- Orange triangles mark ramps on the minimap; pale squares mark camps and lookouts. The HUD points toward the nearest ramp and measures airtime and best jump distance.
+- Purple banked ramps twist progressively and launch left- or right-handed barrel rolls. The first is about **225 m ahead on the opposite side of the road from the first orange ramp**; more are seeded throughout the world. Drive through the lip at speed, or jump from the upper deck, to roll. Landing and recovery restore stable driving.
+- Orange and purple triangles distinguish ordinary and rolling ramps on the minimap; pale squares mark camps and lookouts. The HUD points toward the nearest ramp and measures airtime and best jump distance.
 - A new procedural expedition wagon includes framed glass, roof luggage, a rack, spare tire, tire tread, steering wheels, suspension response and working lights.
 - The compact HUD, compass, terrain map and three camera views keep the road visible. Landmarks are placed as recognizable destinations instead of scattered solid obstacles.
 - Eighty-one nearby 96 m chunks stream around the car, with reusable 384 m coarse terrain tiles extending the horizon beyond them. Terrain detail, color and lighting gradually blend into the same coarse horizon over 220–360 m, avoiding a visible swap at chunk boundaries. Trees and landmarks use instanced geometry and a gradual multisample coverage fade (with alpha blending when MSAA is unavailable) over 220–350 m; their bases follow the terrain transition. A module worker prepares terrain, props and an extra hidden ring before they are needed. Results are installed within a 4 ms per-frame budget (one chunk can exceed that budget on a slow device). Far tiles reuse vertex buffers and update only the indices around arriving fine chunks. Initial loads show progress; changing worlds cancels old jobs. Discarded resources are disposed. Bounded height and feature caches reuse terrain samples as the car crosses chunks.
@@ -52,6 +53,7 @@ Touch devices and compact windows show steering, throttle, reverse, **Jump**, an
 - `game.mjs`: rendering, car model, streaming, audio and input.
 - `terrain.mjs` / `world-worker.mjs` / `streaming-layout.mjs`: reusable terrain data, background generation and seam-free near/far coverage.
 - `batching.mjs`: merges static meshes within the car body and each wheel animation group.
+- `debris.mjs`: bounded instanced breakage particles with terrain bounce and cleanup.
 - `profiling.mjs`: opt-in, bounded CPU timing measurements.
 - `scenery.mjs`: ramp decks and the instanced cabin/lookout models.
 - `world.mjs`: deterministic terrain, road layout, landmark and prop placement, and vehicle simulation. Physics samples the same triangles as the visible ground.
@@ -72,7 +74,7 @@ For live browser integration checks, open [tests/play.html](http://localhost:800
 
 Sandlands form broad, smoothly blended low-elevation regions alongside grass and snow. They use instanced branching cacti, clear road and ramp approaches, and matching minimap colors. Preview a desert spawn with `?seed=100003`.
 
-The GitHub Actions workflow runs unit tests plus headless Chromium tests on pushes and pull requests. Browser tests block external resources and exercise WebGL output, stationary-frame stability, worker loading, streamed driving, jumping, recovery, camera resets, rapid world changes and compact touch controls. Failure traces and screenshots are saved under `output/playwright/`. `npm run test:unit` runs the simulation/geometry suite alone; an installed Chrome can be used locally with `PW_CHANNEL=chrome npm run test:browser`.
+The GitHub Actions workflow runs unit tests plus headless Chromium tests on pushes and pull requests. Browser tests block external resources and exercise WebGL output, stationary-frame stability, worker loading, streamed driving, jumping, recovery, camera resets, rapid world changes, compact touch controls, visible scenery destruction, debris cleanup, and airborne barrel rolls. Failure traces and screenshots are saved under `output/playwright/`. `npm run test:unit` runs the simulation/geometry suite alone; an installed Chrome can be used locally with `PW_CHANNEL=chrome npm run test:browser`.
 
 ## Performance checks
 
@@ -81,3 +83,5 @@ Run `npm run dev` in one terminal, then `npm run profile` in another (`PW_CHANNE
 Recovery caches each chunk once per search. The minimap reuses its elevation when choosing the biome and updates less frequently on touch devices. Camera recovery/reset snaps both position and target, and world changes reset physics timing before resuming.
 
 To update the pinned graphics dependency deliberately, run `npm run vendor` and commit the vendor files along with the lockfile. Hosting remains static: Cloudflare Pages can continue serving the repository root without a build step.
+
+Stunt test approaches are available at `?seed=1&test=twist` and `?seed=1&test=smash`; these isolate trip records just like the other browser harness modes.
