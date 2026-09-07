@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import { CHUNK, GRID, ROAD_SPACING, ROAD_HALF, FIXED_DT, featurePoint, clamp, mix, smoothstep, hash, createWorld, createVehicle, stepVehicle, recoverVehicle } from './world.mjs?v=geometry-ownership-1';
-import { buildLandmark, cloneOwnedGeometry } from './scenery.mjs?v=geometry-ownership-1';
+import { CHUNK, GRID, ROAD_SPACING, ROAD_HALF, FIXED_DT, featurePoint, clamp, mix, smoothstep, hash, createWorld, createVehicle, stepVehicle, recoverVehicle } from './world.mjs?v=sandlands-1';
+import { buildLandmark, cloneOwnedGeometry, createCactusGeometry } from './scenery.mjs?v=sandlands-1';
 
 const $ = id => document.getElementById(id);
 const coarse = matchMedia('(pointer:coarse)').matches || navigator.maxTouchPoints > 0;
@@ -112,7 +112,7 @@ terrainMaterial.onBeforeCompile = shader => {
     diffuseColor.rgb=mix(diffuseColor.rgb,vec3(.77,.72,.56),max(edge*.7,dash*.88));
   `);
 };
-const groundColors = { grass: new THREE.Color('#7e9059'), lush: new THREE.Color('#536e48'), dry: new THREE.Color('#b2a477'), rock: new THREE.Color('#8e9385'), snow: new THREE.Color('#dddeda') };
+const groundColors = { grass: new THREE.Color('#7e9059'), sand: new THREE.Color('#d9b873'), lush: new THREE.Color('#536e48'), dry: new THREE.Color('#b2a477'), rock: new THREE.Color('#8e9385'), snow: new THREE.Color('#dddeda') };
 const tmpColor = new THREE.Color();
 const coarseSamples = new Map();
 function terrainSample(x, z, step) {
@@ -125,6 +125,7 @@ function terrainSample(x, z, step) {
   tmpColor.copy(groundColors.grass).lerp(groundColors.lush, smoothstep(.3, .8, world.woodlandAt(x, z)) * .65);
   tmpColor.lerp(groundColors.dry, smoothstep(.5, .85, hash(Math.floor(x / 36), Math.floor(z / 36), seed + 18)) * .11);
   tmpColor.lerp(groundColors.rock, smoothstep(.26, .65, Math.hypot(gx, gz)) * .65 + world.mountainAt(x, z) * .12);
+  tmpColor.lerp(groundColors.sand, world.desertAt(x, z));
   tmpColor.lerp(groundColors.snow, smoothstep(117, 168, h) * .87);
   const sample = { height: h, normal: [-gx / length, 1 / length, -gz / length], color: [tmpColor.r, tmpColor.g, tmpColor.b] };
   if (step === 24) {
@@ -177,6 +178,8 @@ function terrainGeometry(wx, wz, size, step, exclude = null) {
 const material = (color, roughness = .85, metalness = 0) => new THREE.MeshStandardMaterial({ color, roughness, metalness });
 const trunkMaterial = material('#645840'), treeMaterial = material('#365e4d'), tipMaterial = material('#527463'), rockMaterial = material('#969c88');
 const bushMaterial = material('#728450'), postMaterial = material('#ded7b4');
+const cactusMaterial = material('#63834b');
+const cactusGeo = createCactusGeometry();
 const trunkGeo = new THREE.CylinderGeometry(.15, .27, 3.1, 6).translate(0, 1.55, 0);
 const treeGeo = new THREE.ConeGeometry(1.95, 4.7, 7).translate(0, 3.65, 0);
 const tipGeo = new THREE.ConeGeometry(1.35, 3.4, 7).translate(0, 5.2, 0);
@@ -246,6 +249,7 @@ function buildChunk(cx, cz) {
     list.forEach((p, i) => { pointVec.set(p.x - cx * CHUNK, p.y - .08, p.z - cz * CHUNK); quaternion.setFromAxisAngle(upAxis, p.turn); scaleVec.setScalar(p.size); matrix.compose(pointVec, quaternion, scaleVec); mesh.setMatrixAt(i, matrix); });
     mesh.castShadow = true; mesh.receiveShadow = true; group.add(mesh);
   }
+  instances('cactus', cactusGeo, cactusMaterial);
   instances('tree', trunkGeo, trunkMaterial); instances('tree', treeGeo, treeMaterial); instances('tree', tipGeo, tipMaterial); instances('rock', rockGeo, rockMaterial);
   instances('boulder', boulderGeo, rockMaterial); instances('bush', bushGeo, bushMaterial); instances('post', postGeo, postMaterial);
   const features = world.featuresNear(cx * CHUNK + CHUNK / 2, cz * CHUNK + CHUNK / 2, 100).filter(f => Math.floor(f.x / CHUNK) === cx && Math.floor(f.z / CHUNK) === cz);
@@ -496,7 +500,7 @@ function drawMap() {
   ctx.fillStyle = '#32493b'; ctx.fillRect(0, 0, w, h);
   for (let iy = 0; iy < h; iy += step) for (let ix = 0; ix < w; ix += step) {
     const x = vehicle.x - (ix - w / 2) / scale, z = vehicle.z - (iy - h / 2) / scale, elev = world.height(x, z);
-    const band = Math.floor(elev / 9); ctx.fillStyle = `hsl(${89 - band * 1.5} 16% ${25 + band * 1.7}%)`; ctx.fillRect(ix, iy, step + 1, step + 1);
+    const band = Math.floor(elev / 9), sand = world.desertAt(x, z); ctx.fillStyle = `hsl(${mix(89 - band * 1.5, 40, sand)} ${mix(16, 38, sand)}% ${25 + band * 1.7 + sand * 13}%)`; ctx.fillRect(ix, iy, step + 1, step + 1);
   }
   ctx.strokeStyle = '#d6c99c'; ctx.lineWidth = 2.4; ctx.lineCap = 'round';
   for (const dir of ['x', 'z']) for (let k = -1; k <= 1; k++) {
@@ -538,7 +542,7 @@ function updateHUD() {
   } else $('rampHint').textContent = 'EXPLORE FOR MORE RAMPS';
   const headings = ['N', 'NW', 'W', 'SW', 'S', 'SE', 'E', 'NE'];
   $('headingTxt').textContent = headings[((Math.round(vehicle.heading / (Math.PI / 4)) % 8) + 8) % 8];
-  $('biomeTxt').textContent = world.mountainAt(vehicle.x, vehicle.z) > .62 ? 'THE HIGHLANDS' : world.woodlandAt(vehicle.x, vehicle.z) > .58 ? 'PINE COUNTRY' : 'OPEN MEADOW';
+  $('biomeTxt').textContent = world.desertAt(vehicle.x, vehicle.z) > .55 ? 'THE SANDLANDS' : world.mountainAt(vehicle.x, vehicle.z) > .62 ? 'THE HIGHLANDS' : world.woodlandAt(vehicle.x, vehicle.z) > .58 ? 'PINE COUNTRY' : 'OPEN MEADOW';
   $('coordinates').textContent = `${Math.round(Math.abs(vehicle.x))} ${vehicle.x < 0 ? 'E' : 'W'} · ${Math.round(Math.abs(vehicle.z))} ${vehicle.z >= 0 ? 'N' : 'S'}`;
   $('elevation').textContent = Math.round(world.surface(vehicle.x, vehicle.z)) + ' M';
 }

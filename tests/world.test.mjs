@@ -140,3 +140,36 @@ test('long drives in all directions across multiple seeds keep progressing and s
     assert.ok(Math.hypot(car.x, car.z) > 1500);
   }
 });
+
+test('sand regions are continuous, repeatable, and absent above the snow line', () => {
+  const world = createWorld(100003), repeat = createWorld(100003);
+  let desert = 0, grass = 0, snow = 0;
+  for (let x = -4000; x <= 4000; x += 160) for (let z = -4000; z <= 4000; z += 160) {
+    const amount = world.desertAt(x, z);
+    assert.equal(amount, repeat.desertAt(x, z));
+    assert.ok(amount >= 0 && amount <= 1);
+    assert.ok(Math.abs(amount - world.desertAt(x + .001, z)) < .001);
+    if (amount > .9) desert++;
+    if (amount < .1) grass++;
+    if (world.height(x, z) >= 117) { snow++; assert.equal(amount, 0); }
+  }
+  assert.ok(desert > 100 && grass > 100 && snow > 0, 'all three regions coexist');
+});
+
+test('cacti grow on sand, preserve clear routes, and replace grassland vegetation', () => {
+  const world = createWorld(100003); let cacti = 0;
+  for (let cx = -5; cx <= 5; cx++) for (let cz = -5; cz <= 5; cz++) {
+    const props = world.props(cx, cz);
+    assert.deepEqual(props, createWorld(100003).props(cx, cz));
+    for (const prop of props) {
+      if (prop.type === 'cactus') {
+        cacti++;
+        assert.ok(world.desertAt(prop.x, prop.z) > .55);
+        assert.ok(world.roadAt(prop.x, prop.z).d >= 12 && !world.reserved(prop.x, prop.z));
+        assert.ok(prop.r > 0 && prop.h > 0);
+      }
+      if (world.desertAt(prop.x, prop.z) > .55) assert.ok(!['tree', 'bush'].includes(prop.type));
+    }
+  }
+  assert.ok(cacti > 100);
+});

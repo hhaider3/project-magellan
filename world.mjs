@@ -143,17 +143,26 @@ export function createWorld(seed) {
   }
   function gradient(x, z) { return { x: (surface(x + 2, z) - surface(x - 2, z)) / 4, z: (surface(x, z + 2) - surface(x, z - 2)) / 4 }; }
   function woodlandAt(x, z) { return noise(x * .0031 - 13, z * .0031 + 27, seed + 87); }
+  // Broad, continuous dry regions; elevation keeps sand out of the snow line.
+  function desertAt(x, z) {
+    return smoothstep(.46, .67, noise(x * .0009 + 31, z * .0009 - 17, seed + 191))
+      * (1 - smoothstep(90, 117, height(x, z)));
+  }
   function props(cx, cz) {
     const rng = random((hash(cx, cz, seed + 101) * 4294967296) >>> 0), list = [];
     // Fixed candidates and clearances make revisited chunks identical.
     for (let i = 0; i < 30; i++) {
       const x = cx * CHUNK + 9 + rng() * (CHUNK - 18), z = cz * CHUNK + 9 + rng() * (CHUNK - 18);
       const chance = rng(), size = .8 + rng() * .65, turn = rng() * Math.PI * 2;
-      const woodland = woodlandAt(x, z), mountain = mountainAt(x, z);
+      const woodland = woodlandAt(x, z), mountain = mountainAt(x, z), desert = desertAt(x, z);
       if (Math.hypot(x, z) < 24 || roadAt(x, z).d < 12 || reserved(x, z) || Math.hypot(...Object.values(gradient(x, z))) > .9) continue;
       if (list.some(p => Math.hypot(p.x - x, p.z - z) < 7.5)) continue;
       if (chance < .1 && mountain > .25) list.push({ id: `${cx},${cz}:${i}`, type: 'boulder', x, z, y: surface(x, z), size: size * 2.3, turn, r: size * 1.5, h: size * 2.6 });
       else if (chance < .22) list.push({ id: `${cx},${cz}:${i}`, type: 'rock', x, z, y: surface(x, z), size, turn, r: 0, h: .65 * size });
+      else if (desert > .55) {
+        if (chance < .72) list.push({ id: `${cx},${cz}:${i}`, type: 'cactus', x, z, y: surface(x, z), size, turn, r: .38 * size, h: 4.7 * size });
+        else list.push({ id: `${cx},${cz}:${i}`, type: 'rock', x, z, y: surface(x, z), size: size * .7, turn, r: 0, h: .5 * size });
+      }
       else if (chance < mix(.46, .95, smoothstep(.3, .75, woodland)) && mountain < .95) {
         list.push({ id: `${cx},${cz}:${i}`, type: 'tree', x, z, y: surface(x, z), size, turn, r: .24 * size, h: 6.8 * size });
       } else list.push({ id: `${cx},${cz}:${i}`, type: 'bush', x, z, y: surface(x, z), size, turn, r: 0, h: size });
@@ -164,7 +173,7 @@ export function createWorld(seed) {
     }
     return list;
   }
-  return { seed, phase, height, surface, gradient, mountainAt, woodlandAt, roadCenter, roadAt, props, featuresNear, rampLift, rampAt, reserved, starterRamp };
+  return { seed, phase, height, surface, gradient, mountainAt, woodlandAt, desertAt, roadCenter, roadAt, props, featuresNear, rampLift, rampAt, reserved, starterRamp };
 }
 
 export function featureLocal(feature, x, z) {

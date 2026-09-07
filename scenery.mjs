@@ -1,11 +1,37 @@
 import * as THREE from 'three';
-import { featurePoint } from './world.mjs?v=geometry-ownership-1';
+import { featurePoint } from './world.mjs?v=sandlands-1';
 
 // Three.js BufferGeometry.clone() shares userData with its source. Detach it
 // before marking ownership, or the shared template becomes disposable too.
 export function cloneOwnedGeometry(source) {
   const geometry = source.clone();
   geometry.userData = { ...source.userData, owned: true };
+  return geometry;
+}
+
+// A single low-poly mesh per cactus, instanced across each desert chunk.
+export function createCactusGeometry() {
+  const parts = [];
+  const column = (radius, height, x, y, z) => {
+    parts.push(new THREE.CylinderGeometry(radius, radius * 1.06, height, 10).translate(x, y + height / 2, z));
+    parts.push(new THREE.SphereGeometry(radius, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2).translate(x, y + height, z));
+  };
+  column(.38, 4.3, 0, 0, 0);
+  for (const [side, base, rise] of [[-1, 1.65, 1.15], [1, 2.4, 1.3]]) {
+    parts.push(new THREE.CylinderGeometry(.24, .24, 1.1, 10).rotateZ(Math.PI / 2).translate(side * .63, base, 0));
+    parts.push(new THREE.SphereGeometry(.25, 10, 6).translate(side * 1.15, base, 0));
+    column(.24, rise, side * 1.15, base, 0);
+  }
+  const positions = [], normals = [];
+  for (const part of parts) {
+    const flat = part.toNonIndexed();
+    positions.push(...flat.attributes.position.array); normals.push(...flat.attributes.normal.array);
+    flat.dispose(); part.dispose();
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+  geometry.computeBoundingSphere();
   return geometry;
 }
 
