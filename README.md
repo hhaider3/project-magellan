@@ -1,5 +1,7 @@
 # Endless Drive
 
+Play it here https://project-magellan.pages.dev/
+
 An endless driving playground through procedurally generated meadows, pine country, rough ridges, camps, lookout towers, and marked jump ramps. Drive in any direction; a fresh visit creates a fresh world. A `?seed=123456` link recreates the same landscape.
 
 ## Run
