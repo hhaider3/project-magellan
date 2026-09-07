@@ -1,11 +1,17 @@
+import { createTerrain } from './terrain.mjs?v=performance-1';
+import { FAR_SIZE, FAR_VIEW, NEAR_VIEW, farIndices } from './streaming-layout.mjs?v=performance-1';
+import { batchStaticMeshes } from './batching.mjs?v=performance-1';
+import { createProfiler } from './profiling.mjs?v=performance-1';
 import * as THREE from 'three';
-import { CHUNK, GRID, ROAD_SPACING, ROAD_HALF, FIXED_DT, featurePoint, clamp, mix, smoothstep, hash, createWorld, createVehicle, stepVehicle, recoverVehicle } from './world.mjs?v=sandlands-1';
-import { buildLandmark, cloneOwnedGeometry, createCactusGeometry } from './scenery.mjs?v=sandlands-1';
+import { CHUNK, GRID, ROAD_SPACING, ROAD_HALF, FIXED_DT, featurePoint, clamp, mix, smoothstep, hash, createWorld, createVehicle, stepVehicle, recoverVehicle } from './world.mjs?v=performance-1';
+import { buildLandmark, cloneOwnedGeometry, createCactusGeometry } from './scenery.mjs?v=performance-1';
 
 const $ = id => document.getElementById(id);
 const coarse = matchMedia('(pointer:coarse)').matches || navigator.maxTouchPoints > 0;
 const reducedMotion = matchMedia('(prefers-reduced-motion:reduce)').matches;
-const testMode = ['drive', 'ramp'].includes(new URLSearchParams(location.search).get('test'));
+const testMode = ['drive', 'ramp', 'browser'].includes(new URLSearchParams(location.search).get('test'));
+const profiler = createProfiler(testMode);
+const bootStarted = performance.now();
 if (coarse) document.body.classList.add('touch');
 const seedFromUrl = Number(new URLSearchParams(location.search).get('seed'));
 const freshSeed = () => crypto.getRandomValues(new Uint32Array(1))[0] % 900000 + 100000;
@@ -35,7 +41,7 @@ $('game').append(renderer.domElement);
 const scene = new THREE.Scene();
 const skyColor = new THREE.Color('#b9cdd0');
 scene.background = skyColor;
-scene.fog = new THREE.Fog(skyColor, 350, 1570);
+scene.fog = new THREE.Fog(skyColor, 350, 1450);
 const camera = new THREE.PerspectiveCamera(57, innerWidth / innerHeight, .1, 2600);
 scene.add(new THREE.HemisphereLight('#e4efed', '#787257', 1.6));
 const sun = new THREE.DirectionalLight('#fff0d2', 2.5);
@@ -112,66 +118,13 @@ terrainMaterial.onBeforeCompile = shader => {
     diffuseColor.rgb=mix(diffuseColor.rgb,vec3(.77,.72,.56),max(edge*.7,dash*.88));
   `);
 };
-const groundColors = { grass: new THREE.Color('#7e9059'), sand: new THREE.Color('#d9b873'), lush: new THREE.Color('#536e48'), dry: new THREE.Color('#b2a477'), rock: new THREE.Color('#8e9385'), snow: new THREE.Color('#dddeda') };
-const tmpColor = new THREE.Color();
-const coarseSamples = new Map();
-function terrainSample(x, z, step) {
-  const key = `${x},${z}`;
-  if (step === 24 && coarseSamples.has(key)) return coarseSamples.get(key);
-  const h = world.height(x, z), delta = step / 2;
-  const gx = (world.height(x + delta, z) - world.height(x - delta, z)) / step;
-  const gz = (world.height(x, z + delta) - world.height(x, z - delta)) / step;
-  const length = Math.hypot(gx, 1, gz);
-  tmpColor.copy(groundColors.grass).lerp(groundColors.lush, smoothstep(.3, .8, world.woodlandAt(x, z)) * .65);
-  tmpColor.lerp(groundColors.dry, smoothstep(.5, .85, hash(Math.floor(x / 36), Math.floor(z / 36), seed + 18)) * .11);
-  tmpColor.lerp(groundColors.rock, smoothstep(.26, .65, Math.hypot(gx, gz)) * .65 + world.mountainAt(x, z) * .12);
-  tmpColor.lerp(groundColors.sand, world.desertAt(x, z));
-  tmpColor.lerp(groundColors.snow, smoothstep(117, 168, h) * .87);
-  const sample = { height: h, normal: [-gx / length, 1 / length, -gz / length], color: [tmpColor.r, tmpColor.g, tmpColor.b] };
-  if (step === 24) {
-    if (coarseSamples.size >= 30000) coarseSamples.delete(coarseSamples.keys().next().value);
-    coarseSamples.set(key, sample);
-  }
-  return sample;
-}
-function coarseSample(x, z) {
-  const ix = Math.floor(x / 24) * 24, iz = Math.floor(z / 24) * 24;
-  const u = (x - ix) / 24, v = (z - iz) / 24;
-  const corners = u + v <= 1 ? [[ix, iz, 1-u-v], [ix+24, iz, u], [ix, iz+24, v]]
-    : [[ix+24, iz+24, u+v-1], [ix, iz+24, 1-u], [ix+24, iz, 1-v]];
-  const result = { height: 0, normal: [0,0,0], color: [0,0,0] };
-  for (const [px, pz, weight] of corners) {
-    const sample = terrainSample(px, pz, 24);
-    result.height += sample.height * weight;
-    for (let i=0; i<3; i++) { result.normal[i] += sample.normal[i]*weight; result.color[i] += sample.color[i]*weight; }
-  }
-  return result;
-}
-function terrainGeometry(wx, wz, size, step, exclude = null) {
-  const positions = [], colors = [], normals = [], indices = [], coarseHeights = [], coarseNormals = [], coarseColors = [];
-  const n = Math.round(size / step);
-  for (let iz = 0; iz <= n; iz++) for (let ix = 0; ix <= n; ix++) {
-    const x = wx + ix * step, z = wz + iz * step, h = world.height(x, z);
-    positions.push(ix * step, h, iz * step);
-    const fine = terrainSample(x, z, step);
-    normals.push(...fine.normal); colors.push(...fine.color);
-    const distant = step === GRID ? coarseSample(x, z) : fine;
-    coarseHeights.push(distant.height); coarseNormals.push(...distant.normal); coarseColors.push(...distant.color);
-  }
-  for (let iz = 0; iz < n; iz++) for (let ix = 0; ix < n; ix++) {
-    const x = wx + (ix + .5) * step, z = wz + (iz + .5) * step;
-    if (exclude && x >= exclude.x0 && x < exclude.x1 && z >= exclude.z0 && z < exclude.z1) continue;
-    const a = iz * (n + 1) + ix, b = a + 1, c = a + n + 1, d = c + 1;
-    indices.push(a, c, b, b, c, d);
-  }
+let terrain = createTerrain(world);
+function geometryFromData(data) {
   const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-  geometry.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
-  geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-  geometry.setIndex(indices);
-  geometry.setAttribute('coarseHeight', new THREE.Float32BufferAttribute(coarseHeights, 1));
-  geometry.setAttribute('coarseNormal', new THREE.Float32BufferAttribute(coarseNormals, 3));
-  geometry.setAttribute('coarseColor', new THREE.Float32BufferAttribute(coarseColors, 3));
+  for (const [name, array] of Object.entries(data)) {
+    if (name === 'index') geometry.setIndex(new THREE.BufferAttribute(array, 1));
+    else geometry.setAttribute(name, new THREE.BufferAttribute(array, name === 'coarseHeight' ? 1 : 3));
+  }
   geometry.computeBoundingSphere();
   return geometry;
 }
@@ -226,23 +179,16 @@ function softenScenery(mat) {
   mat.needsUpdate = true;
 }
 const chunks = new Map();
-const view = 4;
-let farGround = null, lastCX = Infinity, lastCZ = Infinity;
-function buildChunk(cx, cz) {
+const view = NEAR_VIEW, farTiles = new Map();
+let lastCX = Infinity, lastCZ = Infinity;
+let worker, generation = 0, jobId = 0, jobs = [], pending = new Map(), completed = [];
+let loading = true, resumeAfterLoad = false, loadingStarted = bootStarted, streamError = null;
+function buildChunk({ cx, cz, ground: groundData, props, features, roadside }) {
+  const buildStart = performance.now();
   const group = new THREE.Group(); group.position.set(cx * CHUNK, 0, cz * CHUNK);
-  const ground = new THREE.Mesh(terrainGeometry(cx * CHUNK, cz * CHUNK, CHUNK, GRID), terrainMaterial);
+  const ground = new THREE.Mesh(geometryFromData(groundData), terrainMaterial);
   ground.geometry.userData.owned = true;
   ground.receiveShadow = true; group.add(ground);
-  const props = world.props(cx, cz);
-  const roadside = [];
-  for (const dir of ['x', 'z']) {
-    const origin = (dir === 'x' ? cx : cz) * CHUNK, bandCenter = Math.round((dir === 'x' ? cz : cx) * CHUNK / ROAD_SPACING);
-    for (let band = bandCenter - 1; band <= bandCenter + 1; band++) for (let s = Math.ceil(origin / 42) * 42; s < origin + CHUNK; s += 42) for (const side of [-1, 1]) {
-      const center = world.roadCenter(s, band, dir), x = dir === 'x' ? s : center + side * 6.4, z = dir === 'x' ? center + side * 6.4 : s;
-      if (Math.floor(x / CHUNK) !== cx || Math.floor(z / CHUNK) !== cz || world.roadAt(x, z).d < 5.8) continue;
-      roadside.push({ type: 'post', x, z, y: world.surface(x, z), size: 1, turn: 0 });
-    }
-  }
   function instances(type, geometry, mat) {
     const list = (type === 'post' ? roadside : props).filter(p => p.type === type); if (!list.length) return;
     const mesh = new THREE.InstancedMesh(geometry, mat, list.length);
@@ -252,7 +198,6 @@ function buildChunk(cx, cz) {
   instances('cactus', cactusGeo, cactusMaterial);
   instances('tree', trunkGeo, trunkMaterial); instances('tree', treeGeo, treeMaterial); instances('tree', tipGeo, tipMaterial); instances('rock', rockGeo, rockMaterial);
   instances('boulder', boulderGeo, rockMaterial); instances('bush', bushGeo, bushMaterial); instances('post', postGeo, postMaterial);
-  const features = world.featuresNear(cx * CHUNK + CHUNK / 2, cz * CHUNK + CHUNK / 2, 100).filter(f => Math.floor(f.x / CHUNK) === cx && Math.floor(f.z / CHUNK) === cz);
   for (const feature of features) {
     const landmark = buildLandmark(feature, world);
     landmark.position.x -= cx * CHUNK; landmark.position.z -= cz * CHUNK; group.add(landmark);
@@ -267,47 +212,119 @@ function buildChunk(cx, cz) {
       if (o.isInstancedMesh) { o.getMatrixAt(i, matrix); pointVec.setFromMatrixPosition(matrix); }
       else pointVec.fromBufferAttribute(position, i);
       pointVec.applyMatrix4(o.matrixWorld);
-      deltas.push(coarseSample(pointVec.x, pointVec.z).height - world.surface(pointVec.x, pointVec.z));
+      deltas.push(terrain.coarseSample(pointVec.x, pointVec.z).height - world.surface(pointVec.x, pointVec.z));
     }
     o.geometry.setAttribute('groundDelta', o.isInstancedMesh ? new THREE.InstancedBufferAttribute(new Float32Array(deltas), 1) : new THREE.Float32BufferAttribute(deltas, 1));
     softenScenery(o.material);
   });
+  profiler.record('chunkBuild', performance.now() - buildStart);
   scene.add(group); chunks.set(`${cx},${cz}`, { cx, cz, group, ground, props, features });
 }
 function disposeChunk(chunk) {
   scene.remove(chunk.group);
   chunk.group.traverse(o => { if (o.geometry?.userData.owned) o.geometry.dispose(); if (o.isInstancedMesh) o.dispose(); });
 }
-// Prepare the next ring a chunk at a time while driving. At top speed there
-// are still many frames to prepare a row before it enters the rendered square.
-function prefetchChunk(cx, cz) {
-  const ring = view + 1;
-  for (let dx = -ring; dx <= ring; dx++) for (let dz = -ring; dz <= ring; dz++) {
-    if (Math.abs(dx) !== ring && Math.abs(dz) !== ring) continue;
-    const x = cx + dx, z = cz + dz;
-    if (!chunks.has(`${x},${z}`)) { buildChunk(x, z); chunks.get(`${x},${z}`).group.visible = false; return; }
-  }
+function refreshFarTile(tx, tz) {
+  const tile = farTiles.get(`${tx},${tz}`);
+  if (tile) tile.geometry.setIndex(farIndices(tx, tz, (cx, cz) => chunks.get(`${cx},${cz}`)?.group.visible));
+}
+function desired(job) {
+  const cx = Math.floor(vehicle.x / CHUNK), cz = Math.floor(vehicle.z / CHUNK);
+  return job.kind === 'near' ? Math.max(Math.abs(job.cx - cx), Math.abs(job.cz - cz)) <= view + 1
+    : Math.max(Math.abs(job.cx - Math.floor(vehicle.x / FAR_SIZE)), Math.abs(job.cz - Math.floor(vehicle.z / FAR_SIZE))) <= FAR_VIEW;
 }
 function streamWorld(force = false) {
   const cx = Math.floor(vehicle.x / CHUNK), cz = Math.floor(vehicle.z / CHUNK);
-  if (!force && cx === lastCX && cz === lastCZ) { prefetchChunk(cx, cz); return; }
+  if (!force && cx === lastCX && cz === lastCZ) return;
   lastCX = cx; lastCZ = cz;
-  for (let dx = -view; dx <= view; dx++) for (let dz = -view; dz <= view; dz++) {
-    const x = cx + dx, z = cz + dz;
-    if (!chunks.has(`${x},${z}`)) buildChunk(x, z);
+  const fx = Math.floor(vehicle.x / FAR_SIZE), fz = Math.floor(vehicle.z / FAR_SIZE);
+  for (const [key, chunk] of chunks) {
+    const ring = Math.max(Math.abs(chunk.cx - cx), Math.abs(chunk.cz - cz));
+    chunk.group.visible = ring <= view;
+    if (ring > view + 1) { disposeChunk(chunk); chunks.delete(key); }
   }
-  for (const [key, c] of chunks) {
-    const ring = Math.max(Math.abs(c.cx - cx), Math.abs(c.cz - cz));
-    c.group.visible = ring <= view;
-    if (ring > view + 1) { disposeChunk(c); chunks.delete(key); }
+  for (const [key, tile] of farTiles) {
+    if (Math.max(Math.abs(tile.userData.cx - fx), Math.abs(tile.userData.cz - fz)) > FAR_VIEW) {
+      scene.remove(tile); tile.geometry.dispose(); farTiles.delete(key);
+    } else refreshFarTile(tile.userData.cx, tile.userData.cz);
   }
-  // A single coarse mesh gives the world a long horizon without hundreds of
-  // distant objects or draw calls. Its hole aligns with the fine chunk grid.
-  const wx = (cx - 16) * CHUNK, wz = (cz - 16) * CHUNK;
-  const geometry = terrainGeometry(wx, wz, CHUNK * 33, 24, { x0: (cx - view) * CHUNK, x1: (cx + view + 1) * CHUNK, z0: (cz - view) * CHUNK, z1: (cz + view + 1) * CHUNK });
-  if (farGround) { farGround.geometry.dispose(); farGround.geometry = geometry; }
-  else { farGround = new THREE.Mesh(geometry, terrainMaterial); farGround.receiveShadow = true; scene.add(farGround); }
-  farGround.position.set(wx, 0, wz);
+  const existing = new Set([...pending.values()].map(job => `${job.kind}:${job.cx},${job.cz}`));
+  jobs = [];
+  function enqueue(kind, x, z, priority) {
+    if ((kind === 'near' ? chunks : farTiles).has(`${x},${z}`) || existing.has(`${kind}:${x},${z}`)) return;
+    jobs.push({ kind, cx: x, cz: z, seed, generation, id: ++jobId, priority });
+  }
+  for (let dx = -view - 1; dx <= view + 1; dx++) for (let dz = -view - 1; dz <= view + 1; dz++) {
+    const ring = Math.max(Math.abs(dx), Math.abs(dz));
+    // Visible chunks first; ahead-of-car ordering helps sharp turns too.
+    enqueue('near', cx + dx, cz + dz, (ring > view ? 100 : 0) + Math.hypot(dx, dz) - (dx * vehicle.vx + dz * vehicle.vz) / 1000);
+  }
+  for (let dx = -FAR_VIEW; dx <= FAR_VIEW; dx++) for (let dz = -FAR_VIEW; dz <= FAR_VIEW; dz++) enqueue('far', fx + dx, fz + dz, 3 + Math.hypot(dx, dz) * 2);
+  jobs.sort((a, b) => a.priority - b.priority);
+}
+function worldReady() {
+  for (let dx = -view; dx <= view; dx++) for (let dz = -view; dz <= view; dz++) if (!chunks.has(`${lastCX + dx},${lastCZ + dz}`)) return false;
+  return farTiles.size === (FAR_VIEW * 2 + 1) ** 2;
+}
+function drivable() {
+  for (let dx = -2; dx <= 2; dx++) for (let dz = -2; dz <= 2; dz++) if (!chunks.has(`${lastCX + dx},${lastCZ + dz}`)) return false;
+  return true;
+}
+function processStreaming() {
+  if (!worker || streamError) return;
+  const budgetStart = performance.now();
+  // Worker messages are installed within a frame budget, rather than all at
+  // once. At most two jobs are in flight, keeping memory and upload work bounded.
+  while (completed.length && performance.now() - budgetStart < 4) {
+    const job = completed.shift(); pending.delete(job.id);
+    if (job.generation !== generation || !desired(job)) continue;
+    if (job.kind === 'near') {
+      buildChunk(job);
+      chunks.get(`${job.cx},${job.cz}`).group.visible = Math.max(Math.abs(job.cx - lastCX), Math.abs(job.cz - lastCZ)) <= view;
+      refreshFarTile(Math.floor(job.cx / 4), Math.floor(job.cz / 4));
+    } else {
+      const tile = new THREE.Mesh(geometryFromData(job.ground), terrainMaterial);
+      tile.position.set(job.cx * FAR_SIZE, 0, job.cz * FAR_SIZE);
+      tile.userData = { cx: job.cx, cz: job.cz }; tile.receiveShadow = true;
+      farTiles.set(`${job.cx},${job.cz}`, tile); refreshFarTile(job.cx, job.cz); scene.add(tile);
+    }
+  }
+  profiler.record('streamInstall', performance.now() - budgetStart);
+  while (pending.size < 2 && jobs.length) {
+    const job = jobs.shift(); if (!desired(job)) continue;
+    pending.set(job.id, job); worker.postMessage(job);
+  }
+  if (loading) {
+    const total = (view * 2 + 1) ** 2 + (FAR_VIEW * 2 + 1) ** 2;
+    const count = [...chunks.values()].filter(chunk => chunk.group.visible).length + farTiles.size;
+    $('startBtn').firstElementChild.textContent = `Preparing the world · ${Math.min(99, Math.floor(count / total * 100))}%`;
+    if (worldReady()) {
+      loading = false; $('startBtn').disabled = false; $('startBtn').firstElementChild.textContent = started ? 'Keep exploring' : 'Start exploring';
+      resetTiming(); resetCamera(); updateHUD(); drawMap();
+      profiler.record('worldLoad', performance.now() - loadingStarted);
+      document.dispatchEvent(new Event('worldready'));
+      if (resumeAfterLoad) resume();
+      resumeAfterLoad = false;
+    }
+  }
+}
+function beginWorldLoad(continueDriving = false) {
+  if (running) pause();
+  worker?.terminate(); generation++; pending.clear(); completed = []; jobs = [];
+  loading = true; resumeAfterLoad = continueDriving; running = false; streamError = null; loadingStarted = performance.now();
+  $('startBtn').disabled = true; resetTiming();
+  for (const chunk of chunks.values()) disposeChunk(chunk); chunks.clear();
+  for (const tile of farTiles.values()) { scene.remove(tile); tile.geometry.dispose(); } farTiles.clear();
+  terrain = createTerrain(world);
+  worker = new Worker(new URL('./world-worker.mjs?v=performance-1', import.meta.url), { type: 'module' });
+  const failed = message => { streamError = message; running = false; $('loadError').hidden = false; $('startBtn').firstElementChild.textContent = 'Unable to prepare the world'; };
+  worker.onerror = error => failed(error.message);
+  worker.onmessage = ({ data }) => {
+    if (data.generation !== generation) return;
+    if (data.error) { failed(data.error); return; }
+    profiler.record('workerBuild', data.workMs); completed.push(data);
+  };
+  lastCX = lastCZ = Infinity; streamWorld(true);
 }
 function nearbyObstacles() {
   const cx = Math.floor(vehicle.x / CHUNK), cz = Math.floor(vehicle.z / CHUNK), result = [];
@@ -382,6 +399,9 @@ const spare = new THREE.Group(); spare.position.set(.16, 1.25, -2.2); spare.rota
 spare.add(new THREE.Mesh(tireGeo, rubber), new THREE.Mesh(hubGeo, cream));
 const headlight = new THREE.SpotLight('#ffe4b1', 0, 60, .5, .5, 1.2); headlight.position.set(0, 1.5, 2);
 const lightTarget = new THREE.Object3D(); lightTarget.position.set(0, 0, 25); car.add(headlight, lightTarget); headlight.target = lightTarget;
+const carBatching = [body, ...wheelSpinners].map(batchStaticMeshes);
+const oldCarGeometry = new Set(carBatching.flatMap(result => [...result.originalGeometries]));
+for (const geometry of oldCarGeometry) geometry.dispose();
 // Soft contact shadow makes the height of jumps easy to judge.
 const shadowCanvas = document.createElement('canvas'); shadowCanvas.width = shadowCanvas.height = 64;
 const shadowContext = shadowCanvas.getContext('2d'), shadowGradient = shadowContext.createRadialGradient(32, 32, 2, 32, 32, 32);
@@ -412,7 +432,7 @@ function clearInput() { keyStates.clear(); touchStates.clear(); for (const k in 
 function syncInput() { for (const k of ['up', 'down', 'left', 'right', 'jump', 'brake']) input[k] = [...keyStates].some(code => keyMap[code] === k) || [...touchStates.values()].includes(k); }
 function resume() {
   if ($('startBtn').disabled) return;
-  running = true; started = true; accumulator = 0; previousTime = performance.now();
+  running = true; started = true; resetTiming();
   $('menu').classList.add('closed'); $('menu').inert = true; $('menu').setAttribute('aria-hidden', 'true');
   $('pauseBtn').hidden = false; document.body.classList.add('driving'); renderer.domElement.focus({ preventScroll: true });
   if (!muted) initAudio();
@@ -428,21 +448,27 @@ function pause() {
   $('runDistance').textContent = (vehicle.distance / 1000).toFixed(2); $('bestDistance').textContent = (bestDistance / 1000).toFixed(2);
   $('startBtn').focus({ preventScroll: true });
 }
+function resetTiming() {
+  accumulator = 0; previousTime = performance.now(); frame.lastNow = previousTime;
+  uiTime = mapTime = 0;
+}
 function resetCamera() {
-  const f = new THREE.Vector3(Math.sin(vehicle.heading), 0, Math.cos(vehicle.heading));
-  cameraPosition.set(vehicle.x, vehicle.y + 5.3, vehicle.z).addScaledVector(f, -10.6);
+  updateDesiredCamera();
+  cameraPosition.copy(desiredCamera); cameraTarget.copy(look);
+  cameraPosition.y = Math.max(cameraPosition.y, world.surface(cameraPosition.x, cameraPosition.z) + 1.8);
+  camera.position.copy(cameraPosition); camera.lookAt(cameraTarget);
 }
 function newWorld() {
+  const continueDriving = running || resumeAfterLoad && loading;
   saveRecord(); clearInput(); seed = freshSeed(); world = createWorld(seed); vehicle = createVehicle(world); roadUniforms.uRoadPhase.value = world.phase;
   const url = new URL(location.href); url.searchParams.set('seed', seed); history.replaceState(null, '', url);
-  for (const c of chunks.values()) disposeChunk(c); chunks.clear(); coarseSamples.clear();
-  streamWorld(true); resetCamera(); syncSeed(); updateHUD(); drawMap();
+  beginWorldLoad(continueDriving); resetCamera(); syncSeed(); updateHUD(); drawMap();
   reportedLanding = 0; $('runDistance').textContent = '0.00'; toast('A new road ahead. World ' + seed);
 }
 function syncSeed() { $('seedTxt').textContent = String(seed).padStart(6, '0'); }
 $('startBtn').onclick = resume; $('pauseBtn').onclick = pause; $('newWorld').onclick = newWorld;
 function recover() {
-  if (recoverVehicle(vehicle, world)) { streamWorld(); resetCamera(); updateHUD(); toast('Back on your wheels.'); }
+  if (profiler.measure('recovery', () => recoverVehicle(vehicle, world))) { streamWorld(); resetTiming(); resetCamera(); updateHUD(); toast('Back on your wheels.'); }
 }
 function cycleCamera() {
   cameraMode = (cameraMode + 1) % 3; resetCamera();
@@ -496,11 +522,12 @@ $('menu').addEventListener('keydown', e => {
 
 const mapContext = $('minimap').getContext('2d');
 function drawMap() {
+  const mapStarted = performance.now();
   const ctx = mapContext, w = 288, h = 240, range = 155, scale = w / (2 * range), step = 12;
   ctx.fillStyle = '#32493b'; ctx.fillRect(0, 0, w, h);
   for (let iy = 0; iy < h; iy += step) for (let ix = 0; ix < w; ix += step) {
     const x = vehicle.x - (ix - w / 2) / scale, z = vehicle.z - (iy - h / 2) / scale, elev = world.height(x, z);
-    const band = Math.floor(elev / 9), sand = world.desertAt(x, z); ctx.fillStyle = `hsl(${mix(89 - band * 1.5, 40, sand)} ${mix(16, 38, sand)}% ${25 + band * 1.7 + sand * 13}%)`; ctx.fillRect(ix, iy, step + 1, step + 1);
+    const band = Math.floor(elev / 9), sand = world.desertAt(x, z, elev); ctx.fillStyle = `hsl(${mix(89 - band * 1.5, 40, sand)} ${mix(16, 38, sand)}% ${25 + band * 1.7 + sand * 13}%)`; ctx.fillRect(ix, iy, step + 1, step + 1);
   }
   ctx.strokeStyle = '#d6c99c'; ctx.lineWidth = 2.4; ctx.lineCap = 'round';
   for (const dir of ['x', 'z']) for (let k = -1; k <= 1; k++) {
@@ -527,6 +554,7 @@ function drawMap() {
   ctx.save(); ctx.translate(w / 2, h / 2); ctx.rotate(-vehicle.heading);
   ctx.fillStyle = '#f6e3b7'; ctx.shadowBlur = 10; ctx.shadowColor = '#eaca8688';
   ctx.beginPath(); ctx.moveTo(0, -11); ctx.lineTo(7, 9); ctx.lineTo(0, 5); ctx.lineTo(-7, 9); ctx.closePath(); ctx.fill(); ctx.restore();
+  profiler.record('minimap', performance.now() - mapStarted);
 }
 function updateHUD() {
   const speed = Math.abs(vehicle.speed) * 3.6;
@@ -546,8 +574,24 @@ function updateHUD() {
   $('coordinates').textContent = `${Math.round(Math.abs(vehicle.x))} ${vehicle.x < 0 ? 'E' : 'W'} · ${Math.round(Math.abs(vehicle.z))} ${vehicle.z >= 0 ? 'N' : 'S'}`;
   $('elevation').textContent = Math.round(world.surface(vehicle.x, vehicle.z)) + ' M';
 }
-const cameraPosition = new THREE.Vector3(), cameraTarget = new THREE.Vector3(), desiredCamera = new THREE.Vector3(), forward = new THREE.Vector3(), look = new THREE.Vector3();
+const vehiclePosition = new THREE.Vector3(), cameraPosition = new THREE.Vector3(), cameraTarget = new THREE.Vector3(), desiredCamera = new THREE.Vector3(), forward = new THREE.Vector3(), look = new THREE.Vector3();
 let previousTime = performance.now(), accumulator = 0, uiTime = 0, mapTime = 0, idleRenderAt = 0, wheelAngle = 0, reportedLanding = 0;
+function updateDesiredCamera() {
+  vehiclePosition.set(vehicle.x, vehicle.y, vehicle.z);
+  forward.set(Math.sin(vehicle.heading), 0, Math.cos(vehicle.heading));
+  if (!started) {
+    desiredCamera.set(vehicle.x - 8.5, vehicle.y + 4.6, vehicle.z - 11.8);
+    look.set(vehicle.x + 2.7, vehicle.y + 1.2, vehicle.z + 3.5);
+  } else if (cameraMode === 2 && running) {
+    desiredCamera.copy(vehiclePosition).addScaledVector(forward, .7); desiredCamera.y += 1.91;
+    look.copy(vehiclePosition).addScaledVector(forward, 25); look.y += 1.65;
+  } else {
+    const compact = camera.aspect < .85;
+    const distance = (cameraMode === 1 ? 18 : 10.6 + Math.abs(vehicle.speed) * .027) * (compact ? 1.4 : 1);
+    desiredCamera.copy(vehiclePosition).addScaledVector(forward, -distance); desiredCamera.y += cameraMode === 1 ? 10 : compact ? 5.8 : 4.7;
+    look.copy(vehiclePosition).addScaledVector(forward, cameraMode === 1 ? 5 : 7); look.y += 1.4;
+  }
+}
 function render(dt) {
   streamUniforms.uStreamCenter.value.set(vehicle.x, vehicle.z);
   car.position.set(vehicle.x, vehicle.y, vehicle.z); car.rotation.set(vehicle.pitch, vehicle.heading, vehicle.roll);
@@ -562,21 +606,10 @@ function render(dt) {
   contact.position.set(vehicle.x, world.surface(vehicle.x, vehicle.z) + .035, vehicle.z);
   contact.rotation.set(-Math.PI / 2 + vehicle.pitch, 0, -vehicle.heading, 'YXZ');
   contact.material.opacity = clamp(1 - (vehicle.y - vehicle.groundY) * .13, .25, 1);
-  forward.set(Math.sin(vehicle.heading), 0, Math.cos(vehicle.heading));
-  if (!started) {
-    desiredCamera.set(vehicle.x - 8.5, vehicle.y + 4.6, vehicle.z - 11.8);
-    cameraPosition.copy(desiredCamera); look.set(vehicle.x + 2.7, vehicle.y + 1.2, vehicle.z + 3.5);
-  } else if (cameraMode === 2 && running) {
-    desiredCamera.copy(car.position).addScaledVector(forward, .7); desiredCamera.y += 1.91;
-    cameraPosition.copy(desiredCamera); look.copy(car.position).addScaledVector(forward, 25); look.y += 1.65;
-  } else {
-    const compact = camera.aspect < .85;
-    const distance = (cameraMode === 1 ? 18 : 10.6 + Math.abs(vehicle.speed) * .027) * (compact ? 1.4 : 1);
-    desiredCamera.copy(car.position).addScaledVector(forward, -distance); desiredCamera.y += cameraMode === 1 ? 10 : compact ? 5.8 : 4.7;
-    cameraPosition.lerp(desiredCamera, 1 - Math.exp(-5 * dt));
-    cameraPosition.y = Math.max(cameraPosition.y, world.surface(cameraPosition.x, cameraPosition.z) + 1.8);
-    look.copy(car.position).addScaledVector(forward, cameraMode === 1 ? 5 : 7); look.y += 1.4;
-  }
+  updateDesiredCamera();
+  if (!started || cameraMode === 2 && running) cameraPosition.copy(desiredCamera);
+  else cameraPosition.lerp(desiredCamera, 1 - Math.exp(-5 * dt));
+  cameraPosition.y = Math.max(cameraPosition.y, world.surface(cameraPosition.x, cameraPosition.z) + 1.8);
   camera.position.copy(cameraPosition);
   cameraTarget.lerp(look, !started || dt === 0 ? 1 : 1 - Math.exp(-8 * dt));
   camera.lookAt(cameraTarget);
@@ -590,14 +623,20 @@ function render(dt) {
     audio.oscillator.frequency.setTargetAtTime(42 + speed * 3.4 + (input.up ? 14 : 0), t, .1);
     audio.filter.frequency.setTargetAtTime(180 + speed * 12, t, .1);
   }
-  renderer.render(scene, camera);
+  profiler.measure('renderCPU', () => renderer.render(scene, camera));
 }
 function frame(now) {
   requestAnimationFrame(frame);
   const dt = clamp((now - previousTime) / 1000, 0, .1); previousTime = now;
   if (document.hidden) return;
-  if (!running) { if (now - idleRenderAt < 200) return; idleRenderAt = now; }
-  if (running) {
+  if (running) profiler.record('frame', (now - (frame.lastNow || now)));
+  frame.lastNow = now;
+  const wasLoading = loading;
+  processStreaming();
+  // Loading completion resets the clock; do not apply this frame’s old delta.
+  if (wasLoading && !loading) { render(0); return; }
+  if (!running) { if (now - idleRenderAt < (loading ? 100 : 200)) return; idleRenderAt = now; }
+  if (running && drivable()) {
     accumulator += dt;
     const obstacles = nearbyObstacles();
     while (accumulator >= FIXED_DT) { stepVehicle(vehicle, input, world, obstacles); accumulator -= FIXED_DT; }
@@ -607,13 +646,18 @@ function frame(now) {
     }
     streamWorld(); uiTime += dt; mapTime += dt;
     if (uiTime > .12) { uiTime = 0; updateHUD(); }
-    if (mapTime > .3) { mapTime = 0; drawMap(); }
+    if (mapTime > (coarse ? .6 : .3)) { mapTime = 0; drawMap(); }
   }
   render(running ? dt : 0);
 }
 addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
 renderer.domElement.addEventListener('webglcontextlost', e => { e.preventDefault(); pause(); toast('Graphics paused. Reload to restore the drive.'); });
 
-syncSeed(); syncSound(); streamWorld(true); resetCamera(); updateHUD(); drawMap(); render(0);
-$('startBtn').disabled = false; $('startBtn').firstElementChild.textContent = 'Start exploring';
+syncSeed(); syncSound(); beginWorldLoad(); resetCamera(); updateHUD(); drawMap(); render(0);
 requestAnimationFrame(frame);
+
+profiler.record('initialLoad', performance.now() - bootStarted);
+if (testMode) window.__driveTest = { snapshot: () => {
+  let carMeshes = 0; car.traverse(o => { if (o.isMesh) carMeshes++; });
+  return { metrics: profiler.snapshot(), draws: renderer.info.render.calls, triangles: renderer.info.render.triangles, carMeshes, chunks: chunks.size, farTiles: farTiles.size, loading, generation, streamError, pending: pending.size, queued: jobs.length, carBatching: carBatching.map(({ before, after }) => ({ before, after })), vehicle: { ...vehicle }, accumulator, cameraError: cameraPosition.distanceTo(desiredCamera) + cameraTarget.distanceTo(look), camera: cameraPosition.toArray(), target: cameraTarget.toArray() };
+} };

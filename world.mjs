@@ -144,9 +144,9 @@ export function createWorld(seed) {
   function gradient(x, z) { return { x: (surface(x + 2, z) - surface(x - 2, z)) / 4, z: (surface(x, z + 2) - surface(x, z - 2)) / 4 }; }
   function woodlandAt(x, z) { return noise(x * .0031 - 13, z * .0031 + 27, seed + 87); }
   // Broad, continuous dry regions; elevation keeps sand out of the snow line.
-  function desertAt(x, z) {
+  function desertAt(x, z, elevation = height(x, z)) {
     return smoothstep(.46, .67, noise(x * .0009 + 31, z * .0009 - 17, seed + 191))
-      * (1 - smoothstep(90, 117, height(x, z)));
+      * (1 - smoothstep(90, 117, elevation));
   }
   function props(cx, cz) {
     const rng = random((hash(cx, cz, seed + 101) * 4294967296) >>> 0), list = [];
@@ -155,7 +155,9 @@ export function createWorld(seed) {
       const x = cx * CHUNK + 9 + rng() * (CHUNK - 18), z = cz * CHUNK + 9 + rng() * (CHUNK - 18);
       const chance = rng(), size = .8 + rng() * .65, turn = rng() * Math.PI * 2;
       const woodland = woodlandAt(x, z), mountain = mountainAt(x, z), desert = desertAt(x, z);
-      if (Math.hypot(x, z) < 24 || roadAt(x, z).d < 12 || reserved(x, z) || Math.hypot(...Object.values(gradient(x, z))) > .9) continue;
+      if (Math.hypot(x, z) < 24 || roadAt(x, z).d < 12 || reserved(x, z)) continue;
+      const slope = gradient(x, z);
+      if (Math.hypot(slope.x, slope.z) > .9) continue;
       if (list.some(p => Math.hypot(p.x - x, p.z - z) < 7.5)) continue;
       if (chance < .1 && mountain > .25) list.push({ id: `${cx},${cz}:${i}`, type: 'boulder', x, z, y: surface(x, z), size: size * 2.3, turn, r: size * 1.5, h: size * 2.6 });
       else if (chance < .22) list.push({ id: `${cx},${cz}:${i}`, type: 'rock', x, z, y: surface(x, z), size, turn, r: 0, h: .65 * size });
@@ -280,13 +282,22 @@ export function stepVehicle(car, input, world, obstacles, dt = FIXED_DT) {
 export function recoverVehicle(car, world) {
   const road = world.roadAt(car.x, car.z);
   const origin = road.d < 55 ? road : car;
+  // A recovery search repeatedly visits the same few chunk neighborhoods.
+  // Scope the cache to this attempt so callers never see stale/mutable props.
+  const propCache = new Map();
+  const cachedProps = (cx, cz) => {
+    const key = `${cx},${cz}`;
+    if (!propCache.has(key)) propCache.set(key, world.props(cx, cz));
+    return propCache.get(key);
+  };
   for (let ring = 0; ring < 14; ring++) for (let i = 0; i < (ring ? 12 : 1); i++) {
     const x = origin.x + Math.cos(i * Math.PI / 6) * ring * 3, z = origin.z + Math.sin(i * Math.PI / 6) * ring * 3;
     const cx = Math.floor(x / CHUNK), cz = Math.floor(z / CHUNK);
     const nearby = [];
-    for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) nearby.push(...world.props(cx + dx, cz + dz));
+    for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) nearby.push(...cachedProps(cx + dx, cz + dz));
     if (nearby.some(o => o.r && Math.hypot(x - o.x, z - o.z) < o.r + 3)) continue;
-    if (Math.hypot(...Object.values(world.gradient(x, z))) > .6) continue;
+    const slope = world.gradient(x, z);
+    if (Math.hypot(slope.x, slope.z) > .6) continue;
     const { distance, bestAir, jumps, bestJump, landings } = car;
     Object.assign(car, createVehicle(world, x, z, car.heading), { distance, bestAir, jumps, bestJump, landings });
     return true;

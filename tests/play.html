@@ -5,7 +5,7 @@
 <style>
 body{margin:0;background:#22392f;color:#fff;font:12px system-ui}iframe{position:fixed;inset:0;width:100%;height:100%;border:0}.panel{position:fixed;left:12px;top:110px;background:#18362fe8;padding:15px;z-index:2;border:1px solid #acb697;max-width:320px;border-radius:5px}button{padding:10px 12px;margin:0 5px 5px 0;border:0;background:#e9c98a;color:#253d39;cursor:pointer}button:disabled{opacity:.5;cursor:wait}li{margin:6px 0}.passed{color:#bde0a8}.failed{color:#ffb599}
 </style>
-<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"}}</script>
+<script type="importmap">{"imports":{"three":"/vendor/three.module.js"}}</script>
 <iframe id="game" title="Game under test" src="../?seed=1&test=drive"></iframe>
 <div class="panel">
   <button id="run" disabled>Run driving check</button><button id="ramp" disabled>Run ramp check</button>
@@ -17,7 +17,11 @@ const iframe = document.querySelector('iframe'), driveButton = document.querySel
 const results = document.querySelector('#results'), status = document.querySelector('#status');
 const wait = ms => new Promise(r => setTimeout(r, ms));
 let testing = false;
-iframe.addEventListener('load', () => { if (!testing) driveButton.disabled = rampButton.disabled = iframe.contentDocument.getElementById('startBtn')?.disabled ?? true; });
+iframe.addEventListener('load', () => {
+  const doc = iframe.contentDocument;
+  const ready = () => { if (!testing) driveButton.disabled = rampButton.disabled = doc.getElementById('startBtn')?.disabled ?? true; };
+  doc.addEventListener('worldready', ready); ready();
+});
 async function run(mode) {
   testing = true; driveButton.disabled = rampButton.disabled = true; results.replaceChildren();
   let frameTimes = [], measuring = true, lastFrame = performance.now();
@@ -29,6 +33,8 @@ async function run(mode) {
   try {
     await new Promise(resolve => { iframe.addEventListener('load', resolve, { once: true }); iframe.src = '../?seed=1&test=' + mode; });
     win = iframe.contentWindow; const doc = iframe.contentDocument, read = id => doc.getElementById(id).textContent;
+    const readyBy = performance.now() + 60000;
+    while (doc.getElementById('startBtn').disabled) { if (performance.now() > readyBy) throw Error('World preparation timed out'); await wait(25); }
     iframe.focus(); doc.getElementById('startBtn').click(); lastFrame = performance.now(); requestAnimationFrame(measure);
     if (mode === 'ramp') {
       status.textContent = 'Driving into the first ramp — no Jump input…';
@@ -72,7 +78,7 @@ driveButton.onclick = () => run('drive'); rampButton.onclick = () => run('ramp')
 
 <script type="module">
 import * as THREE from 'three';
-import { cloneOwnedGeometry } from '../scenery.mjs?v=sandlands-1';
+import { cloneOwnedGeometry } from '../scenery.mjs?v=performance-1';
 document.getElementById('geometry').onclick = () => {
   const results = document.getElementById('results'); results.replaceChildren();
   const check = (ok, text) => { const li = document.createElement('li'); li.className = ok ? 'passed' : 'failed'; li.textContent = `${ok ? 'PASS' : 'FAIL'}: ${text}`; results.append(li); if (!ok) throw Error(text); };

@@ -173,3 +173,12 @@ test('cacti grow on sand, preserve clear routes, and replace grassland vegetatio
   }
   assert.ok(cacti > 100);
 });
+
+test('dense recovery evaluates each chunk only once per attempt', () => {
+  const calls = new Map();
+  const blocked = { ...flat, gradient: () => ({ x: 1, z: 1 }), props: (cx, cz) => { const key = `${cx},${cz}`; calls.set(key, (calls.get(key) || 0) + 1); return []; } };
+  const car = createVehicle(flat), original = { ...car };
+  assert.equal(recoverVehicle(car, blocked), false);
+  assert.equal(calls.size, 16); assert.ok([...calls.values()].every(count => count === 1)); assert.deepEqual(car, original);
+  recoverVehicle(car, blocked); assert.ok([...calls.values()].every(count => count === 2), 'cache is limited to each recovery attempt');
+});
