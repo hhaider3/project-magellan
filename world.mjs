@@ -5,7 +5,7 @@ export const ROAD_SPACING = 420;
 export const ROAD_HALF = 4.7;
 export const FIXED_DT = 1 / 120;
 export const FEATURE_SPACING = CHUNK * 3;
-export const SPEED_LIMIT = 78; // Downhill cap; level-road cruising reaches ~240 km/h.
+export const SPEED_LIMIT = 92; // Downhill cap; level-road cruising reaches ~300 km/h.
 export const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 export const mix = (a, b, t) => a + (b - a) * t;
 export function smoothstep(a, b, x) { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); }
@@ -253,10 +253,12 @@ export function stepVehicle(car, input, world, obstacles, dt = FIXED_DT) {
   }
   const fx = Math.sin(car.heading), fz = Math.cos(car.heading);
   const forward = car.vx * fx + car.vz * fz, speed = Math.abs(forward);
-  car.onRoad = world.roadAt(car.x, car.z).d < ROAD_HALF;
+  const roadDistance = world.roadAt(car.x, car.z).d;
+  car.onRoad = roadDistance < ROAD_HALF;
+  const highway = 1 - smoothstep(ROAD_HALF - 1, ROAD_HALF + 3, roadDistance);
   const authority = car.grounded ? 1 : .16;
   let acceleration = 0;
-  if (throttle > 0) acceleration = forward < -.5 ? 45 : 34 * (1 - smoothstep(56, 72, forward));
+  if (throttle > 0) acceleration = forward < -.5 ? 45 : 34 * (1 - smoothstep(mix(56, 72, highway), mix(72, 89.5, highway), forward));
   if (throttle < 0) acceleration = forward > .5 ? -55 : -18 * (1 - smoothstep(10, 16, -forward));
   car.vx += fx * acceleration * authority * dt; car.vz += fz * acceleration * authority * dt;
   const targetSteer = Number(!!input.left) - Number(!!input.right);

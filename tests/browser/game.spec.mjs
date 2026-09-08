@@ -49,6 +49,44 @@ test('high-speed scenery impact hides every instance and releases bounded debris
   expect(errors).toEqual([]);
 });
 
+test('trees fall in visible sections and breaking audio respects mute', async ({ page }, testInfo) => {
+  const errors = await openGame(page, 77, 'tree-smash');
+  await page.getByRole('button', { name: 'Unmute sound', exact: true }).click();
+  await page.getByRole('button', { name: 'Start exploring', exact: true }).click();
+  await page.keyboard.down('KeyW');
+  await expect.poll(async () => (await snapshot(page)).fallingTrees, { timeout: 30000, intervals: [100] }).toBeGreaterThan(0);
+  await page.keyboard.up('KeyW');
+  const impact = await snapshot(page);
+  expect(impact.fallingTrees).toBeLessThanOrEqual(8); expect(impact.hiddenProps).toBeGreaterThan(0);
+  expect(impact.sound.played).toBeGreaterThan(0); expect(impact.sound.masterGain).toBe(1);
+  await testInfo.attach('falling-tree', { body: await page.screenshot(), contentType: 'image/png' });
+  await page.waitForTimeout(600);
+  await testInfo.attach('tree-separating', { body: await page.screenshot(), contentType: 'image/png' });
+  await page.getByRole('button', { name: 'Mute sound', exact: true }).click();
+  expect((await snapshot(page)).sound.masterGain).toBe(0);
+  await expect.poll(async () => (await snapshot(page)).fallingTrees, { timeout: 30000 }).toBe(0);
+  await expect.poll(async () => (await snapshot(page)).sound.active, { timeout: 5000 }).toBe(0);
+  expect(errors).toEqual([]);
+});
+
+test('break sound playback produces audio and a muted output is silent', async ({ page }) => {
+  await page.goto('/');
+  const result = await page.evaluate(async () => {
+    const { createBreakAudio } = await import('/break-audio.mjs?v=impact-2');
+    async function render(muted) {
+      const context = new OfflineAudioContext(1, 44100, 44100), master = context.createGain();
+      master.gain.value = muted ? 0 : 1; master.connect(context.destination);
+      const effects = createBreakAudio(context, master, 2);
+      for (const type of ['tree', 'rock', 'cactus', 'boulder']) effects.play(type, 40);
+      const active = effects.active, rendered = await context.startRendering(), samples = rendered.getChannelData(0);
+      return { active, rms: Math.sqrt(samples.reduce((sum, x) => sum + x * x, 0) / samples.length), ended: effects.active };
+    }
+    return { audible: await render(false), muted: await render(true) };
+  });
+  expect(result.audible.active).toBe(2); expect(result.audible.rms).toBeGreaterThan(.01);
+  expect(result.audible.ended).toBe(0); expect(result.muted.rms).toBe(0);
+});
+
 test('a purple ramp launches the car into a barrel roll and lands driveable', async ({ page }, testInfo) => {
   const errors = await openGame(page, 1, 'twist');
   await page.getByRole('button', { name: 'Start exploring', exact: true }).click();

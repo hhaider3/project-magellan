@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { random, hash } from './world.mjs?v=ramp-exits-1';
+import { random, hash } from './world.mjs?v=impact-2';
 
 // One draw call and a fixed particle pool, even when ploughing through a grove.
 export function createDebris(scene, capacity = 192) {
@@ -12,10 +12,10 @@ export function createDebris(scene, capacity = 192) {
   function burst(prop) {
     const rng = random(hash(Math.round(prop.x), Math.round(prop.z), 701) * 4294967296);
     const tree = prop.type === 'tree', cactus = prop.type === 'cactus';
-    for (let i = 0; i < 12; i++) {
+    for (let i = 0; i < (tree ? 6 : 12); i++) {
       if (pieces.length >= capacity) pieces.shift();
-      const leafy = tree && i > 4, size = prop.size * (.2 + rng() * .35);
-      pieces.push({ x: prop.x + (rng() - .5) * prop.size, y: prop.y + .3 + rng() * prop.h, z: prop.z + (rng() - .5) * prop.size,
+      const leafy = tree && i > 4, size = prop.size * (tree ? .06 + rng() * .12 : .2 + rng() * .35);
+      pieces.push({ x: prop.x + (rng() - .5) * prop.size, y: prop.y + .3 + rng() * (tree ? 1.2 : prop.h), z: prop.z + (rng() - .5) * prop.size,
         vx: prop.vx * (.12 + rng() * .15) + (rng() - .5) * 9, vy: 3 + rng() * 7, vz: prop.vz * (.12 + rng() * .15) + (rng() - .5) * 9,
         rx: rng() * 6, rz: rng() * 6, spin: (rng() - .5) * 12, age: 0, size,
         tall: (tree && !leafy || cactus) ? 2.4 : 1,

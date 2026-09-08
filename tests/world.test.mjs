@@ -87,9 +87,12 @@ test('recover finds clear ground, stops the car and retains trip records', () =>
   assert.ok(recoverVehicle(car, world)); assert.ok(car.grounded); assert.equal(car.vx, 0); assert.equal(car.distance, 800); assert.equal(car.bestAir, 1.2); assert.equal(car.jumps, 4);
   assert.equal(car.y, groundAt(world, car.x, car.z, car.heading).y);
 });
-test('top speed reaches 240 km/h and remains bounded downhill', () => {
+test('highway cruising reaches 300 km/h, off-road pace stays lower, and downhill speed is bounded', () => {
   const car = createVehicle(flat); advance(car, { up: true }, flat, 20);
-  assert.ok(car.speed * 3.6 > 240 && car.speed * 3.6 < 245);
+  assert.ok(car.speed * 3.6 > 295 && car.speed * 3.6 < 305);
+  const offroad = { ...flat, roadAt: () => ({ d: 20 }) }, dirtCar = createVehicle(offroad);
+  advance(dirtCar, { up: true }, offroad, 20);
+  assert.ok(dirtCar.speed * 3.6 > 220 && dirtCar.speed * 3.6 < 245);
   car.vz = 100; stepVehicle(car, {}, flat, []); assert.ok(Math.hypot(car.vx, car.vz) <= SPEED_LIMIT);
 });
 test('ramps launch without Jump and land safely across three seeds', () => {

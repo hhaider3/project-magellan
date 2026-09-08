@@ -36,9 +36,9 @@ Touch devices and compact windows show steering, throttle, reverse, **Jump**, an
 
 - Mountains are continuous terrain with broad foothills. Random cone mountains, abrupt biome switches, terrain walls, and deep-water barriers are gone.
 - Roads are painted directly onto the terrain, so there are no raised road ribbons or mismatched road collision surfaces.
-- Denser seeded pine clusters, shrubs, small rocks, boulders, roadside markers, cabins and lookout towers give the world more places to explore. Road and ramp approach clearances keep the extra scenery from blocking the route. Small rocks and shrubs are forgiving details; trees collide at the trunk. Cacti, trees and small rocks break above a direct impact speed of **65 km/h**; boulders require **94 km/h**. The car keeps most of its momentum while fragments scatter, bounce, and shrink away. Broken props stay gone for this world visit, including after chunk reloads; a new world or page reload restores them. Debris uses one instanced draw call and a 192-piece cap.
+- Denser seeded pine clusters, shrubs, small rocks, boulders, roadside markers, cabins and lookout towers give the world more places to explore. Road and ramp approach clearances keep the extra scenery from blocking the route. Small rocks and shrubs are forgiving details; trees collide at the trunk. Cacti, trees and small rocks break above a direct impact speed of **65 km/h**; boulders require **94 km/h**. The car keeps most of its momentum while fragments scatter, bounce, and shrink away. Trees retain their original silhouette at impact, bend in the hit direction, then split into larger trunk and foliage sections over several frames; only small splinters burst immediately. Up to eight falling trees share nine instanced draws. Broken props stay gone for this world visit, including after chunk reloads; a new world or page reload restores them. Small debris uses one instanced draw call and a 192-piece cap.
 - Jumping uses a real impulse, gravity, buffered input and a short grace period after leaving a crest. Quick taps are queued before the next physics tick. Holding Jump does not bounce the car repeatedly.
-- Fixed 120 Hz physics handles acceleration, hill climbing, drift, airborne motion, landing and collision sliding. Top speed on level asphalt is approximately **242 km/h**, with stronger braking and speed-sensitive steering. Recovery finds clear nearby ground without erasing trip or best-jump distance.
+- Fixed 120 Hz physics handles acceleration, hill climbing, drift, airborne motion, landing and collision sliding. Top speed on level asphalt is approximately **301 km/h**, with stronger braking and speed-sensitive steering. Recovery finds clear nearby ground without erasing trip or best-jump distance.
 - Steeper rolling hills, gullies and closely spaced off-road ridges demand more care at speed. Roads retain smoother profiles.
 - Orange ramps have curved decks, chevrons, flags and approach markers. Drive up one to launch automatically; Space is optional. The first ramp is about **70 m ahead, just right of the starting road**. More ramps regenerate throughout the world. Their dirt embankments use the same heightfield as the visible ground.
 - Purple banked ramps twist progressively and launch left- or right-handed barrel rolls. The first is about **225 m ahead on the opposite side of the road from the first orange ramp**; more are seeded throughout the world. Drive through the lip at speed, or jump from the upper deck, to roll. Landing and recovery restore stable driving.
@@ -54,6 +54,8 @@ Touch devices and compact windows show steering, throttle, reverse, **Jump**, an
 - `terrain.mjs` / `world-worker.mjs` / `streaming-layout.mjs`: reusable terrain data, background generation and seam-free near/far coverage.
 - `batching.mjs`: merges static meshes within the car body and each wheel animation group.
 - `vehicle-presentation.mjs`: interpolates fixed-step poses for smooth car, wheel, camera and shadow motion across display refresh rates.
+- `tree-breakage.mjs`: staged tree bending and fracture using the original geometry.
+- `break-audio.mjs`: precomputed wood, cactus and stone effects with capped simultaneous voices.
 - `debris.mjs`: bounded instanced breakage particles with terrain bounce and cleanup.
 - `profiling.mjs`: opt-in, bounded CPU timing measurements.
 - `scenery.mjs`: ramp decks and the instanced cabin/lookout models.
@@ -67,7 +69,7 @@ npx playwright install chromium
 npm test
 ```
 
-The tests cover terrain continuity, seeded regeneration, scenery clearances, challenging slopes, jump buffering and landing, 240+ km/h top speed, automatic ramp launches across three seeds, landmark regeneration, acceleration/reverse, drift, collision escape, recovery, frame-rate independence and 24 simulated one-minute drives across eight directions and three seeds.
+The tests cover terrain continuity, seeded regeneration, scenery clearances, challenging slopes, jump buffering and landing, 300 km/h highway top speed, automatic ramp launches across three seeds, landmark regeneration, acceleration/reverse, drift, collision escape, recovery, frame-rate independence and 24 simulated one-minute drives across eight directions and three seeds.
 
 For live browser integration checks, open [tests/play.html](http://localhost:8000/tests/play.html). **Run driving check** exercises the actual keyboard handlers and HUD while accelerating, jumping, leaving the road, crossing chunk boundaries, reversing, recovering, pausing and resuming. **Run ramp check** starts on a repeatable approach and tests a launch and landing using throttle alone. Keep the page focused during each check (about 23 and 7 seconds respectively). Test runs use isolated in-memory records. The `?test=ramp` launch position is reserved for this harness; ordinary visits always start at the crossroads.
 
@@ -90,3 +92,7 @@ Stunt test approaches are available at `?seed=1&test=twist` and `?seed=1&test=sm
 The rendered car interpolates the two latest physics poses (at most one 120 Hz tick of visual delay). Camera tracking, wheel rotation and shadows use that same pose. Tests cover 60–240 Hz rendering, uneven frame intervals, barrel-roll angle wrapping and teleport resets.
 
 Ramp backs and sides obey normal ballistic separation, so oblique and reverse approaches carry upward momentum into the air instead of sticking to the deck. Tests compare five rear/side directions against identical unmarked terrain, check oblique front approaches and slow traversal, and drive a rear-diagonal approach in Chromium (`?seed=1&test=ramp-side`).
+
+Breaking sounds share the engine’s sound toggle (M or the speaker button); muting silences all game audio. Highway power rises smoothly near the road, with level-road cruising around 301 km/h, off-road cruising around 236 km/h, and a downhill cap of 331 km/h. Preview tree impacts with `?seed=77&test=tree-smash`.
+
+`tests/effects.html` provides a fixed-camera tree breakup preview with impact, bend, split and settle stages for visual regression checks.

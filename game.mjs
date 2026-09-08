@@ -1,17 +1,19 @@
-import { createTerrain } from './terrain.mjs?v=ramp-exits-1';
-import { FAR_SIZE, FAR_VIEW, NEAR_VIEW, farIndices } from './streaming-layout.mjs?v=ramp-exits-1';
-import { batchStaticMeshes } from './batching.mjs?v=ramp-exits-1';
-import { createProfiler } from './profiling.mjs?v=ramp-exits-1';
-import { createDebris } from './debris.mjs?v=ramp-exits-1';
-import { createVehiclePresentation } from './vehicle-presentation.mjs?v=ramp-exits-1';
+import { createTerrain } from './terrain.mjs?v=impact-2';
+import { FAR_SIZE, FAR_VIEW, NEAR_VIEW, farIndices } from './streaming-layout.mjs?v=impact-2';
+import { batchStaticMeshes } from './batching.mjs?v=impact-2';
+import { createProfiler } from './profiling.mjs?v=impact-2';
+import { createDebris } from './debris.mjs?v=impact-2';
+import { createVehiclePresentation } from './vehicle-presentation.mjs?v=impact-2';
+import { createTreeBreakage } from './tree-breakage.mjs?v=impact-2';
+import { createBreakAudio } from './break-audio.mjs?v=impact-2';
 import * as THREE from 'three';
-import { CHUNK, GRID, ROAD_SPACING, ROAD_HALF, FIXED_DT, featurePoint, clamp, mix, smoothstep, hash, createWorld, createVehicle, stepVehicle, recoverVehicle } from './world.mjs?v=ramp-exits-1';
-import { buildLandmark, cloneOwnedGeometry, createCactusGeometry } from './scenery.mjs?v=ramp-exits-1';
+import { CHUNK, GRID, ROAD_SPACING, ROAD_HALF, FIXED_DT, featurePoint, clamp, mix, smoothstep, hash, createWorld, createVehicle, stepVehicle, recoverVehicle } from './world.mjs?v=impact-2';
+import { buildLandmark, cloneOwnedGeometry, createCactusGeometry } from './scenery.mjs?v=impact-2';
 
 const $ = id => document.getElementById(id);
 const coarse = matchMedia('(pointer:coarse)').matches || navigator.maxTouchPoints > 0;
 const reducedMotion = matchMedia('(prefers-reduced-motion:reduce)').matches;
-const testMode = ['drive', 'ramp', 'ramp-side', 'twist', 'smash', 'browser'].includes(new URLSearchParams(location.search).get('test'));
+const testMode = ['drive', 'ramp', 'ramp-side', 'twist', 'smash', 'tree-smash', 'browser'].includes(new URLSearchParams(location.search).get('test'));
 const profiler = createProfiler(testMode);
 const bootStarted = performance.now();
 if (coarse) document.body.classList.add('touch');
@@ -35,6 +37,10 @@ if (new URLSearchParams(location.search).get('test') === 'twist') {
 }
 if (new URLSearchParams(location.search).get('test') === 'smash') {
   const prop = world.props(0, 0).find(p => ['cactus', 'tree', 'boulder'].includes(p.type));
+  if (prop) vehicle = createVehicle(world, prop.x, prop.z - 32, 0);
+}
+if (new URLSearchParams(location.search).get('test') === 'tree-smash') {
+  const prop = world.props(-1, -1).find(p => p.type === 'tree');
   if (prop) vehicle = createVehicle(world, prop.x, prop.z - 32, 0);
 }
 let running = false, started = false, cameraMode = 0, muted = true, lightsOn = false, bestDistance = 0;
@@ -247,6 +253,8 @@ function processBreakage() {
       mesh.getMatrixAt(index, matrix); matrix.scale(scaleVec.set(0, 0, 0)); mesh.setMatrixAt(index, matrix); mesh.instanceMatrix.needsUpdate = true;
     }
     debris.burst(prop);
+    if (prop.type === 'tree') treeBreakage.burst(prop);
+    if (!muted && audio) audio.breaks.play(prop.type, Math.hypot(prop.vx, prop.vz));
   }
 }
 function disposeChunk(chunk) {
@@ -345,7 +353,7 @@ function beginWorldLoad(continueDriving = false) {
   for (const chunk of chunks.values()) disposeChunk(chunk); chunks.clear();
   for (const tile of farTiles.values()) { scene.remove(tile); tile.geometry.dispose(); } farTiles.clear();
   terrain = createTerrain(world);
-  worker = new Worker(new URL('./world-worker.mjs?v=ramp-exits-1', import.meta.url), { type: 'module' });
+  worker = new Worker(new URL('./world-worker.mjs?v=impact-2', import.meta.url), { type: 'module' });
   const failed = message => { streamError = message; running = false; $('loadError').hidden = false; $('startBtn').firstElementChild.textContent = 'Unable to prepare the world'; };
   worker.onerror = error => failed(error.message);
   worker.onmessage = ({ data }) => {
@@ -443,16 +451,24 @@ let audio = null;
 function initAudio() {
   if (audio) { audio.context.resume(); return; }
   try {
-    const context = new AudioContext(), oscillator = context.createOscillator(), filter = context.createBiquadFilter(), gain = context.createGain();
+    const context = new AudioContext(), oscillator = context.createOscillator(), filter = context.createBiquadFilter(), gain = context.createGain(), master = context.createGain(), limiter = context.createDynamicsCompressor();
     oscillator.type = 'sawtooth'; filter.type = 'lowpass'; gain.gain.value = 0;
-    oscillator.connect(filter).connect(gain).connect(context.destination); oscillator.start(); audio = { context, oscillator, filter, gain };
+    master.gain.value = muted ? 0 : 1;
+    limiter.threshold.value = -10; limiter.knee.value = 12; limiter.ratio.value = 4;
+    master.connect(limiter).connect(context.destination);
+    oscillator.connect(filter).connect(gain).connect(master); oscillator.start();
+    audio = { context, oscillator, filter, gain, master, breaks: createBreakAudio(context, master) };
   } catch {}
 }
 function syncSound() {
   $('soundBtn').innerHTML = `<svg viewBox="0 0 24 24"><path d="M11 5 6 9H3v6h3l5 4V5Z"/>${muted ? '<path d="m16 9 5 6m0-6-5 6"/>' : '<path d="M15 8a6 6 0 0 1 0 8m3-11a10 10 0 0 1 0 14"/>'}</svg>`;
   $('soundBtn').setAttribute('aria-label', muted ? 'Unmute sound' : 'Mute sound');
 }
-function toggleSound() { muted = !muted; if (!muted) initAudio(); if (muted && audio) audio.gain.gain.value = 0; try { localStorage.setItem('endless-drive-muted', muted ? '1' : '0'); } catch {} syncSound(); }
+function toggleSound() {
+  muted = !muted; if (!muted) initAudio();
+  if (audio) { audio.master.gain.cancelScheduledValues(audio.context.currentTime); audio.master.gain.setValueAtTime(muted ? 0 : 1, audio.context.currentTime); }
+  try { localStorage.setItem('endless-drive-muted', muted ? '1' : '0'); } catch {} syncSound();
+}
 $('soundBtn').onclick = toggleSound;
 function saveRecord() { bestDistance = Math.max(bestDistance, vehicle.distance); if (!testMode) try { localStorage.setItem('endless-drive-records', JSON.stringify({ distance: bestDistance })); } catch {} }
 let toastTimer;
@@ -491,7 +507,7 @@ function resetCamera() {
 function newWorld() {
   const continueDriving = running || resumeAfterLoad && loading;
   saveRecord(); clearInput(); seed = freshSeed(); world = createWorld(seed); vehicle = createVehicle(world); roadUniforms.uRoadPhase.value = world.phase;
-  debris.clear();
+  debris.clear(); treeBreakage.clear(); audio?.breaks.clear();
   const url = new URL(location.href); url.searchParams.set('seed', seed); history.replaceState(null, '', url);
   beginWorldLoad(continueDriving); resetCamera(); syncSeed(); updateHUD(); drawMap();
   reportedLanding = 0; $('runDistance').textContent = '0.00'; toast('A new road ahead. World ' + seed);
@@ -589,7 +605,7 @@ function drawMap() {
 }
 function updateHUD() {
   const speed = Math.abs(vehicle.speed) * 3.6;
-  $('speed').textContent = Math.round(speed); $('speedBar').style.width = clamp(speed / 260 * 100, 0, 100) + '%';
+  $('speed').textContent = Math.round(speed); $('speedBar').style.width = clamp(speed / 330 * 100, 0, 100) + '%';
   $('gear').textContent = speed < 1 ? 'N' : vehicle.speed < 0 ? 'R' : 'D';
   $('distance').textContent = (vehicle.distance / 1000).toFixed(2);
   $('surfaceState').textContent = !vehicle.grounded ? 'A LITTLE AIR' : input.brake && speed > 10 ? 'TAKE IT SIDEWAYS' : vehicle.onRoad ? 'ON THE ROAD' : 'OFF THE BEATEN PATH';
@@ -607,6 +623,11 @@ function updateHUD() {
 }
 const vehiclePosition = new THREE.Vector3(), cameraPosition = new THREE.Vector3(), cameraTarget = new THREE.Vector3(), desiredCamera = new THREE.Vector3(), forward = new THREE.Vector3(), look = new THREE.Vector3();
 const debris = createDebris(scene), rollPivot = new THREE.Vector3();
+const treeBreakage = createTreeBreakage(scene, [
+  { geometry: trunkGeo, color: trunkMaterial.color },
+  { geometry: treeGeo, color: treeMaterial.color },
+  { geometry: tipGeo, color: tipMaterial.color },
+]);
 const vehiclePresentation = createVehiclePresentation(vehicle);
 let previousTime = performance.now(), accumulator = 0, uiTime = 0, mapTime = 0, idleRenderAt = 0, reportedLanding = 0;
 function updateDesiredCamera(pose = vehicle) {
@@ -678,7 +699,7 @@ function frame(now) {
       stepVehicle(vehicle, input, world, obstacles);
       vehiclePresentation.advance(vehicle, FIXED_DT); accumulator -= FIXED_DT;
     }
-    processBreakage(); debris.update(dt, world);
+    processBreakage(); debris.update(dt, world); treeBreakage.update(dt, world);
     if (vehicle.landings > reportedLanding) {
       reportedLanding = vehicle.landings;
       if (vehicle.airDistance > 25) toast(`${vehicle.airRoll > Math.PI ? 'Barrel roll! · ' : ''}${Math.round(vehicle.airDistance)} m jump · ${vehicle.airtime.toFixed(1)} seconds of air`);
@@ -704,5 +725,5 @@ if (testMode) window.__driveTest = { snapshot: () => {
     const hidden = refs.every(({ mesh, index }) => { mesh.getMatrixAt(index, matrix); return matrix.elements[0] === 0 && matrix.elements[5] === 0 && matrix.elements[10] === 0; });
     if (hidden) hiddenProps++;
   }
-  return { metrics: profiler.snapshot(), draws: renderer.info.render.calls, triangles: renderer.info.render.triangles, carMeshes, chunks: chunks.size, farTiles: farTiles.size, loading, generation, streamError, pending: pending.size, queued: jobs.length, carBatching: carBatching.map(({ before, after }) => ({ before, after })), vehicle: { ...vehicle }, renderPose: { ...vehiclePresentation.pose }, debris: debris.count, brokenProps: world.brokenProps.size, hiddenProps, accumulator, cameraError: cameraPosition.distanceTo(desiredCamera) + cameraTarget.distanceTo(look), camera: cameraPosition.toArray(), target: cameraTarget.toArray() };
+  return { metrics: profiler.snapshot(), draws: renderer.info.render.calls, triangles: renderer.info.render.triangles, carMeshes, chunks: chunks.size, farTiles: farTiles.size, loading, generation, streamError, pending: pending.size, queued: jobs.length, carBatching: carBatching.map(({ before, after }) => ({ before, after })), vehicle: { ...vehicle }, renderPose: { ...vehiclePresentation.pose }, debris: debris.count, fallingTrees: treeBreakage.count, sound: audio ? { muted, played: audio.breaks.played, active: audio.breaks.active, masterGain: audio.master.gain.value } : null, brokenProps: world.brokenProps.size, hiddenProps, accumulator, cameraError: cameraPosition.distanceTo(desiredCamera) + cameraTarget.distanceTo(look), camera: cameraPosition.toArray(), target: cameraTarget.toArray() };
 } };
