@@ -1,4 +1,4 @@
-import { CHUNK } from './world.mjs?v=impact-motion-3';
+import { CHUNK } from './world.mjs?v=shadow-fade-1';
 export const FAR_SIZE = CHUNK * 4;
 export const NEAR_VIEW = 4;
 export const FAR_VIEW = 4;

@@ -72,7 +72,7 @@ test('trees fracture into visible sections and breaking audio respects mute', as
 test('break sound playback produces audio and a muted output is silent', async ({ page }) => {
   await page.goto('/');
   const result = await page.evaluate(async () => {
-    const { createBreakAudio } = await import('/break-audio.mjs?v=impact-motion-3');
+    const { createBreakAudio } = await import('/break-audio.mjs?v=shadow-fade-1');
     async function render(muted) {
       const context = new OfflineAudioContext(1, 44100, 44100), master = context.createGain();
       master.gain.value = muted ? 0 : 1; master.connect(context.destination);

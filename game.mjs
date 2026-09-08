@@ -1,15 +1,16 @@
-import { createTerrain } from './terrain.mjs?v=impact-motion-3';
-import { FAR_SIZE, FAR_VIEW, NEAR_VIEW, farIndices } from './streaming-layout.mjs?v=impact-motion-3';
-import { batchStaticMeshes } from './batching.mjs?v=impact-motion-3';
-import { createProfiler } from './profiling.mjs?v=impact-motion-3';
-import { createDebris } from './debris.mjs?v=impact-motion-3';
-import { createVehiclePresentation } from './vehicle-presentation.mjs?v=impact-motion-3';
-import { followTarget, followValue } from './camera-motion.mjs?v=impact-motion-3';
-import { createTreeBreakage } from './tree-breakage.mjs?v=impact-motion-3';
-import { createBreakAudio } from './break-audio.mjs?v=impact-motion-3';
+import { createTerrain } from './terrain.mjs?v=shadow-fade-1';
+import { FAR_SIZE, FAR_VIEW, NEAR_VIEW, farIndices } from './streaming-layout.mjs?v=shadow-fade-1';
+import { batchStaticMeshes } from './batching.mjs?v=shadow-fade-1';
+import { createProfiler } from './profiling.mjs?v=shadow-fade-1';
+import { createDebris } from './debris.mjs?v=shadow-fade-1';
+import { createVehiclePresentation } from './vehicle-presentation.mjs?v=shadow-fade-1';
+import { followTarget, followValue } from './camera-motion.mjs?v=shadow-fade-1';
+import { createTreeBreakage } from './tree-breakage.mjs?v=shadow-fade-1';
+import { createBreakAudio } from './break-audio.mjs?v=shadow-fade-1';
+import { installSunShadowFade } from './shadow-fade.mjs?v=shadow-fade-1';
 import * as THREE from 'three';
-import { CHUNK, GRID, ROAD_SPACING, ROAD_HALF, FIXED_DT, featurePoint, clamp, mix, smoothstep, hash, createWorld, createVehicle, stepVehicle, recoverVehicle } from './world.mjs?v=impact-motion-3';
-import { buildLandmark, cloneOwnedGeometry, createCactusGeometry } from './scenery.mjs?v=impact-motion-3';
+import { CHUNK, GRID, ROAD_SPACING, ROAD_HALF, FIXED_DT, featurePoint, clamp, mix, smoothstep, hash, createWorld, createVehicle, stepVehicle, recoverVehicle } from './world.mjs?v=shadow-fade-1';
+import { buildLandmark, cloneOwnedGeometry, createCactusGeometry } from './scenery.mjs?v=shadow-fade-1';
 
 const $ = id => document.getElementById(id);
 const coarse = matchMedia('(pointer:coarse)').matches || navigator.maxTouchPoints > 0;
@@ -49,6 +50,7 @@ if (!testMode) try { muted = localStorage.getItem('endless-drive-muted') !== '0'
 const input = {}, keyStates = new Set(), touchStates = new Map();
 const keyMap = { KeyW: 'up', ArrowUp: 'up', KeyS: 'down', ArrowDown: 'down', KeyA: 'left', ArrowLeft: 'left', KeyD: 'right', ArrowRight: 'right', Space: 'jump', ShiftLeft: 'brake', ShiftRight: 'brake' };
 
+installSunShadowFade();
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
 renderer.setSize(innerWidth, innerHeight);
 renderer.setPixelRatio(Math.min(devicePixelRatio, coarse ? 1.35 : 1.7));
@@ -354,7 +356,7 @@ function beginWorldLoad(continueDriving = false) {
   for (const chunk of chunks.values()) disposeChunk(chunk); chunks.clear();
   for (const tile of farTiles.values()) { scene.remove(tile); tile.geometry.dispose(); } farTiles.clear();
   terrain = createTerrain(world);
-  worker = new Worker(new URL('./world-worker.mjs?v=impact-motion-3', import.meta.url), { type: 'module' });
+  worker = new Worker(new URL('./world-worker.mjs?v=shadow-fade-1', import.meta.url), { type: 'module' });
   const failed = message => { streamError = message; running = false; $('loadError').hidden = false; $('startBtn').firstElementChild.textContent = 'Unable to prepare the world'; };
   worker.onerror = error => failed(error.message);
   worker.onmessage = ({ data }) => {

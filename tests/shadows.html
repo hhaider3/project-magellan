@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><title>Shadow boundary regression</title>
+<link rel="icon" href="data:,">
+<script type="importmap">{"imports":{"three":"../vendor/three.module.js"}}</script>
+<script type="module">
+import * as THREE from 'three';
+import { installSunShadowFade } from '../shadow-fade.mjs?v=shadow-fade-1';
+if (!new URLSearchParams(location.search).has('raw')) installSunShadowFade();
+const renderer = new THREE.WebGLRenderer({ antialias: false });
+renderer.setSize(64, 64); renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+document.body.append(renderer.domElement);
+const scene = new THREE.Scene(), camera = new THREE.OrthographicCamera(-.1, .1, .1, -.1, .1, 2);
+camera.position.set(0, 1, 0); camera.up.set(0, 0, -1); camera.lookAt(0, 0, 0);
+scene.add(new THREE.HemisphereLight(0xffffff, 0xffffff, .3));
+const sun = new THREE.DirectionalLight(0xffffff, 2.5); sun.castShadow = true;
+Object.assign(sun.shadow.camera, { left: -48, right: 48, top: 48, bottom: -48, near: 1, far: 230 });
+sun.shadow.bias = -.00015; sun.shadow.normalBias = .04; scene.add(sun, sun.target);
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(200, 200), new THREE.MeshStandardMaterial({ color: 0x808080, roughness: 1 }));
+ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground);
+// Above the viewing camera, but inside the light's frustum. Its shadow covers
+// the probe at the origin, so only shadow-map coverage can change these pixels.
+const caster = new THREE.Mesh(new THREE.BoxGeometry(6, 4, 6), new THREE.MeshStandardMaterial());
+caster.position.set(-3.25, 5, 2.25); caster.castShadow = true; scene.add(caster);
+const offset = new THREE.Vector3(-65, 100, 45), axis = new THREE.Vector3();
+sun.position.copy(offset); scene.updateMatrixWorld(true); sun.shadow.updateMatrices(sun);
+const basis = sun.shadow.camera.matrixWorld.clone(), target = new THREE.WebGLRenderTarget(8, 8), pixels = new Uint8Array(8 * 8 * 4);
+window.sampleShadows = (coordinates, edge, resolution) => {
+  sun.shadow.map?.dispose(); sun.shadow.map = null; sun.shadow.mapSize.set(resolution, resolution);
+  axis.setFromMatrixColumn(basis, edge < 2 ? 0 : 1);
+  return coordinates.map(coordinate => {
+    const signed = edge % 2 ? 1 - coordinate : coordinate;
+    sun.target.position.copy(axis).multiplyScalar((.5 - signed) * 96);
+    sun.position.copy(sun.target.position).add(offset); scene.updateMatrixWorld(true);
+    renderer.setRenderTarget(target); renderer.render(scene, camera);
+    renderer.readRenderTargetPixels(target, 0, 0, 8, 8, pixels);
+    let brightness = 0;
+    for (let i = 0; i < pixels.length; i += 4) brightness += pixels[i];
+    return brightness / 64;
+  });
+};
+window.sampleShadows([.5], 0, 1024);
+renderer.setRenderTarget(null); renderer.render(scene, camera);
+</script></html>

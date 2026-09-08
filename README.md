@@ -54,6 +54,7 @@ Touch devices and compact windows show steering, throttle, reverse, **Jump**, an
 - `terrain.mjs` / `world-worker.mjs` / `streaming-layout.mjs`: reusable terrain data, background generation and seam-free near/far coverage.
 - `batching.mjs`: merges static meshes within the car body and each wheel animation group.
 - `vehicle-presentation.mjs`: interpolates fixed-step poses for smooth car, wheel, camera and shadow motion across display refresh rates.
+- `shadow-fade.mjs`: fades directional shadows inside the moving shadow-map boundary, preserving nearby contrast and existing mobile/desktop map resolutions.
 - `camera-motion.mjs`: integrates camera position, aim and field of view against moving targets without changing follow lag when frame intervals change.
 - `tree-breakage.mjs`: immediate speed-dependent fracture into solid sections cut from the original geometry.
 - `break-audio.mjs`: precomputed wood, cactus and stone effects with capped simultaneous voices.
@@ -97,3 +98,5 @@ Ramp backs and sides obey normal ballistic separation, so oblique and reverse ap
 Breaking sounds share the engine’s sound toggle (M or the speaker button); muting silences all game audio. Highway power rises smoothly near the road, with level-road cruising around 301 km/h, off-road cruising around 236 km/h, and a downhill cap of 331 km/h. Preview tree impacts with `?seed=77&test=tree-smash`.
 
 `tests/effects.html` provides a fixed-camera tree breakup preview at highway impact speed with contact, 80 ms fracture, 160 ms split and settle stages for visual regression checks.
+
+Sun shadows fade across the outer 19 m of their moving 96 m map instead of appearing abruptly at its edge. The fade uses light-space coordinates, so it follows all sides of the shadow volume and applies equally to terrain and objects. Rendered-pixel regression tests compare the old hard cutoff with the new transition on all four edges at 1024 and 2048 shadow-map resolutions.
