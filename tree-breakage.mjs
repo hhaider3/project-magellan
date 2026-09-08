@@ -1,35 +1,61 @@
 import * as THREE from 'three';
 
-// Preserve every triangle of the standing tree, then peel the same geometry
-// apart. The initial silhouette is identical, rather than a particle substitute.
+// Cut solid height sections, closing each cut face. Cone skins alone become
+// thin sheets when separated; these remain logs and three-dimensional foliage.
 function splitGeometry(source) {
   const flat = source.index ? source.toNonIndexed() : source;
-  const position = flat.getAttribute('position'), normal = flat.getAttribute('normal');
-  const buckets = Array.from({ length: 3 }, () => ({ positions: [], normals: [] }));
-  for (let i = 0; i < position.count; i += 3) {
-    const x = position.getX(i) + position.getX(i + 1) + position.getX(i + 2);
-    const z = position.getZ(i) + position.getZ(i + 1) + position.getZ(i + 2);
-    const bucket = buckets[Math.min(2, Math.floor((Math.atan2(z, x) + Math.PI) / (Math.PI * 2) * 3))];
-    for (let j = i; j < i + 3; j++) {
-      bucket.positions.push(position.getX(j), position.getY(j), position.getZ(j));
-      bucket.normals.push(normal.getX(j), normal.getY(j), normal.getZ(j));
+  flat.computeBoundingBox();
+  const p = flat.getAttribute('position'), n = flat.getAttribute('normal');
+  const bottom = flat.boundingBox.min.y, height = flat.boundingBox.max.y - bottom;
+  const fragments = [];
+  for (let section = 0; section < 3; section++) {
+    const lo = bottom + height * section / 3, hi = bottom + height * (section + 1) / 3;
+    const positions = [], normals = [], cuts = [new Map(), new Map()];
+    const vertex = i => ({ x: p.getX(i), y: p.getY(i), z: p.getZ(i), nx: n.getX(i), ny: n.getY(i), nz: n.getZ(i) });
+    const emit = v => { positions.push(v.x, v.y, v.z); const length = Math.hypot(v.nx, v.ny, v.nz) || 1; normals.push(v.nx / length, v.ny / length, v.nz / length); };
+    function clip(poly, y, above, boundary) {
+      const result = [];
+      for (let i = 0; i < poly.length; i++) {
+        const a = poly[i], b = poly[(i + 1) % poly.length];
+        const insideA = above ? a.y >= y : a.y <= y, insideB = above ? b.y >= y : b.y <= y;
+        if (insideA) result.push(a);
+        if (insideA !== insideB) {
+          const t = (y - a.y) / (b.y - a.y), v = {};
+          for (const key of ['x', 'y', 'z', 'nx', 'ny', 'nz']) v[key] = a[key] + (b[key] - a[key]) * t;
+          v.y = y; result.push(v); cuts[boundary].set(`${Math.round(v.x * 1e6)},${Math.round(v.z * 1e6)}`, v);
+        }
+      }
+      return result;
     }
+    for (let i = 0; i < p.count; i += 3) {
+      const poly = clip(clip([vertex(i), vertex(i + 1), vertex(i + 2)], lo, true, 0), hi, false, 1);
+      for (let j = 1; j < poly.length - 1; j++) { emit(poly[0]); emit(poly[j]); emit(poly[j + 1]); }
+    }
+    cuts.forEach((cut, boundary) => {
+      if (cut.size < 3) return;
+      const ring = [...cut.values()], center = { x: 0, y: boundary ? hi : lo, z: 0, nx: 0, ny: boundary ? 1 : -1, nz: 0 };
+      for (const v of ring) { center.x += v.x / ring.length; center.z += v.z / ring.length; }
+      ring.sort((a, b) => Math.atan2(a.z - center.z, a.x - center.x) - Math.atan2(b.z - center.z, b.x - center.x));
+      for (let i = 0; i < ring.length; i++) {
+        const a = { ...ring[i], nx: 0, ny: center.ny, nz: 0 }, b = { ...ring[(i + 1) % ring.length], nx: 0, ny: center.ny, nz: 0 };
+        emit(center); emit(boundary ? b : a); emit(boundary ? a : b);
+      }
+    });
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    geometry.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+    geometry.computeBoundingBox();
+    const center = geometry.boundingBox.getCenter(new THREE.Vector3()), half = geometry.boundingBox.getSize(new THREE.Vector3()).multiplyScalar(.5);
+    geometry.translate(-center.x, -center.y, -center.z);
+    fragments.push({ geometry, center, half });
   }
   if (flat !== source) flat.dispose();
-  return buckets.filter(b => b.positions.length).map(bucket => {
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute('position', new THREE.Float32BufferAttribute(bucket.positions, 3));
-    geometry.setAttribute('normal', new THREE.Float32BufferAttribute(bucket.normals, 3));
-    geometry.computeBoundingBox();
-    const center = geometry.boundingBox.getCenter(new THREE.Vector3());
-    geometry.translate(-center.x, -center.y, -center.z);
-    return { geometry, center };
-  });
+  return fragments;
 }
 
 export function createTreeBreakage(scene, sources, capacity = 8) {
   const fragments = sources.flatMap(({ geometry, color }) => {
-    const material = new THREE.MeshStandardMaterial({ color, roughness: .9, side: THREE.DoubleSide });
+    const material = new THREE.MeshStandardMaterial({ color, roughness: .9 });
     return splitGeometry(geometry).map(part => {
       const mesh = new THREE.InstancedMesh(part.geometry, material, capacity);
       mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
@@ -38,37 +64,32 @@ export function createTreeBreakage(scene, sources, capacity = 8) {
     });
   });
   const trees = [], dummy = new THREE.Object3D(), root = new THREE.Object3D();
-  const axis = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0), fall = new THREE.Quaternion(), turn = new THREE.Quaternion(), spin = new THREE.Quaternion();
+  const axis = new THREE.Vector3(), spin = new THREE.Quaternion();
   function burst(prop) {
     if (trees.length >= capacity) trees.shift();
-    trees.push({ ...prop, age: 0, fresh: true });
+    trees.push({ ...prop, age: 0 });
   }
   function update(dt, world) {
-    for (let i = trees.length - 1; i >= 0; i--) {
-      const tree = trees[i];
-      if (tree.fresh) tree.fresh = false; else tree.age += dt;
-      if (tree.age >= 3.6) trees.splice(i, 1);
-    }
+    for (let i = trees.length - 1; i >= 0; i--) { trees[i].age += dt; if (trees[i].age >= 2.8) trees.splice(i, 1); }
     trees.forEach((tree, index) => {
-      const t = tree.age, speed = Math.hypot(tree.vx, tree.vz) || 1;
-      axis.set(tree.vz / speed, 0, -tree.vx / speed);
-      const bend = Math.min(t / .7, 1);
-      fall.setFromAxisAngle(axis, 1.35 * bend * bend);
-      turn.setFromAxisAngle(up, tree.turn);
-      root.position.set(tree.x, tree.y - .08, tree.z); root.quaternion.copy(fall).multiply(turn); root.scale.setScalar(tree.size); root.updateMatrix();
-      // Cracking begins after the initial bend; displacement starts at zero.
-      const separation = Math.max(0, t - .28), spread = separation * separation;
-      fragments.forEach(({ mesh, center }, part) => {
-        dummy.position.copy(center).applyMatrix4(root.matrix);
+      const t = tree.age, speed = Math.hypot(tree.vx, tree.vz), force = Math.min(1.7, Math.max(.65, speed / 45));
+      // A 20 ms onset keeps the source shape at contact while opening visible
+      // gaps in the next few frames. Faster impacts separate more forcefully.
+      const travel = t - .02 * (1 - Math.exp(-t / .02));
+      root.position.set(tree.x, tree.y - .08, tree.z); root.rotation.set(0, tree.turn, 0); root.scale.setScalar(tree.size); root.updateMatrix();
+      fragments.forEach(({ mesh, center, half }, part) => {
         const direction = part * 2.399 + tree.turn;
-        dummy.position.x += (tree.vx * .025 + Math.cos(direction) * 1.4) * spread;
-        dummy.position.z += (tree.vz * .025 + Math.sin(direction) * 1.4) * spread;
-        dummy.position.y -= 5 * spread;
-        dummy.position.y = Math.max(dummy.position.y, world.surface(dummy.position.x, dummy.position.z) + .16 * tree.size);
-        spin.setFromAxisAngle(axis, separation * (part % 3 - 1) * .8);
+        dummy.position.copy(center).applyMatrix4(root.matrix);
+        dummy.position.x += (tree.vx * (.23 + (part % 3) * .07) + Math.cos(direction) * 8 * force) * travel;
+        dummy.position.z += (tree.vz * (.23 + (part % 3) * .07) + Math.sin(direction) * 8 * force) * travel;
+        dummy.position.y += (3 + part % 3 * 1.8) * force * travel - 9 * t * t;
+        axis.set(Math.cos(direction), .35, Math.sin(direction)).normalize();
+        spin.setFromAxisAngle(axis, Math.min(travel, 1.1) * (2 + part % 3) * force);
         dummy.quaternion.copy(root.quaternion).multiply(spin);
-        dummy.scale.setScalar(tree.size * Math.min(1, (3.6 - t) / .8)); dummy.updateMatrix();
-        mesh.setMatrixAt(index, dummy.matrix);
+        dummy.scale.setScalar(tree.size * Math.min(1, (2.8 - t) / .65)); dummy.updateMatrix();
+        const e = dummy.matrix.elements, extentY = Math.abs(e[1]) * half.x + Math.abs(e[5]) * half.y + Math.abs(e[9]) * half.z;
+        dummy.position.y = Math.max(dummy.position.y, world.surface(dummy.position.x, dummy.position.z) + extentY);
+        dummy.updateMatrix(); mesh.setMatrixAt(index, dummy.matrix);
       });
     });
     for (const { mesh } of fragments) { mesh.count = trees.length; mesh.instanceMatrix.needsUpdate = true; }

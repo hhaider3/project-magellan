@@ -1,14 +1,15 @@
-import { createTerrain } from './terrain.mjs?v=impact-2';
-import { FAR_SIZE, FAR_VIEW, NEAR_VIEW, farIndices } from './streaming-layout.mjs?v=impact-2';
-import { batchStaticMeshes } from './batching.mjs?v=impact-2';
-import { createProfiler } from './profiling.mjs?v=impact-2';
-import { createDebris } from './debris.mjs?v=impact-2';
-import { createVehiclePresentation } from './vehicle-presentation.mjs?v=impact-2';
-import { createTreeBreakage } from './tree-breakage.mjs?v=impact-2';
-import { createBreakAudio } from './break-audio.mjs?v=impact-2';
+import { createTerrain } from './terrain.mjs?v=impact-motion-3';
+import { FAR_SIZE, FAR_VIEW, NEAR_VIEW, farIndices } from './streaming-layout.mjs?v=impact-motion-3';
+import { batchStaticMeshes } from './batching.mjs?v=impact-motion-3';
+import { createProfiler } from './profiling.mjs?v=impact-motion-3';
+import { createDebris } from './debris.mjs?v=impact-motion-3';
+import { createVehiclePresentation } from './vehicle-presentation.mjs?v=impact-motion-3';
+import { followTarget, followValue } from './camera-motion.mjs?v=impact-motion-3';
+import { createTreeBreakage } from './tree-breakage.mjs?v=impact-motion-3';
+import { createBreakAudio } from './break-audio.mjs?v=impact-motion-3';
 import * as THREE from 'three';
-import { CHUNK, GRID, ROAD_SPACING, ROAD_HALF, FIXED_DT, featurePoint, clamp, mix, smoothstep, hash, createWorld, createVehicle, stepVehicle, recoverVehicle } from './world.mjs?v=impact-2';
-import { buildLandmark, cloneOwnedGeometry, createCactusGeometry } from './scenery.mjs?v=impact-2';
+import { CHUNK, GRID, ROAD_SPACING, ROAD_HALF, FIXED_DT, featurePoint, clamp, mix, smoothstep, hash, createWorld, createVehicle, stepVehicle, recoverVehicle } from './world.mjs?v=impact-motion-3';
+import { buildLandmark, cloneOwnedGeometry, createCactusGeometry } from './scenery.mjs?v=impact-motion-3';
 
 const $ = id => document.getElementById(id);
 const coarse = matchMedia('(pointer:coarse)').matches || navigator.maxTouchPoints > 0;
@@ -353,7 +354,7 @@ function beginWorldLoad(continueDriving = false) {
   for (const chunk of chunks.values()) disposeChunk(chunk); chunks.clear();
   for (const tile of farTiles.values()) { scene.remove(tile); tile.geometry.dispose(); } farTiles.clear();
   terrain = createTerrain(world);
-  worker = new Worker(new URL('./world-worker.mjs?v=impact-2', import.meta.url), { type: 'module' });
+  worker = new Worker(new URL('./world-worker.mjs?v=impact-motion-3', import.meta.url), { type: 'module' });
   const failed = message => { streamError = message; running = false; $('loadError').hidden = false; $('startBtn').firstElementChild.textContent = 'Unable to prepare the world'; };
   worker.onerror = error => failed(error.message);
   worker.onmessage = ({ data }) => {
@@ -497,10 +498,14 @@ function resetTiming() {
   accumulator = 0; previousTime = performance.now(); frame.lastNow = previousTime;
   uiTime = mapTime = 0;
   vehiclePresentation.reset(vehicle);
+  updateDesiredCamera();
+  previousDesiredCamera.copy(desiredCamera); previousLook.copy(look);
+  previousTargetFov = camera.fov;
 }
 function resetCamera() {
   updateDesiredCamera();
   cameraPosition.copy(desiredCamera); cameraTarget.copy(look);
+  previousDesiredCamera.copy(desiredCamera); previousLook.copy(look);
   cameraPosition.y = Math.max(cameraPosition.y, world.surface(cameraPosition.x, cameraPosition.z) + 1.8);
   camera.position.copy(cameraPosition); camera.lookAt(cameraTarget);
 }
@@ -622,6 +627,8 @@ function updateHUD() {
   $('elevation').textContent = Math.round(world.surface(vehicle.x, vehicle.z)) + ' M';
 }
 const vehiclePosition = new THREE.Vector3(), cameraPosition = new THREE.Vector3(), cameraTarget = new THREE.Vector3(), desiredCamera = new THREE.Vector3(), forward = new THREE.Vector3(), look = new THREE.Vector3();
+const previousDesiredCamera = new THREE.Vector3(), previousLook = new THREE.Vector3();
+let previousTargetFov = camera.fov;
 const debris = createDebris(scene), rollPivot = new THREE.Vector3();
 const treeBreakage = createTreeBreakage(scene, [
   { geometry: trunkGeo, color: trunkMaterial.color },
@@ -663,14 +670,15 @@ function render(dt) {
   contact.rotation.set(-Math.PI / 2 + pose.pitch, 0, -pose.heading, 'YXZ');
   contact.material.opacity = clamp(1 - (pose.y - pose.groundY) * .13, .25, 1);
   updateDesiredCamera(pose);
-  if (!started || cameraMode === 2 && running) cameraPosition.copy(desiredCamera);
-  else cameraPosition.lerp(desiredCamera, 1 - Math.exp(-5 * dt));
+  followTarget(cameraPosition, previousDesiredCamera, desiredCamera, 5, !started || cameraMode === 2 && running ? 0 : dt);
   cameraPosition.y = Math.max(cameraPosition.y, world.surface(cameraPosition.x, cameraPosition.z) + 1.8);
   camera.position.copy(cameraPosition);
-  cameraTarget.lerp(look, !started || dt === 0 ? 1 : 1 - Math.exp(-8 * dt));
+  followTarget(cameraTarget, previousLook, look, 8, !started ? 0 : dt);
   camera.lookAt(cameraTarget);
   const targetFov = cameraMode === 2 ? 67 : 57 + (reducedMotion ? 0 : Math.min(Math.abs(pose.speed) * .15, 10));
-  if (Math.abs(camera.fov - targetFov) > .01) { camera.fov = mix(camera.fov, targetFov, dt ? 1 - Math.exp(-2.45 * dt) : 1); camera.updateProjectionMatrix(); }
+  const nextFov = followValue(camera.fov, previousTargetFov, targetFov, 2.45, dt);
+  previousTargetFov = targetFov;
+  if (Math.abs(camera.fov - nextFov) > 1e-6) { camera.fov = nextFov; camera.updateProjectionMatrix(); }
   sky.position.copy(camera.position);
   sun.position.set(pose.x - 65, pose.y + 100, pose.z + 45); sun.target.position.copy(car.position); sun.target.updateMatrixWorld();
   if (audio && running) {

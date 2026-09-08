@@ -49,7 +49,7 @@ test('high-speed scenery impact hides every instance and releases bounded debris
   expect(errors).toEqual([]);
 });
 
-test('trees fall in visible sections and breaking audio respects mute', async ({ page }, testInfo) => {
+test('trees fracture into visible sections and breaking audio respects mute', async ({ page }, testInfo) => {
   const errors = await openGame(page, 77, 'tree-smash');
   await page.getByRole('button', { name: 'Unmute sound', exact: true }).click();
   await page.getByRole('button', { name: 'Start exploring', exact: true }).click();
@@ -59,7 +59,7 @@ test('trees fall in visible sections and breaking audio respects mute', async ({
   const impact = await snapshot(page);
   expect(impact.fallingTrees).toBeLessThanOrEqual(8); expect(impact.hiddenProps).toBeGreaterThan(0);
   expect(impact.sound.played).toBeGreaterThan(0); expect(impact.sound.masterGain).toBe(1);
-  await testInfo.attach('falling-tree', { body: await page.screenshot(), contentType: 'image/png' });
+  await testInfo.attach('fractured-tree', { body: await page.screenshot(), contentType: 'image/png' });
   await page.waitForTimeout(600);
   await testInfo.attach('tree-separating', { body: await page.screenshot(), contentType: 'image/png' });
   await page.getByRole('button', { name: 'Mute sound', exact: true }).click();
@@ -72,7 +72,7 @@ test('trees fall in visible sections and breaking audio respects mute', async ({
 test('break sound playback produces audio and a muted output is silent', async ({ page }) => {
   await page.goto('/');
   const result = await page.evaluate(async () => {
-    const { createBreakAudio } = await import('/break-audio.mjs?v=impact-2');
+    const { createBreakAudio } = await import('/break-audio.mjs?v=impact-motion-3');
     async function render(muted) {
       const context = new OfflineAudioContext(1, 44100, 44100), master = context.createGain();
       master.gain.value = muted ? 0 : 1; master.connect(context.destination);
@@ -143,6 +143,8 @@ test('keyboard jump, driving across chunks, recovery, and new-world reset', asyn
   expect(errors).toEqual([]);
 });
 
+test.describe('mobile Chrome controls', () => {
+  test.use({ hasTouch: true, isMobile: true, deviceScaleFactor: 2, viewport: { width: 390, height: 844 } });
 test('a second world request cancels old work and touch controls still jump', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.emulateMedia({ reducedMotion: 'reduce' });
@@ -156,7 +158,9 @@ test('a second world request cancels old work and touch controls still jump', as
   expect(state.streamError).toBe(null); expect(state.loading).toBe(false); expect(state.vehicle.distance).toBe(0);
   await page.getByRole('button', { name: 'Start exploring', exact: true }).click();
   const jump = page.getByRole('button', { name: 'Jump', exact: true });
-  await expect(jump).toBeVisible(); await jump.click();
+  await expect(jump).toBeVisible(); await jump.tap();
   await expect.poll(async () => (await snapshot(page)).vehicle.jumps).toBe(1);
   expect(errors).toEqual([]);
+});
+
 });

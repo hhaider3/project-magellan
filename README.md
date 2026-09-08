@@ -36,7 +36,7 @@ Touch devices and compact windows show steering, throttle, reverse, **Jump**, an
 
 - Mountains are continuous terrain with broad foothills. Random cone mountains, abrupt biome switches, terrain walls, and deep-water barriers are gone.
 - Roads are painted directly onto the terrain, so there are no raised road ribbons or mismatched road collision surfaces.
-- Denser seeded pine clusters, shrubs, small rocks, boulders, roadside markers, cabins and lookout towers give the world more places to explore. Road and ramp approach clearances keep the extra scenery from blocking the route. Small rocks and shrubs are forgiving details; trees collide at the trunk. Cacti, trees and small rocks break above a direct impact speed of **65 km/h**; boulders require **94 km/h**. The car keeps most of its momentum while fragments scatter, bounce, and shrink away. Trees retain their original silhouette at impact, bend in the hit direction, then split into larger trunk and foliage sections over several frames; only small splinters burst immediately. Up to eight falling trees share nine instanced draws. Broken props stay gone for this world visit, including after chunk reloads; a new world or page reload restores them. Small debris uses one instanced draw call and a 192-piece cap.
+- Denser seeded pine clusters, shrubs, small rocks, boulders, roadside markers, cabins and lookout towers give the world more places to explore. Road and ramp approach clearances keep the extra scenery from blocking the route. Small rocks and shrubs are forgiving details; trees collide at the trunk. Cacti, trees and small rocks break above a direct impact speed of **65 km/h**; boulders require **94 km/h**. The car keeps most of its momentum while fragments scatter, bounce, and shrink away. Trees retain their original silhouette at contact, then fracture into closed trunk and foliage chunks with a 20 ms onset. Highway-speed hits separate the sections visibly within 80 ms, with independent tumbling and stronger scatter at higher speeds. Up to eight breaking trees share nine instanced draws. Broken props stay gone for this world visit, including after chunk reloads; a new world or page reload restores them. Small debris uses one instanced draw call and a 192-piece cap.
 - Jumping uses a real impulse, gravity, buffered input and a short grace period after leaving a crest. Quick taps are queued before the next physics tick. Holding Jump does not bounce the car repeatedly.
 - Fixed 120 Hz physics handles acceleration, hill climbing, drift, airborne motion, landing and collision sliding. Top speed on level asphalt is approximately **301 km/h**, with stronger braking and speed-sensitive steering. Recovery finds clear nearby ground without erasing trip or best-jump distance.
 - Steeper rolling hills, gullies and closely spaced off-road ridges demand more care at speed. Roads retain smoother profiles.
@@ -54,7 +54,8 @@ Touch devices and compact windows show steering, throttle, reverse, **Jump**, an
 - `terrain.mjs` / `world-worker.mjs` / `streaming-layout.mjs`: reusable terrain data, background generation and seam-free near/far coverage.
 - `batching.mjs`: merges static meshes within the car body and each wheel animation group.
 - `vehicle-presentation.mjs`: interpolates fixed-step poses for smooth car, wheel, camera and shadow motion across display refresh rates.
-- `tree-breakage.mjs`: staged tree bending and fracture using the original geometry.
+- `camera-motion.mjs`: integrates camera position, aim and field of view against moving targets without changing follow lag when frame intervals change.
+- `tree-breakage.mjs`: immediate speed-dependent fracture into solid sections cut from the original geometry.
 - `break-audio.mjs`: precomputed wood, cactus and stone effects with capped simultaneous voices.
 - `debris.mjs`: bounded instanced breakage particles with terrain bounce and cleanup.
 - `profiling.mjs`: opt-in, bounded CPU timing measurements.
@@ -89,10 +90,10 @@ To update the pinned graphics dependency deliberately, run `npm run vendor` and 
 
 Stunt test approaches are available at `?seed=1&test=twist` and `?seed=1&test=smash`; these isolate trip records just like the other browser harness modes.
 
-The rendered car interpolates the two latest physics poses (at most one 120 Hz tick of visual delay). Camera tracking, wheel rotation and shadows use that same pose. Tests cover 60–240 Hz rendering, uneven frame intervals, barrel-roll angle wrapping and teleport resets.
+The rendered car interpolates the two latest physics poses (at most one 120 Hz tick of visual delay). Camera tracking, wheel rotation and shadows use that same pose. Camera position, aim and field of view integrate the target trajectory over each frame; endpoint-only smoothing changed follow distance when the display changed refresh rates. Tests cover 30–240 Hz camera tracking, abrupt 120→30→90 Hz transitions, uneven frame intervals, barrel-roll angle wrapping and teleport resets. These timing tests do not measure physical phone GPU or display performance.
 
 Ramp backs and sides obey normal ballistic separation, so oblique and reverse approaches carry upward momentum into the air instead of sticking to the deck. Tests compare five rear/side directions against identical unmarked terrain, check oblique front approaches and slow traversal, and drive a rear-diagonal approach in Chromium (`?seed=1&test=ramp-side`).
 
 Breaking sounds share the engine’s sound toggle (M or the speaker button); muting silences all game audio. Highway power rises smoothly near the road, with level-road cruising around 301 km/h, off-road cruising around 236 km/h, and a downhill cap of 331 km/h. Preview tree impacts with `?seed=77&test=tree-smash`.
 
-`tests/effects.html` provides a fixed-camera tree breakup preview with impact, bend, split and settle stages for visual regression checks.
+`tests/effects.html` provides a fixed-camera tree breakup preview at highway impact speed with contact, 80 ms fracture, 160 ms split and settle stages for visual regression checks.

@@ -11,28 +11,69 @@ const makeSources = () => [
 ];
 const flat = { surface: () => 0 };
 const prop = { x: 4, y: .08, z: -3, size: 1.2, turn: .7, vx: 0, vz: 40 };
-function vertices(geometry, matrix) {
-  const flat = geometry.index ? geometry.toNonIndexed() : geometry, p = flat.getAttribute('position'), v = new THREE.Vector3(), result = [];
-  for (let i = 0; i < p.count; i++) { v.fromBufferAttribute(p, i).applyMatrix4(matrix); result.push(v.toArray().map(x => Math.round(x * 10000)).join(',')); }
+function solidVolume(geometry) {
+  const flat = geometry.index ? geometry.toNonIndexed() : geometry;
+  const p = flat.getAttribute('position'), a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3();
+  let volume = 0;
+  for (let i = 0; i < p.count; i += 3) {
+    a.fromBufferAttribute(p, i); b.fromBufferAttribute(p, i + 1); c.fromBufferAttribute(p, i + 2);
+    volume += a.dot(b.cross(c)) / 6;
+  }
   if (flat !== geometry) flat.dispose();
-  return result;
+  return volume;
 }
-test('tree fracture initially preserves the standing silhouette then separates continuously', () => {
+function piecePositions(scene) {
+  return scene.children.map(mesh => { const m = new THREE.Matrix4(); mesh.getMatrixAt(0, m); return new THREE.Vector3().setFromMatrixPosition(m); });
+}
+test('solid tree sections preserve the original exterior at contact and close every cut', () => {
   const sources = makeSources(), scene = new THREE.Scene(), effect = createTreeBreakage(scene, sources);
-  const root = new THREE.Object3D(); root.position.set(prop.x, prop.y - .08, prop.z); root.rotation.y = prop.turn; root.scale.setScalar(prop.size); root.updateMatrix();
-  const before = sources.flatMap(({ geometry }) => vertices(geometry, root.matrix)).sort();
-  effect.burst(prop); effect.update(1 / 60, flat);
-  const m = new THREE.Matrix4();
-  const after = scene.children.flatMap(mesh => { mesh.getMatrixAt(0, m); return vertices(mesh.geometry, m); }).sort();
-  assert.deepEqual(after, before, 'replacement retains the exact triangles at impact');
-  scene.children[0].getMatrixAt(0, m); const first = m.clone();
-  effect.update(1 / 120, flat); scene.children[0].getMatrixAt(0, m);
-  assert.ok(new THREE.Vector3().setFromMatrixPosition(m).distanceTo(new THREE.Vector3().setFromMatrixPosition(first)) < .01, 'no initial jump to flying particles');
-  for (let i = 0; i < 90; i++) effect.update(1 / 60, flat);
-  scene.children[0].getMatrixAt(0, m); assert.notDeepEqual(m.elements, first.elements);
-  assert.ok(m.elements.every(Number.isFinite));
-  for (let i = 0; i < 150; i++) effect.update(1 / 60, flat);
-  assert.equal(effect.count, 0); assert.ok(scene.children.every(mesh => mesh.count === 0));
+  const original = new THREE.Group(); original.position.set(prop.x, prop.y - .08, prop.z); original.rotation.y = prop.turn; original.scale.setScalar(prop.size);
+  for (const { geometry } of sources) original.add(new THREE.Mesh(geometry, new THREE.MeshBasicMaterial()));
+  original.updateMatrixWorld(true);
+  effect.burst(prop); effect.update(0, flat); scene.updateMatrixWorld(true);
+  const before = new THREE.Box3().setFromObject(original), after = new THREE.Box3().setFromObject(scene);
+  assert.ok(before.min.distanceTo(after.min) < 1e-5); assert.ok(before.max.distanceTo(after.max) < 1e-5);
+  // Ray hits compare the actual outside surface, not triangle counts (the cuts
+  // necessarily introduce new triangles). Check every side and height.
+  for (let angle = 0; angle < 12; angle++) for (let y = .1; y < 8.2; y += .17) {
+    const direction = new THREE.Vector3(Math.sin(angle), 0, Math.cos(angle));
+    const origin = new THREE.Vector3(prop.x, y, prop.z).addScaledVector(direction, 20);
+    const ray = new THREE.Raycaster(origin, direction.negate());
+    const a = ray.intersectObject(original)[0], b = ray.intersectObject(scene)[0];
+    assert.equal(Boolean(a), Boolean(b));
+    if (a) assert.ok(Math.abs(a.distance - b.distance) < 1e-5);
+  }
+  sources.forEach(({ geometry }, source) => {
+    const sections = scene.children.slice(source * 3, source * 3 + 3);
+    const volumes = sections.map(mesh => solidVolume(mesh.geometry));
+    assert.ok(volumes.every(v => v > 0), 'fragments have solid volume and outward winding');
+    assert.ok(Math.abs(volumes.reduce((a, b) => a + b, 0) - solidVolume(geometry)) < 1e-5);
+    for (const mesh of sections) {
+      // From either end, the center ray must hit a cap, not see through a skin.
+      for (const sign of [-1, 1]) {
+        const ray = new THREE.Raycaster(new THREE.Vector3(0, sign * 20, 0), new THREE.Vector3(0, -sign, 0));
+        assert.ok(ray.intersectObject(new THREE.Mesh(mesh.geometry, mesh.material)).length > 0);
+      }
+    }
+  });
+});
+test('fast tree impacts open visible gaps immediately with continuous onset and bounded lifetime', () => {
+  function simulate(speed) {
+    const scene = new THREE.Scene(), effect = createTreeBreakage(scene, makeSources());
+    effect.burst({ ...prop, vz: speed }); effect.update(0, flat);
+    const initial = piecePositions(scene);
+    effect.update(.00001, flat);
+    assert.ok(piecePositions(scene).every((p, i) => p.distanceTo(initial[i]) < .001), 'continuous at the contact instant');
+    effect.update(.08 - .00001, flat);
+    const displacements = piecePositions(scene).map((p, i) => p.sub(initial[i]));
+    const separation = displacements[0].distanceTo(displacements[1]);
+    for (let i = 0; i < 180; i++) effect.update(1 / 60, flat);
+    assert.equal(effect.count, 0); assert.ok(scene.children.every(mesh => mesh.count === 0));
+    return separation;
+  }
+  const slow = simulate(20), fast = simulate(83.3);
+  assert.ok(fast > 1, 'neighboring trunk sections separate by over a metre within 80 ms at highway speed');
+  assert.ok(fast > slow * 1.5, 'impact response scales with speed');
 });
 test('falling trees have a fixed capacity and reset without modifying source geometry', () => {
   const sources = makeSources(), before = sources.map(s => [...s.geometry.attributes.position.array]);
