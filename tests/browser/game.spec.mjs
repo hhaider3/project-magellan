@@ -57,9 +57,27 @@ test('a purple ramp launches the car into a barrel roll and lands driveable', as
   await expect.poll(async () => Math.abs((await snapshot(page)).vehicle.rollVelocity), { timeout: 30000, intervals: [100] }).toBeGreaterThan(1);
   await expect.poll(async () => (await snapshot(page)).vehicle.airRoll, { timeout: 15000, intervals: [100] }).toBeGreaterThan(Math.PI);
   await testInfo.attach('airborne-roll', { body: await page.screenshot(), contentType: 'image/png' });
-  await expect.poll(async () => (await snapshot(page)).vehicle.landings, { timeout: 30000 }).toBeGreaterThan(0);
+  // A ramp's uneven deck can produce a small hop before the main launch.
+  // Wait for the completed jump to land, not merely any earlier contact.
+  await expect.poll(async () => {
+    const { vehicle } = await snapshot(page);
+    return vehicle.grounded && vehicle.bestJump > 25 && vehicle.rollVelocity === 0;
+  }, { timeout: 30000 }).toBe(true);
   await page.keyboard.up('KeyW');
   expect((await snapshot(page)).vehicle.rollVelocity).toBe(0);
+  expect(errors).toEqual([]);
+});
+
+test('an approach from behind at an angle launches and lands without pressing Jump', async ({ page }) => {
+  const errors = await openGame(page, 1, 'ramp-side');
+  await page.getByRole('button', { name: 'Start exploring', exact: true }).click();
+  await page.keyboard.down('KeyW');
+  await expect.poll(async () => {
+    const { vehicle } = await snapshot(page); return vehicle.y - vehicle.groundY;
+  }, { timeout: 20000, intervals: [100] }).toBeGreaterThan(2);
+  await expect.poll(async () => (await snapshot(page)).vehicle.bestJump, { timeout: 30000 }).toBeGreaterThan(10);
+  await page.keyboard.up('KeyW');
+  expect((await snapshot(page)).vehicle.jumps).toBe(0);
   expect(errors).toEqual([]);
 });
 test('keyboard jump, driving across chunks, recovery, and new-world reset', async ({ page }) => {

@@ -78,7 +78,7 @@ driveButton.onclick = () => run('drive'); rampButton.onclick = () => run('ramp')
 
 <script type="module">
 import * as THREE from 'three';
-import { cloneOwnedGeometry } from '../scenery.mjs?v=motion-1';
+import { cloneOwnedGeometry } from '../scenery.mjs?v=ramp-exits-1';
 document.getElementById('geometry').onclick = () => {
   const results = document.getElementById('results'); results.replaceChildren();
   const check = (ok, text) => { const li = document.createElement('li'); li.className = ok ? 'passed' : 'failed'; li.textContent = `${ok ? 'PASS' : 'FAIL'}: ${text}`; results.append(li); if (!ok) throw Error(text); };

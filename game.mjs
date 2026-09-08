@@ -1,17 +1,17 @@
-import { createTerrain } from './terrain.mjs?v=motion-1';
-import { FAR_SIZE, FAR_VIEW, NEAR_VIEW, farIndices } from './streaming-layout.mjs?v=motion-1';
-import { batchStaticMeshes } from './batching.mjs?v=motion-1';
-import { createProfiler } from './profiling.mjs?v=motion-1';
-import { createDebris } from './debris.mjs?v=motion-1';
-import { createVehiclePresentation } from './vehicle-presentation.mjs?v=motion-1';
+import { createTerrain } from './terrain.mjs?v=ramp-exits-1';
+import { FAR_SIZE, FAR_VIEW, NEAR_VIEW, farIndices } from './streaming-layout.mjs?v=ramp-exits-1';
+import { batchStaticMeshes } from './batching.mjs?v=ramp-exits-1';
+import { createProfiler } from './profiling.mjs?v=ramp-exits-1';
+import { createDebris } from './debris.mjs?v=ramp-exits-1';
+import { createVehiclePresentation } from './vehicle-presentation.mjs?v=ramp-exits-1';
 import * as THREE from 'three';
-import { CHUNK, GRID, ROAD_SPACING, ROAD_HALF, FIXED_DT, featurePoint, clamp, mix, smoothstep, hash, createWorld, createVehicle, stepVehicle, recoverVehicle } from './world.mjs?v=motion-1';
-import { buildLandmark, cloneOwnedGeometry, createCactusGeometry } from './scenery.mjs?v=motion-1';
+import { CHUNK, GRID, ROAD_SPACING, ROAD_HALF, FIXED_DT, featurePoint, clamp, mix, smoothstep, hash, createWorld, createVehicle, stepVehicle, recoverVehicle } from './world.mjs?v=ramp-exits-1';
+import { buildLandmark, cloneOwnedGeometry, createCactusGeometry } from './scenery.mjs?v=ramp-exits-1';
 
 const $ = id => document.getElementById(id);
 const coarse = matchMedia('(pointer:coarse)').matches || navigator.maxTouchPoints > 0;
 const reducedMotion = matchMedia('(prefers-reduced-motion:reduce)').matches;
-const testMode = ['drive', 'ramp', 'twist', 'smash', 'browser'].includes(new URLSearchParams(location.search).get('test'));
+const testMode = ['drive', 'ramp', 'ramp-side', 'twist', 'smash', 'browser'].includes(new URLSearchParams(location.search).get('test'));
 const profiler = createProfiler(testMode);
 const bootStarted = performance.now();
 if (coarse) document.body.classList.add('touch');
@@ -23,6 +23,11 @@ let world = createWorld(seed), vehicle = createVehicle(world);
 if (new URLSearchParams(location.search).get('test') === 'ramp') {
   const p = featurePoint(world.starterRamp, 0, -35);
   vehicle = createVehicle(world, p.x, p.z, world.starterRamp.heading);
+}
+if (new URLSearchParams(location.search).get('test') === 'ramp-side') {
+  const ramp = world.starterRamp, target = featurePoint(ramp, 0, ramp.length * .85), heading = ramp.heading + Math.PI * .75;
+  vehicle = createVehicle(world, target.x - Math.sin(heading) * 18, target.z - Math.cos(heading) * 18, heading);
+  vehicle.vx = Math.sin(heading) * 40; vehicle.vz = Math.cos(heading) * 40; vehicle.speed = 40;
 }
 if (new URLSearchParams(location.search).get('test') === 'twist') {
   const p = featurePoint(world.twistRamp, 0, -35);
@@ -340,7 +345,7 @@ function beginWorldLoad(continueDriving = false) {
   for (const chunk of chunks.values()) disposeChunk(chunk); chunks.clear();
   for (const tile of farTiles.values()) { scene.remove(tile); tile.geometry.dispose(); } farTiles.clear();
   terrain = createTerrain(world);
-  worker = new Worker(new URL('./world-worker.mjs?v=motion-1', import.meta.url), { type: 'module' });
+  worker = new Worker(new URL('./world-worker.mjs?v=ramp-exits-1', import.meta.url), { type: 'module' });
   const failed = message => { streamError = message; running = false; $('loadError').hidden = false; $('startBtn').firstElementChild.textContent = 'Unable to prepare the world'; };
   worker.onerror = error => failed(error.message);
   worker.onmessage = ({ data }) => {

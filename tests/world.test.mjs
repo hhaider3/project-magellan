@@ -229,3 +229,39 @@ test('jumping from an upper twisted deck inherits its handedness only at speed',
     assert.equal(Math.sign(car.rollVelocity), speed > 12 ? twist : 0);
   }
 });
+
+test('ramp backs and sides retain the same ballistic motion as identical unmarked terrain', () => {
+  for (const degrees of [90, 135, 180, 225, 270]) {
+    const world = createWorld(1), ramp = world.starterRamp;
+    const unmarked = { ...world, rampAt: () => null };
+    const heading = ramp.heading + degrees * Math.PI / 180, target = featurePoint(ramp, 0, ramp.length * .85);
+    const car = createVehicle(world, target.x - Math.sin(heading) * 18, target.z - Math.cos(heading) * 18, heading);
+    car.vx = Math.sin(heading) * 40; car.vz = Math.cos(heading) * 40;
+    const reference = { ...car }; let maxClearance = 0, enteredRamp = false, launched = false, landed = false;
+    for (let i = 0; i < 960; i++) {
+      stepVehicle(car, { up: true }, world, []); stepVehicle(reference, { up: true }, unmarked, []);
+      assert.equal(car.grounded, reference.grounded, `${degrees}° ramp metadata must not glue the car down at tick ${i}`);
+      assert.ok(Math.abs(car.y - reference.y) < 1e-8 && Math.abs(car.vy - reference.vy) < 1e-8);
+      const local = featureLocal(ramp, car.x, car.z);
+      if (local.along > 0 && local.along < ramp.length + ramp.back && Math.abs(local.across) < ramp.width / 2 + 7) enteredRamp = true;
+      if (enteredRamp && !car.grounded && car.y - car.groundY > 1) launched = true;
+      if (launched) { maxClearance = Math.max(maxClearance, car.y - car.groundY); if (car.grounded) { landed = true; break; } }
+    }
+    assert.ok(enteredRamp && launched && landed && maxClearance > 2, `approach ${degrees}° launches and lands`);
+  }
+});
+
+test('oblique front approaches launch and slow ramp driving stays supported', () => {
+  for (const degrees of [-45, 45]) {
+    const world = createWorld(1), ramp = world.starterRamp, heading = ramp.heading + degrees * Math.PI / 180;
+    const target = featurePoint(ramp, 0, ramp.length * .85);
+    const car = createVehicle(world, target.x - Math.sin(heading) * 18, target.z - Math.cos(heading) * 18, heading);
+    car.vx = Math.sin(heading) * 40; car.vz = Math.cos(heading) * 40;
+    let airborne = false;
+    for (let i = 0; i < 600; i++) { stepVehicle(car, { up: true }, world, []); airborne ||= car.y - car.groundY > 2; }
+    assert.ok(airborne && car.landings > 0);
+  }
+  const world = createWorld(1), ramp = world.starterRamp, p = featurePoint(ramp, 0, ramp.length - 3);
+  const car = createVehicle(world, p.x, p.z, ramp.heading + Math.PI); car.vz = -3;
+  for (let i = 0; i < 60; i++) { stepVehicle(car, {}, world, []); assert.equal(car.grounded, true); }
+});

@@ -88,3 +88,5 @@ To update the pinned graphics dependency deliberately, run `npm run vendor` and 
 Stunt test approaches are available at `?seed=1&test=twist` and `?seed=1&test=smash`; these isolate trip records just like the other browser harness modes.
 
 The rendered car interpolates the two latest physics poses (at most one 120 Hz tick of visual delay). Camera tracking, wheel rotation and shadows use that same pose. Tests cover 60–240 Hz rendering, uneven frame intervals, barrel-roll angle wrapping and teleport resets.
+
+Ramp backs and sides obey normal ballistic separation, so oblique and reverse approaches carry upward momentum into the air instead of sticking to the deck. Tests compare five rear/side directions against identical unmarked terrain, check oblique front approaches and slow traversal, and drive a rear-diagonal approach in Chromium (`?seed=1&test=ramp-side`).

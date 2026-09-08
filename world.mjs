@@ -291,9 +291,11 @@ export function stepVehicle(car, input, world, obstacles, dt = FIXED_DT) {
       car.vy = clamp(Math.max(car.vy, rampSpeed * ramp.rise * 1.7 / ramp.length), 6, 28); car.y = Math.max(car.y, g.y) + .03;
       launchRoll(car, ramp, rampSpeed);
     }
-    // Ballistic separation at crests; no synthetic boost or per-frame snapback.
-    else if (!ramp && !car.landLock && horizontal > 9 && car.y + car.vy * dt - 11 * dt * dt > g.y + .018) {
+    // Every surface can fall away beneath the car, including ramp backs and
+    // sides. Being inside a ramp must never suppress ballistic separation.
+    else if (!car.landLock && horizontal > 9 && car.y + car.vy * dt - 11 * dt * dt > g.y + .018) {
       car.grounded = false; car.airtime = 0; car.airDistance = 0; car.airRoll = 0; car.vy = clamp(car.vy, -3, 28); car.y += car.vy * dt;
+      launchRoll(car, ramp, Math.abs(rampSpeed));
     } else { car.y = g.y; car.vy = surfaceVy; }
   } else if (car.y <= g.y && (!car.landLock || car.vy < 0)) {
     car.impact = Math.max(car.impact, clamp(-car.vy * .016, 0, .3));
