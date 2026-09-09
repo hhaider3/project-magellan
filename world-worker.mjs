@@ -1,5 +1,6 @@
-import { createWorld, CHUNK, GRID, ROAD_SPACING } from './world.mjs?v=shadow-fade-1';
-import { createTerrain } from './terrain.mjs?v=shadow-fade-1';
+import { createWorld, CHUNK, GRID, ROAD_SPACING } from './world.mjs?v=grass-1';
+import { createTerrain } from './terrain.mjs?v=grass-1';
+import { buildGrass } from './grass-data.mjs?v=grass-1';
 let world, terrain;
 self.onmessage = ({ data: job }) => {
   try {
@@ -10,6 +11,7 @@ self.onmessage = ({ data: job }) => {
     const ground = terrain.build(wx, wz, size, job.kind === 'near' ? GRID : 24);
     const result = { ...job, ground };
     if (job.kind === 'near') {
+      result.grass = buildGrass(world, job.cx, job.cz, ground);
       result.props = world.props(job.cx, job.cz);
       result.features = world.featuresNear(wx + CHUNK / 2, wz + CHUNK / 2, 100).filter(f => Math.floor(f.x / CHUNK) === job.cx && Math.floor(f.z / CHUNK) === job.cz);
       result.roadside = [];
@@ -23,6 +25,6 @@ self.onmessage = ({ data: job }) => {
       }
     }
     result.workMs = performance.now() - start;
-    self.postMessage(result, Object.values(ground).map(array => array.buffer));
+    self.postMessage(result, [...Object.values(ground), ...Object.values(result.grass || {})].map(array => array.buffer));
   } catch (error) { self.postMessage({ id: job.id, generation: job.generation, error: error.message }); }
 };

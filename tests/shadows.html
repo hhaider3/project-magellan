@@ -4,7 +4,7 @@
 <script type="importmap">{"imports":{"three":"../vendor/three.module.js"}}</script>
 <script type="module">
 import * as THREE from 'three';
-import { installSunShadowFade } from '../shadow-fade.mjs?v=shadow-fade-1';
+import { installSunShadowFade } from '../shadow-fade.mjs?v=grass-1';
 if (!new URLSearchParams(location.search).has('raw')) installSunShadowFade();
 const renderer = new THREE.WebGLRenderer({ antialias: false });
 renderer.setSize(64, 64); renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;

@@ -1,16 +1,17 @@
-import { createTerrain } from './terrain.mjs?v=shadow-fade-1';
-import { FAR_SIZE, FAR_VIEW, NEAR_VIEW, farIndices } from './streaming-layout.mjs?v=shadow-fade-1';
-import { batchStaticMeshes } from './batching.mjs?v=shadow-fade-1';
-import { createProfiler } from './profiling.mjs?v=shadow-fade-1';
-import { createDebris } from './debris.mjs?v=shadow-fade-1';
-import { createVehiclePresentation } from './vehicle-presentation.mjs?v=shadow-fade-1';
-import { followTarget, followValue } from './camera-motion.mjs?v=shadow-fade-1';
-import { createTreeBreakage } from './tree-breakage.mjs?v=shadow-fade-1';
-import { createBreakAudio } from './break-audio.mjs?v=shadow-fade-1';
-import { installSunShadowFade } from './shadow-fade.mjs?v=shadow-fade-1';
+import { createTerrain } from './terrain.mjs?v=grass-1';
+import { FAR_SIZE, FAR_VIEW, NEAR_VIEW, farIndices } from './streaming-layout.mjs?v=grass-1';
+import { batchStaticMeshes } from './batching.mjs?v=grass-1';
+import { createProfiler } from './profiling.mjs?v=grass-1';
+import { createDebris } from './debris.mjs?v=grass-1';
+import { createVehiclePresentation } from './vehicle-presentation.mjs?v=grass-1';
+import { followTarget, followValue } from './camera-motion.mjs?v=grass-1';
+import { createTreeBreakage } from './tree-breakage.mjs?v=grass-1';
+import { createBreakAudio } from './break-audio.mjs?v=grass-1';
+import { installSunShadowFade } from './shadow-fade.mjs?v=grass-1';
+import { createGrass } from './grass.mjs?v=grass-1';
 import * as THREE from 'three';
-import { CHUNK, GRID, ROAD_SPACING, ROAD_HALF, FIXED_DT, featurePoint, clamp, mix, smoothstep, hash, createWorld, createVehicle, stepVehicle, recoverVehicle } from './world.mjs?v=shadow-fade-1';
-import { buildLandmark, cloneOwnedGeometry, createCactusGeometry } from './scenery.mjs?v=shadow-fade-1';
+import { CHUNK, GRID, ROAD_SPACING, ROAD_HALF, FIXED_DT, featurePoint, clamp, mix, smoothstep, hash, createWorld, createVehicle, stepVehicle, recoverVehicle } from './world.mjs?v=grass-1';
+import { buildLandmark, cloneOwnedGeometry, createCactusGeometry } from './scenery.mjs?v=grass-1';
 
 const $ = id => document.getElementById(id);
 const coarse = matchMedia('(pointer:coarse)').matches || navigator.maxTouchPoints > 0;
@@ -100,6 +101,7 @@ scene.add(sky);
 // asphalt now share one surface: no raised ribbons, cuttings, seams or walls.
 const terrainMaterial = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, metalness: 0 });
 const streamUniforms = { uStreamCenter: { value: new THREE.Vector2() } };
+const grass = createGrass(coarse, streamUniforms.uStreamCenter);
 const roadUniforms = { uRoadPhase: { value: world.phase } };
 // Geometry is already coarse at the streaming boundary. Moving the boundary
 // therefore changes tessellation only, never the silhouette or lighting.
@@ -207,7 +209,7 @@ const view = NEAR_VIEW, farTiles = new Map();
 let lastCX = Infinity, lastCZ = Infinity;
 let worker, generation = 0, jobId = 0, jobs = [], pending = new Map(), completed = [];
 let loading = true, resumeAfterLoad = false, loadingStarted = bootStarted, streamError = null;
-function buildChunk({ cx, cz, ground: groundData, props, features, roadside }) {
+function buildChunk({ cx, cz, ground: groundData, props, features, roadside, grass: grassData }) {
   const buildStart = performance.now();
   const group = new THREE.Group(); group.position.set(cx * CHUNK, 0, cz * CHUNK);
   props = props.filter(p => !world.brokenProps.has(p.id));
@@ -246,8 +248,10 @@ function buildChunk({ cx, cz, ground: groundData, props, features, roadside }) {
     o.geometry.setAttribute('groundDelta', o.isInstancedMesh ? new THREE.InstancedBufferAttribute(new Float32Array(deltas), 1) : new THREE.Float32BufferAttribute(deltas, 1));
     softenScenery(o.material);
   });
+  const grassMesh = grass.build(grassData);
+  if (grassMesh) { grass.update(grassMesh, cx, cz, vehicle.x, vehicle.z); group.add(grassMesh); }
   profiler.record('chunkBuild', performance.now() - buildStart);
-  scene.add(group); chunks.set(`${cx},${cz}`, { cx, cz, group, ground, props, features, propInstances });
+  scene.add(group); chunks.set(`${cx},${cz}`, { cx, cz, group, ground, grassMesh, props, features, propInstances });
 }
 function processBreakage() {
   for (const prop of world.drainBreakEvents()) {
@@ -356,7 +360,7 @@ function beginWorldLoad(continueDriving = false) {
   for (const chunk of chunks.values()) disposeChunk(chunk); chunks.clear();
   for (const tile of farTiles.values()) { scene.remove(tile); tile.geometry.dispose(); } farTiles.clear();
   terrain = createTerrain(world);
-  worker = new Worker(new URL('./world-worker.mjs?v=shadow-fade-1', import.meta.url), { type: 'module' });
+  worker = new Worker(new URL('./world-worker.mjs?v=grass-1', import.meta.url), { type: 'module' });
   const failed = message => { streamError = message; running = false; $('loadError').hidden = false; $('startBtn').firstElementChild.textContent = 'Unable to prepare the world'; };
   worker.onerror = error => failed(error.message);
   worker.onmessage = ({ data }) => {
@@ -658,6 +662,7 @@ function updateDesiredCamera(pose = vehicle) {
 function render(dt) {
   const pose = vehiclePresentation.sample(running ? accumulator / FIXED_DT : 1);
   streamUniforms.uStreamCenter.value.set(pose.x, pose.z);
+  for (const chunk of chunks.values()) grass.update(chunk.grassMesh, chunk.cx, chunk.cz, pose.x, pose.z);
   car.rotation.set(pose.pitch, pose.heading, pose.roll, 'YXZ');
   rollPivot.set(0, 1, 0).applyEuler(car.rotation);
   car.position.set(pose.x - rollPivot.x, pose.y + 1 - rollPivot.y, pose.z - rollPivot.z);
@@ -728,6 +733,8 @@ requestAnimationFrame(frame);
 
 profiler.record('initialLoad', performance.now() - bootStarted);
 if (testMode) window.__driveTest = { snapshot: () => {
+  const visibleGrass = [...chunks.values()].filter(c => c.group.visible && c.grassMesh?.visible);
+  const grassStats = { range: grass.range, meshes: visibleGrass.length, tufts: visibleGrass.reduce((n, c) => n + c.grassMesh.geometry.instanceCount, 0) };
   let carMeshes = 0; car.traverse(o => { if (o.isMesh) carMeshes++; });
   let hiddenProps = 0;
   for (const chunk of chunks.values()) for (const [id, refs] of chunk.propInstances) {
@@ -735,5 +742,5 @@ if (testMode) window.__driveTest = { snapshot: () => {
     const hidden = refs.every(({ mesh, index }) => { mesh.getMatrixAt(index, matrix); return matrix.elements[0] === 0 && matrix.elements[5] === 0 && matrix.elements[10] === 0; });
     if (hidden) hiddenProps++;
   }
-  return { metrics: profiler.snapshot(), draws: renderer.info.render.calls, triangles: renderer.info.render.triangles, carMeshes, chunks: chunks.size, farTiles: farTiles.size, loading, generation, streamError, pending: pending.size, queued: jobs.length, carBatching: carBatching.map(({ before, after }) => ({ before, after })), vehicle: { ...vehicle }, renderPose: { ...vehiclePresentation.pose }, debris: debris.count, fallingTrees: treeBreakage.count, sound: audio ? { muted, played: audio.breaks.played, active: audio.breaks.active, masterGain: audio.master.gain.value } : null, brokenProps: world.brokenProps.size, hiddenProps, accumulator, cameraError: cameraPosition.distanceTo(desiredCamera) + cameraTarget.distanceTo(look), camera: cameraPosition.toArray(), target: cameraTarget.toArray() };
+  return { grass: grassStats, metrics: profiler.snapshot(), draws: renderer.info.render.calls, triangles: renderer.info.render.triangles, carMeshes, chunks: chunks.size, farTiles: farTiles.size, loading, generation, streamError, pending: pending.size, queued: jobs.length, carBatching: carBatching.map(({ before, after }) => ({ before, after })), vehicle: { ...vehicle }, renderPose: { ...vehiclePresentation.pose }, debris: debris.count, fallingTrees: treeBreakage.count, sound: audio ? { muted, played: audio.breaks.played, active: audio.breaks.active, masterGain: audio.master.gain.value } : null, brokenProps: world.brokenProps.size, hiddenProps, accumulator, cameraError: cameraPosition.distanceTo(desiredCamera) + cameraTarget.distanceTo(look), camera: cameraPosition.toArray(), target: cameraTarget.toArray() };
 } };

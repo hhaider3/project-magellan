@@ -54,6 +54,7 @@ Touch devices and compact windows show steering, throttle, reverse, **Jump**, an
 - `terrain.mjs` / `world-worker.mjs` / `streaming-layout.mjs`: reusable terrain data, background generation and seam-free near/far coverage.
 - `batching.mjs`: merges static meshes within the car body and each wheel animation group.
 - `vehicle-presentation.mjs`: interpolates fixed-step poses for smooth car, wheel, camera and shadow motion across display refresh rates.
+- `grass-data.mjs` / `grass.mjs`: background placement and batched near-field plains grass, with reduced mobile density.
 - `shadow-fade.mjs`: fades directional shadows inside the moving shadow-map boundary, preserving nearby contrast and existing mobile/desktop map resolutions.
 - `camera-motion.mjs`: integrates camera position, aim and field of view against moving targets without changing follow lag when frame intervals change.
 - `tree-breakage.mjs`: immediate speed-dependent fracture into solid sections cut from the original geometry.
@@ -100,3 +101,7 @@ Breaking sounds share the engine’s sound toggle (M or the speaker button); mut
 `tests/effects.html` provides a fixed-camera tree breakup preview at highway impact speed with contact, 80 ms fracture, 160 ms split and settle stages for visual regression checks.
 
 Sun shadows fade across the outer 19 m of their moving 96 m map instead of appearing abruptly at its edge. The fade uses light-space coordinates, so it follows all sides of the shadow volume and applies equally to terrain and objects. Rendered-pixel regression tests compare the old hard cutoff with the new transition on all four edges at 1024 and 2048 shadow-map resolutions.
+
+Plains have seeded patches of low grass. Placement reuses terrain triangles in the generation worker and avoids sand, snow, steep slopes, roads and reserved ramp/landmark areas. Three opaque triangles form each tuft; there are no grass colliders, transparent layers or shadow-casting blades. Desktop grass fades from 38–78 m, while touch devices use half the density and a 22–48 m fade. At most nine desktop or four mobile chunk batches are eligible to draw, capped at 43,200 or 9,600 grass triangles before view culling. Chunk buffers are independently owned and disposed during streaming. Preview meadow grass with `?seed=3`.
+
+Run `PW_CHANNEL=chrome node scripts/profile-grass.mjs` for a same-scene grass-on/off render-cost comparison (requires the development server). The seed-3 meadow measured +4 draw calls and +10,326 triangles at 960×600 on desktop, and +4 calls / +5,160 triangles at 390×844 with touch emulation. This isolates geometry/render cost; software-renderer timing and touch emulation do not measure real phone FPS.

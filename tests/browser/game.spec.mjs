@@ -12,8 +12,10 @@ async function openGame(page, seed = 1, mode = 'browser') {
 }
 const snapshot = page => page.evaluate(() => window.__driveTest.snapshot());
 test('worker loading, actual WebGL rendering, and stationary scenery stay stable', async ({ page }, testInfo) => {
-  const errors = await openGame(page, 100003);
+  const errors = await openGame(page, 3);
   const state = await snapshot(page);
+  expect(state.grass.tufts).toBeGreaterThan(0); expect(state.grass.meshes).toBeLessThanOrEqual(9);
+  expect(state.grass.tufts * 3).toBeLessThanOrEqual(43200);
   expect(state.loading).toBe(false); expect(state.carMeshes).toBeLessThan(40); expect(state.farTiles).toBe(81);
   expect(state.metrics.workerBuild.count).toBeGreaterThanOrEqual(162);
   await page.getByRole('button', { name: 'Start exploring', exact: true }).click();
@@ -72,7 +74,7 @@ test('trees fracture into visible sections and breaking audio respects mute', as
 test('break sound playback produces audio and a muted output is silent', async ({ page }) => {
   await page.goto('/');
   const result = await page.evaluate(async () => {
-    const { createBreakAudio } = await import('/break-audio.mjs?v=shadow-fade-1');
+    const { createBreakAudio } = await import('/break-audio.mjs?v=grass-1');
     async function render(muted) {
       const context = new OfflineAudioContext(1, 44100, 44100), master = context.createGain();
       master.gain.value = muted ? 0 : 1; master.connect(context.destination);
@@ -119,7 +121,7 @@ test('an approach from behind at an angle launches and lands without pressing Ju
   expect(errors).toEqual([]);
 });
 test('keyboard jump, driving across chunks, recovery, and new-world reset', async ({ page }) => {
-  const errors = await openGame(page);
+  const errors = await openGame(page, 3);
   await page.getByRole('button', { name: 'Start exploring', exact: true }).click();
   await page.keyboard.press('Space');
   await expect.poll(async () => (await snapshot(page)).vehicle.jumps).toBe(1);
@@ -127,6 +129,7 @@ test('keyboard jump, driving across chunks, recovery, and new-world reset', asyn
   await page.keyboard.down('KeyW');
   await expect.poll(async () => (await snapshot(page)).vehicle.distance, { timeout: 45000 }).toBeGreaterThan(430);
   const moving = await snapshot(page);
+  expect(moving.grass.meshes).toBeLessThanOrEqual(9);
   const renderLag = Math.hypot(moving.vehicle.x - moving.renderPose.x, moving.vehicle.z - moving.renderPose.z);
   expect(renderLag).toBeGreaterThan(0); expect(renderLag).toBeLessThan(1);
   await page.keyboard.up('KeyW'); await page.keyboard.press('KeyR');
@@ -145,6 +148,16 @@ test('keyboard jump, driving across chunks, recovery, and new-world reset', asyn
 
 test.describe('mobile Chrome controls', () => {
   test.use({ hasTouch: true, isMobile: true, deviceScaleFactor: 2, viewport: { width: 390, height: 844 } });
+test('mobile plains render grass within their smaller density and draw budget', async ({ page }, testInfo) => {
+  const errors = await openGame(page, 3);
+  await page.getByRole('button', { name: 'Start exploring', exact: true }).tap();
+  const state = await snapshot(page);
+  expect(state.grass.range).toBe(48); expect(state.grass.meshes).toBeGreaterThan(0);
+  expect(state.grass.meshes).toBeLessThanOrEqual(4); expect(state.grass.tufts).toBeGreaterThan(0);
+  expect(state.grass.tufts * 3).toBeLessThanOrEqual(9600);
+  await testInfo.attach('mobile-grass', { body: await page.screenshot(), contentType: 'image/png' });
+  expect(errors).toEqual([]);
+});
 test('a second world request cancels old work and touch controls still jump', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.emulateMedia({ reducedMotion: 'reduce' });
