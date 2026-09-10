@@ -54,13 +54,15 @@ function splitGeometry(source) {
 }
 
 export function createTreeBreakage(scene, sources, capacity = 8) {
-  const fragments = sources.flatMap(({ geometry, color }) => {
-    const material = new THREE.MeshStandardMaterial({ color, roughness: .9 });
-    return splitGeometry(geometry).map(part => {
+  const fragments = sources.flatMap(({ geometry, color, fragments: authored, vertexColors = false, variant }) => {
+    const material = new THREE.MeshStandardMaterial({ color, vertexColors, roughness: .94 });
+    // Imported Blender trees supply closed sections made from the exact tree
+    // geometry. This preserves branch gaps, silhouette and vertex colors.
+    return (authored || splitGeometry(geometry)).map(part => {
       const mesh = new THREE.InstancedMesh(part.geometry, material, capacity);
       mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
       mesh.count = 0; mesh.castShadow = true; mesh.receiveShadow = true; mesh.frustumCulled = false; scene.add(mesh);
-      return { ...part, mesh };
+      return { ...part, mesh, variant };
     });
   });
   const trees = [], dummy = new THREE.Object3D(), root = new THREE.Object3D();
@@ -71,13 +73,15 @@ export function createTreeBreakage(scene, sources, capacity = 8) {
   }
   function update(dt, world) {
     for (let i = trees.length - 1; i >= 0; i--) { trees[i].age += dt; if (trees[i].age >= 2.8) trees.splice(i, 1); }
-    trees.forEach((tree, index) => {
+    for (const { mesh } of fragments) mesh.count = 0;
+    trees.forEach(tree => {
       const t = tree.age, speed = Math.hypot(tree.vx, tree.vz), force = Math.min(1.7, Math.max(.65, speed / 45));
       // A 20 ms onset keeps the source shape at contact while opening visible
       // gaps in the next few frames. Faster impacts separate more forcefully.
       const travel = t - .02 * (1 - Math.exp(-t / .02));
       root.position.set(tree.x, tree.y - .08, tree.z); root.rotation.set(0, tree.turn, 0); root.scale.setScalar(tree.size); root.updateMatrix();
-      fragments.forEach(({ mesh, center, half }, part) => {
+      fragments.forEach(({ mesh, center, half, variant }, part) => {
+        if (variant !== undefined && variant !== tree.variant) return;
         const direction = part * 2.399 + tree.turn;
         dummy.position.copy(center).applyMatrix4(root.matrix);
         dummy.position.x += (tree.vx * (.23 + (part % 3) * .07) + Math.cos(direction) * 8 * force) * travel;
@@ -89,10 +93,10 @@ export function createTreeBreakage(scene, sources, capacity = 8) {
         dummy.scale.setScalar(tree.size * Math.min(1, (2.8 - t) / .65)); dummy.updateMatrix();
         const e = dummy.matrix.elements, extentY = Math.abs(e[1]) * half.x + Math.abs(e[5]) * half.y + Math.abs(e[9]) * half.z;
         dummy.position.y = Math.max(dummy.position.y, world.surface(dummy.position.x, dummy.position.z) + extentY);
-        dummy.updateMatrix(); mesh.setMatrixAt(index, dummy.matrix);
+        dummy.updateMatrix(); mesh.setMatrixAt(mesh.count++, dummy.matrix);
       });
     });
-    for (const { mesh } of fragments) { mesh.count = trees.length; mesh.instanceMatrix.needsUpdate = true; }
+    for (const { mesh } of fragments) mesh.instanceMatrix.needsUpdate = true;
   }
   return { burst, update, clear() { trees.length = 0; for (const { mesh } of fragments) mesh.count = 0; }, get count() { return trees.length; } };
 }

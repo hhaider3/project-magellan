@@ -11,6 +11,56 @@ async function openGame(page, seed = 1, mode = 'browser') {
   return errors;
 }
 const snapshot = page => page.evaluate(() => window.__driveTest.snapshot());
+test('Blender trees, cacti and rocks render as seeded instances in forest and desert worlds', async ({ page }, testInfo) => {
+  for (const [seed, kind] of [[3, 'tree'], [100003, 'cactus']]) {
+    const errors = await openGame(page, seed);
+    const state = await snapshot(page);
+    expect(state.natureAsset.ready).toBe(true); expect(state.natureAsset.error).toBeNull();
+    expect(state.natureAsset.assets).toHaveLength(8);
+    expect(state.natureAsset.instances[kind]).toBeGreaterThan(10);
+    expect(state.natureAsset.instances.rock).toBeGreaterThan(0);
+    await page.getByRole('button', { name: 'Start exploring', exact: true }).click();
+    await expect.poll(async () => (await snapshot(page)).metrics.frame?.count ?? 0).toBeGreaterThan(1);
+    await testInfo.attach(`blender-${kind}-world`, { body: await page.screenshot(), contentType: 'image/png' });
+    expect(errors).toEqual([]);
+  }
+});
+
+test('missing scenery keeps the start button disabled and displays a load error', async ({ page }) => {
+  await page.route('**/endless-nature.glb*', route => route.abort());
+  await page.goto('/?seed=3&test=browser');
+  await expect(page.locator('#loadError')).toBeVisible({ timeout: 15000 });
+  await expect(page.getByRole('button', { name: 'Unable to load scenery', exact: true })).toBeDisabled();
+});
+
+test('Blender vehicle loads, steers, spins its wheels and switches its lamps', async ({ page }, testInfo) => {
+  const errors = await openGame(page, 3);
+  const initial = await snapshot(page);
+  expect(initial.carAsset.ready).toBe(true); expect(initial.carAsset.error).toBeNull();
+  expect(initial.carAsset.triangles).toBeLessThan(90000); expect(initial.carMeshes).toBeLessThanOrEqual(30);
+  await page.getByRole('button', { name: 'Start exploring', exact: true }).click();
+  await page.keyboard.press('KeyL');
+  await expect.poll(async () => (await snapshot(page)).carAsset.headlights).toBe(2);
+  await page.keyboard.down('KeyW'); await page.keyboard.down('KeyA');
+  await expect.poll(async () => Math.abs((await snapshot(page)).carAsset.wheelSpin[0])).toBeGreaterThan(.2);
+  const turning = (await snapshot(page)).carAsset;
+  expect(Math.abs(turning.wheelSteer[0])).toBeGreaterThan(.01);
+  expect(turning.wheelSteer[1]).toBe(0); expect(turning.wheelSteer[3]).toBe(0);
+  await page.keyboard.up('KeyA'); await page.keyboard.up('KeyW');
+  await page.keyboard.down('KeyS');
+  await expect.poll(async () => (await snapshot(page)).carAsset.brakes).toBe(2);
+  await page.keyboard.up('KeyS'); await page.keyboard.press('KeyR');
+  await testInfo.attach('blender-car-in-game', { body: await page.screenshot(), contentType: 'image/png' });
+  expect(errors).toEqual([]);
+});
+
+test('a missing car asset gives a visible error and prevents starting without a vehicle', async ({ page }) => {
+  await page.route('**/atlas-expedition.glb*', route => route.abort());
+  await page.goto('/?seed=3&test=browser');
+  await expect(page.locator('#loadError')).toBeVisible({ timeout: 15000 });
+  await expect(page.getByRole('button', { name: 'Unable to load the car', exact: true })).toBeDisabled();
+});
+
 test('worker loading, actual WebGL rendering, and stationary scenery stay stable', async ({ page }, testInfo) => {
   const errors = await openGame(page, 3);
   const state = await snapshot(page);

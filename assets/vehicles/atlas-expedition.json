@@ -1,0 +1,50 @@
+{
+  "name": "ATLAS Expedition 4x4",
+  "source": "atlas-expedition.blend",
+  "asset": "atlas-expedition.glb",
+  "sourceParts": 803,
+  "triangles": 50019,
+  "batching": [
+    {
+      "group": "Body",
+      "before": 323,
+      "after": 10
+    },
+    {
+      "group": "Spinner_FL",
+      "before": 120,
+      "after": 4
+    },
+    {
+      "group": "Spinner_RL",
+      "before": 120,
+      "after": 4
+    },
+    {
+      "group": "Spinner_FR",
+      "before": 120,
+      "after": 4
+    },
+    {
+      "group": "Spinner_RR",
+      "before": 120,
+      "after": 4
+    }
+  ],
+  "wheelRadius": 0.57,
+  "wheelbase": 2.74,
+  "track": 2.08,
+  "axes": "X right, Y up, Z forward (glTF)",
+  "materials": [
+    "Amber_Lens",
+    "Brake_Lamp",
+    "Brushed_Alloy",
+    "Canvas_Olive",
+    "Graphite",
+    "Headlamp",
+    "Paint_Copper",
+    "Roof_Ivory",
+    "Rubber",
+    "Smoked_Glass"
+  ]
+}

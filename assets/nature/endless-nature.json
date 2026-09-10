@@ -1,0 +1,64 @@
+{
+  "name": "Endless Drive / original Blender nature library",
+  "assets": [
+    {
+      "name": "Pine_Alpine",
+      "kind": "tree",
+      "variant": 0,
+      "triangles": 1602,
+      "parts": 6
+    },
+    {
+      "name": "Pine_Windswept",
+      "kind": "tree",
+      "variant": 1,
+      "triangles": 1602,
+      "parts": 6
+    },
+    {
+      "name": "Cactus_Saguaro",
+      "kind": "cactus",
+      "variant": 0,
+      "triangles": 970,
+      "parts": 1
+    },
+    {
+      "name": "Cactus_Forked",
+      "kind": "cactus",
+      "variant": 1,
+      "triangles": 1170,
+      "parts": 1
+    },
+    {
+      "name": "Rock_Granite",
+      "kind": "rock",
+      "variant": 0,
+      "triangles": 258,
+      "parts": 1
+    },
+    {
+      "name": "Rock_Shale",
+      "kind": "rock",
+      "variant": 1,
+      "triangles": 258,
+      "parts": 1
+    },
+    {
+      "name": "Boulder_Granite",
+      "kind": "boulder",
+      "variant": 0,
+      "triangles": 172,
+      "parts": 1
+    },
+    {
+      "name": "Boulder_Sandstone",
+      "kind": "boulder",
+      "variant": 1,
+      "triangles": 172,
+      "parts": 1
+    }
+  ],
+  "axes": "X right, Y up, Z forward; each asset root is its ground origin",
+  "materials": "opaque vertex colors, no external textures",
+  "treeFragments": "six authored closed sections per tree, assembled without cutting at runtime"
+}

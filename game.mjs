@@ -1,17 +1,18 @@
 import { createTerrain } from './terrain.mjs?v=grass-1';
 import { FAR_SIZE, FAR_VIEW, NEAR_VIEW, farIndices } from './streaming-layout.mjs?v=grass-1';
-import { batchStaticMeshes } from './batching.mjs?v=grass-1';
+import { loadVehicleModel } from './vehicle-model.mjs?v=atlas-1';
 import { createProfiler } from './profiling.mjs?v=grass-1';
 import { createDebris } from './debris.mjs?v=grass-1';
 import { createVehiclePresentation } from './vehicle-presentation.mjs?v=grass-1';
 import { followTarget, followValue } from './camera-motion.mjs?v=grass-1';
-import { createTreeBreakage } from './tree-breakage.mjs?v=grass-1';
+import { createTreeBreakage } from './tree-breakage.mjs?v=nature-1';
+import { loadNatureLibrary } from './nature-models.mjs?v=nature-1';
 import { createBreakAudio } from './break-audio.mjs?v=grass-1';
 import { installSunShadowFade } from './shadow-fade.mjs?v=grass-1';
 import { createGrass } from './grass.mjs?v=grass-1';
 import * as THREE from 'three';
 import { CHUNK, GRID, ROAD_SPACING, ROAD_HALF, FIXED_DT, featurePoint, clamp, mix, smoothstep, hash, createWorld, createVehicle, stepVehicle, recoverVehicle } from './world.mjs?v=grass-1';
-import { buildLandmark, cloneOwnedGeometry, createCactusGeometry } from './scenery.mjs?v=grass-1';
+import { buildLandmark, cloneOwnedGeometry } from './scenery.mjs?v=grass-1';
 
 const $ = id => document.getElementById(id);
 const coarse = matchMedia('(pointer:coarse)').matches || navigator.maxTouchPoints > 0;
@@ -155,15 +156,17 @@ function geometryFromData(data) {
   return geometry;
 }
 const material = (color, roughness = .85, metalness = 0) => new THREE.MeshStandardMaterial({ color, roughness, metalness });
-const trunkMaterial = material('#645840'), treeMaterial = material('#365e4d'), tipMaterial = material('#527463'), rockMaterial = material('#969c88');
 const bushMaterial = material('#728450'), postMaterial = material('#ded7b4');
-const cactusMaterial = material('#63834b');
-const cactusGeo = createCactusGeometry();
-const trunkGeo = new THREE.CylinderGeometry(.15, .27, 3.1, 6).translate(0, 1.55, 0);
-const treeGeo = new THREE.ConeGeometry(1.95, 4.7, 7).translate(0, 3.65, 0);
-const tipGeo = new THREE.ConeGeometry(1.35, 3.4, 7).translate(0, 5.2, 0);
-const rockGeo = new THREE.DodecahedronGeometry(1, 0).scale(1.2, .55, .85).translate(0, .15, 0);
-const boulderGeo = new THREE.DodecahedronGeometry(1, 0).scale(1.2, 1.1, .85).translate(0, .65, 0);
+let nature = null, natureError = null;
+loadNatureLibrary().then(library => {
+  nature = library;
+  treeBreakage = createTreeBreakage(scene, nature.treeSources);
+}).catch(error => {
+  natureError = error.message;
+  $('loadError').hidden = false;
+  $('startBtn').firstElementChild.textContent = 'Unable to load scenery';
+  console.error('Blender scenery failed to load:', error);
+});
 const bushGeo = new THREE.IcosahedronGeometry(1, 0).scale(1.1, .7, .9).translate(0, .45, 0);
 const postGeo = new THREE.BoxGeometry(.18, .95, .18).translate(0, .48, 0);
 const matrix = new THREE.Matrix4(), quaternion = new THREE.Quaternion(), upAxis = new THREE.Vector3(0, 1, 0), scaleVec = new THREE.Vector3(), pointVec = new THREE.Vector3();
@@ -217,18 +220,19 @@ function buildChunk({ cx, cz, ground: groundData, props, features, roadside, gra
   const ground = new THREE.Mesh(geometryFromData(groundData), terrainMaterial);
   ground.geometry.userData.owned = true;
   ground.receiveShadow = true; group.add(ground);
-  function instances(type, geometry, mat) {
-    const list = (type === 'post' ? roadside : props).filter(p => p.type === type); if (!list.length) return;
+  function instances(type, geometry, mat, variant) {
+    const list = (type === 'post' ? roadside : props).filter(p => p.type === type && (variant === undefined || nature.variantFor(p) === variant)); if (!list.length) return;
     const mesh = new THREE.InstancedMesh(geometry, mat, list.length);
     list.forEach((p, i) => {
       pointVec.set(p.x - cx * CHUNK, p.y - .08, p.z - cz * CHUNK); quaternion.setFromAxisAngle(upAxis, p.turn); scaleVec.setScalar(p.size); matrix.compose(pointVec, quaternion, scaleVec); mesh.setMatrixAt(i, matrix);
       if (p.id) { if (!propInstances.has(p.id)) propInstances.set(p.id, []); propInstances.get(p.id).push({ mesh, index: i }); }
     });
-    mesh.castShadow = true; mesh.receiveShadow = true; group.add(mesh);
+    mesh.castShadow = true; mesh.receiveShadow = true; mesh.userData.natureKind = variant === undefined ? null : type; group.add(mesh);
   }
-  instances('cactus', cactusGeo, cactusMaterial);
-  instances('tree', trunkGeo, trunkMaterial); instances('tree', treeGeo, treeMaterial); instances('tree', tipGeo, tipMaterial); instances('rock', rockGeo, rockMaterial);
-  instances('boulder', boulderGeo, rockMaterial); instances('bush', bushGeo, bushMaterial); instances('post', postGeo, postMaterial);
+  for (const [kind, variants] of Object.entries(nature.variants)) {
+    variants.forEach(({ geometry, material }, variant) => instances(kind, geometry, material, variant));
+  }
+  instances('bush', bushGeo, bushMaterial); instances('post', postGeo, postMaterial);
   for (const feature of features) {
     const landmark = buildLandmark(feature, world);
     landmark.position.x -= cx * CHUNK; landmark.position.z -= cz * CHUNK; group.add(landmark);
@@ -260,7 +264,7 @@ function processBreakage() {
       mesh.getMatrixAt(index, matrix); matrix.scale(scaleVec.set(0, 0, 0)); mesh.setMatrixAt(index, matrix); mesh.instanceMatrix.needsUpdate = true;
     }
     debris.burst(prop);
-    if (prop.type === 'tree') treeBreakage.burst(prop);
+    if (prop.type === 'tree') treeBreakage.burst({ ...prop, variant: nature.variantFor(prop) });
     if (!muted && audio) audio.breaks.play(prop.type, Math.hypot(prop.vx, prop.vz));
   }
 }
@@ -315,11 +319,11 @@ function drivable() {
   return true;
 }
 function processStreaming() {
-  if (!worker || streamError) return;
+  if (!worker || streamError || natureError) return;
   const budgetStart = performance.now();
   // Worker messages are installed within a frame budget, rather than all at
   // once. At most two jobs are in flight, keeping memory and upload work bounded.
-  while (completed.length && performance.now() - budgetStart < 4) {
+  while (nature && completed.length && performance.now() - budgetStart < 4) {
     const job = completed.shift(); pending.delete(job.id);
     if (job.generation !== generation || !desired(job)) continue;
     if (job.kind === 'near') {
@@ -341,8 +345,8 @@ function processStreaming() {
   if (loading) {
     const total = (view * 2 + 1) ** 2 + (FAR_VIEW * 2 + 1) ** 2;
     const count = [...chunks.values()].filter(chunk => chunk.group.visible).length + farTiles.size;
-    $('startBtn').firstElementChild.textContent = `Preparing the world · ${Math.min(99, Math.floor(count / total * 100))}%`;
-    if (worldReady()) {
+    $('startBtn').firstElementChild.textContent = carError ? 'Unable to load the car' : !nature ? 'Preparing scenery' : worldReady() && !carReady ? 'Preparing your car' : `Preparing the world · ${Math.min(99, Math.floor(count / total * 100))}%`;
+    if (worldReady() && carReady) {
       loading = false; $('startBtn').disabled = false; $('startBtn').firstElementChild.textContent = started ? 'Keep exploring' : 'Start exploring';
       resetTiming(); resetCamera(); updateHUD(); drawMap();
       profiler.record('worldLoad', performance.now() - loadingStarted);
@@ -376,76 +380,23 @@ function nearbyObstacles() {
   return result;
 }
 
-// A purpose-built little expedition wagon: tapered body, framed glass, fenders,
-// all-terrain tires, roof rack, luggage, spare wheel and working light clusters.
-const car = new THREE.Group(), body = new THREE.Group(); car.add(body); scene.add(car);
-car.rotation.order = 'YXZ';
-const paint = material('#dbaa60', .48, .16), cream = material('#ede8d4', .5, .1), rubber = material('#262e2a', .95), trim = material('#3f4941', .66, .15), metal = material('#bbc1b3', .4, .65), glass = material('#41666b', .18, .28), luggage = material('#5c7667');
-function box(parent, w, h, d, x, y, z, mat, shadow = true) {
-  const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat); mesh.position.set(x, y, z); mesh.castShadow = shadow; mesh.receiveShadow = true; parent.add(mesh); return mesh;
-}
-function hull(parent, rings, mat) {
-  const vertices = [], indices = [];
-  for (const [y, half, back, front] of rings) vertices.push(-half, y, back, half, y, back, half, y, front, -half, y, front);
-  for (let r = 0; r < rings.length - 1; r++) for (let i = 0; i < 4; i++) { const a = r * 4 + i, b = r * 4 + (i + 1) % 4, c = a + 4, d = b + 4; indices.push(a, c, b, b, c, d); }
-  const t = (rings.length - 1) * 4; indices.push(0, 1, 2, 0, 2, 3, t, t + 2, t + 1, t, t + 3, t + 2);
-  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3)); g.setIndex(indices); g.computeVertexNormals();
-  const mesh = new THREE.Mesh(g, mat); mesh.castShadow = true; mesh.receiveShadow = true; parent.add(mesh); return mesh;
-}
-box(body, 1.9, .2, 3.85, 0, .61, 0, rubber);
-hull(body, [[.69, .94, -2.04, 2.02], [1.12, 1.04, -2, 2.02], [1.4, .98, -1.98, 1.91]], paint);
-hull(body, [[1.39, .9, -1.84, .78], [2.22, .76, -1.61, .29]], glass);
-box(body, 1.6, .13, 2.05, 0, 2.26, -.67, cream);
-box(body, 1.82, .07, 1.08, 0, 1.43, 1.36, paint);
-for (const side of [-1, 1]) {
-  // Slim pillars follow the windshield rake.
-  const pillar = box(body, .075, .98, .07, side * .825, 1.81, .52, cream); pillar.rotation.x = -.53;
-  const rear = box(body, .08, .93, .09, side * .825, 1.81, -1.72, cream); rear.rotation.x = .24;
-  box(body, .08, .86, .075, side * .84, 1.82, -.65, cream);
-  box(body, .065, .055, 2.58, side * .926, 1.41, -.53, cream);
-  box(body, .05, .055, .26, side * 1.015, 1.26, -.29, trim);
-  box(body, .05, .055, .24, side * 1.015, 1.26, -1.22, trim);
-  box(body, .16, .16, .3, side * 1.1, 1.59, .57, trim);
-  box(body, .2, .13, 2.02, side * 1.03, .55, -.1, trim);
-  for (const z of [-1.37, 1.37]) box(body, .2, .14, 1.22, side * 1.04, 1.11, z, trim);
-  box(body, .08, .17, 2.0, side * .72, 2.51, -.69, trim);
-  box(body, .065, .3, .06, side * .72, 2.43, -.1, trim);
-  box(body, .065, .3, .06, side * .72, 2.43, -1.3, trim);
-}
-for (const z of [-1.55, -.8, 0]) box(body, 1.45, .07, .075, 0, 2.4, z, trim);
-box(body, .88, .32, .9, .22, 2.57, -.92, luggage);
-box(body, .06, .34, .93, .02, 2.58, -.92, trim);
-box(body, 2.17, .21, .25, 0, .69, 2.06, trim);
-box(body, 2.15, .21, .23, 0, .69, -2.1, trim);
-box(body, .93, .3, .045, 0, 1.1, 2.025, trim);
-for (let i = -2; i <= 2; i++) box(body, .025, .22, .045, i * .14, 1.1, 2.055, metal);
-box(body, .53, .17, .05, 0, .71, -2.24, cream);
-const headMat = material('#f9efce', .3); headMat.emissive.set('#ffdfa3'); headMat.emissiveIntensity = .45;
-const brakeMat = material('#af3c25', .3); brakeMat.emissive.set('#f55123'); brakeMat.emissiveIntensity = .3;
-for (const side of [-1, 1]) {
-  const head = new THREE.Mesh(new THREE.CylinderGeometry(.19, .19, .07, 16).rotateX(Math.PI / 2), headMat); head.position.set(side * .74, 1.12, 2.035); body.add(head);
-  box(body, .15, .13, .055, side * .89, .85, 2.04, brakeMat);
-  box(body, .2, .3, .055, side * .81, 1.17, -2.015, brakeMat);
-}
-const tireGeo = new THREE.CylinderGeometry(.57, .57, .39, 20).rotateZ(Math.PI / 2);
-const hubGeo = new THREE.CylinderGeometry(.28, .28, .415, 12).rotateZ(Math.PI / 2);
-const wheelPivots = [], wheelSpinners = [];
-for (const x of [-1.04, 1.04]) for (const z of [1.37, -1.37]) {
-  const pivot = new THREE.Group(); pivot.position.set(x, .57, z); car.add(pivot); wheelPivots.push(pivot);
-  const spinner = new THREE.Group(); pivot.add(spinner); wheelSpinners.push(spinner);
-  const tire = new THREE.Mesh(tireGeo, rubber); tire.castShadow = true; spinner.add(tire);
-  spinner.add(new THREE.Mesh(hubGeo, cream));
-  const center = new THREE.Mesh(new THREE.CylinderGeometry(.11, .11, .44, 12).rotateZ(Math.PI / 2), metal); spinner.add(center);
-  for (let j = 0; j < 12; j++) { const a = j * Math.PI / 6; const tread = box(spinner, .42, .075, .18, 0, Math.cos(a) * .55, Math.sin(a) * .55, trim); tread.rotation.x = a; }
-  for (let j = 0; j < 6; j++) { const a = j * Math.PI / 3; const bolt = new THREE.Mesh(new THREE.SphereGeometry(.028, 5, 4), trim); bolt.position.set(Math.sign(x) * .215, Math.cos(a) * .18, Math.sin(a) * .18); spinner.add(bolt); }
-}
-const spare = new THREE.Group(); spare.position.set(.16, 1.25, -2.2); spare.rotation.y = Math.PI / 2; body.add(spare);
-spare.add(new THREE.Mesh(tireGeo, rubber), new THREE.Mesh(hubGeo, cream));
+// The editable Blender model is exported as a locally bundled, animated glTF rig.
+const car = new THREE.Group(); scene.add(car); car.rotation.order = 'YXZ';
+let body = new THREE.Group(), wheelPivots = [], wheelSpinners = [];
+let headMat = material('#f9efce'), brakeMat = material('#af3c25');
+let carReady = false, carError = null, carTriangles = 0, carBatching = [];
+loadVehicleModel(renderer).then(asset => {
+  car.add(asset.model);
+  ({ body, wheelPivots, wheelSpinners, headMat, brakeMat } = asset);
+  carTriangles = asset.triangles; carBatching = asset.batching; carReady = true;
+}).catch(error => {
+  carError = error.message;
+  $('loadError').hidden = false;
+  $('startBtn').firstElementChild.textContent = 'Unable to load the car';
+  console.error('Vehicle model failed to load:', error);
+});
 const headlight = new THREE.SpotLight('#ffe4b1', 0, 60, .5, .5, 1.2); headlight.position.set(0, 1.5, 2);
 const lightTarget = new THREE.Object3D(); lightTarget.position.set(0, 0, 25); car.add(headlight, lightTarget); headlight.target = lightTarget;
-const carBatching = [body, ...wheelSpinners].map(batchStaticMeshes);
-const oldCarGeometry = new Set(carBatching.flatMap(result => [...result.originalGeometries]));
-for (const geometry of oldCarGeometry) geometry.dispose();
 // Soft contact shadow makes the height of jumps easy to judge.
 const shadowCanvas = document.createElement('canvas'); shadowCanvas.width = shadowCanvas.height = 64;
 const shadowContext = shadowCanvas.getContext('2d'), shadowGradient = shadowContext.createRadialGradient(32, 32, 2, 32, 32, 32);
@@ -518,7 +469,7 @@ function resetCamera() {
 function newWorld() {
   const continueDriving = running || resumeAfterLoad && loading;
   saveRecord(); clearInput(); seed = freshSeed(); world = createWorld(seed); vehicle = createVehicle(world); roadUniforms.uRoadPhase.value = world.phase;
-  debris.clear(); treeBreakage.clear(); audio?.breaks.clear();
+  debris.clear(); treeBreakage?.clear(); audio?.breaks.clear();
   const url = new URL(location.href); url.searchParams.set('seed', seed); history.replaceState(null, '', url);
   beginWorldLoad(continueDriving); resetCamera(); syncSeed(); updateHUD(); drawMap();
   reportedLanding = 0; $('runDistance').textContent = '0.00'; toast('A new road ahead. World ' + seed);
@@ -636,11 +587,7 @@ const vehiclePosition = new THREE.Vector3(), cameraPosition = new THREE.Vector3(
 const previousDesiredCamera = new THREE.Vector3(), previousLook = new THREE.Vector3();
 let previousTargetFov = camera.fov;
 const debris = createDebris(scene), rollPivot = new THREE.Vector3();
-const treeBreakage = createTreeBreakage(scene, [
-  { geometry: trunkGeo, color: trunkMaterial.color },
-  { geometry: treeGeo, color: treeMaterial.color },
-  { geometry: tipGeo, color: tipMaterial.color },
-]);
+let treeBreakage = null;
 const vehiclePresentation = createVehiclePresentation(vehicle);
 let previousTime = performance.now(), accumulator = 0, uiTime = 0, mapTime = 0, idleRenderAt = 0, reportedLanding = 0;
 function updateDesiredCamera(pose = vehicle) {
@@ -742,5 +689,7 @@ if (testMode) window.__driveTest = { snapshot: () => {
     const hidden = refs.every(({ mesh, index }) => { mesh.getMatrixAt(index, matrix); return matrix.elements[0] === 0 && matrix.elements[5] === 0 && matrix.elements[10] === 0; });
     if (hidden) hiddenProps++;
   }
-  return { grass: grassStats, metrics: profiler.snapshot(), draws: renderer.info.render.calls, triangles: renderer.info.render.triangles, carMeshes, chunks: chunks.size, farTiles: farTiles.size, loading, generation, streamError, pending: pending.size, queued: jobs.length, carBatching: carBatching.map(({ before, after }) => ({ before, after })), vehicle: { ...vehicle }, renderPose: { ...vehiclePresentation.pose }, debris: debris.count, fallingTrees: treeBreakage.count, sound: audio ? { muted, played: audio.breaks.played, active: audio.breaks.active, masterGain: audio.master.gain.value } : null, brokenProps: world.brokenProps.size, hiddenProps, accumulator, cameraError: cameraPosition.distanceTo(desiredCamera) + cameraTarget.distanceTo(look), camera: cameraPosition.toArray(), target: cameraTarget.toArray() };
+  const natureInstances = {};
+  for (const chunk of chunks.values()) if (chunk.group.visible) chunk.group.traverse(o => { if (o.isInstancedMesh && o.userData.natureKind) natureInstances[o.userData.natureKind] = (natureInstances[o.userData.natureKind] || 0) + o.count; });
+  return { natureAsset: { ready: Boolean(nature), error: natureError, assets: nature?.stats ?? [], instances: natureInstances }, grass: grassStats, metrics: profiler.snapshot(), draws: renderer.info.render.calls, triangles: renderer.info.render.triangles, carMeshes, carAsset: { ready: carReady, error: carError, name: 'ATLAS Expedition 4x4', triangles: carTriangles, wheelPivots: wheelPivots.map(p => p.position.toArray()), wheelSteer: wheelPivots.map(p => p.rotation.y), wheelSpin: wheelSpinners.map(p => p.rotation.x), headlights: headMat.emissiveIntensity, brakes: brakeMat.emissiveIntensity }, chunks: chunks.size, farTiles: farTiles.size, loading, generation, streamError, pending: pending.size, queued: jobs.length, carBatching: carBatching.map(({ before, after }) => ({ before, after })), vehicle: { ...vehicle }, renderPose: { ...vehiclePresentation.pose }, debris: debris.count, fallingTrees: treeBreakage?.count ?? 0, sound: audio ? { muted, played: audio.breaks.played, active: audio.breaks.active, masterGain: audio.master.gain.value } : null, brokenProps: world.brokenProps.size, hiddenProps, accumulator, cameraError: cameraPosition.distanceTo(desiredCamera) + cameraTarget.distanceTo(look), camera: cameraPosition.toArray(), target: cameraTarget.toArray() };
 } };

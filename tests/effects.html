@@ -2,23 +2,21 @@
 <html lang="en"><meta charset="utf-8"><title>Tree breakup preview</title>
 <style>body{margin:0;background:#cbdad1;font:14px system-ui;color:#203d31}canvas{display:block;width:100vw;height:100vh}nav{position:fixed;top:20px;left:20px;padding:16px;background:#ffffffe8;border-radius:12px}button{padding:8px 14px;border:0;border-radius:6px;margin:4px;cursor:pointer;background:#284e3f;color:white}p{margin:0 0 8px}</style>
 <script type="importmap">{"imports":{"three":"../vendor/three.module.js"}}</script>
-<nav><p>Tree breakup preview — same geometry and effect as the game</p><button data-time="0">Impact</button><button data-time="0.08">Fracture · 80 ms</button><button data-time="0.16">Split · 160 ms</button><button data-time="1.4">Settle</button><button id="play">Play animation</button></nav>
+<nav><p>Blender tree breakup — same geometry and colors as the game</p><select id="variant" aria-label="Tree model"><option value="0">Alpine pine</option><option value="1">Windswept pine</option></select><button data-time="0">Impact</button><button data-time="0.08">Fracture · 80 ms</button><button data-time="0.16">Split · 160 ms</button><button data-time="1.4">Settle</button><button id="play">Play animation</button></nav>
 <script type="module">
 import * as THREE from 'three';
-import {createTreeBreakage} from '../tree-breakage.mjs?v=grass-1';
+import {createTreeBreakage} from '../tree-breakage.mjs?v=nature-1';
+import {loadNatureLibrary} from '../nature-models.mjs?v=nature-1';
 const scene=new THREE.Scene();scene.background=new THREE.Color('#cbdad1');
 const camera=new THREE.PerspectiveCamera(45,innerWidth/innerHeight,.1,100);camera.position.set(10,8,14);camera.lookAt(0,2,2);
 const renderer=new THREE.WebGLRenderer({antialias:true});renderer.setSize(innerWidth,innerHeight);renderer.setPixelRatio(Math.min(devicePixelRatio,2));document.body.append(renderer.domElement);
 scene.add(new THREE.HemisphereLight('#edf6ff','#71744e',2));const sun=new THREE.DirectionalLight('#fff0ce',2);sun.position.set(-10,15,8);scene.add(sun);
 const ground=new THREE.Mesh(new THREE.PlaneGeometry(100,100),new THREE.MeshStandardMaterial({color:'#879b6c',roughness:1}));ground.rotation.x=-Math.PI/2;scene.add(ground);
-const effect=createTreeBreakage(scene,[
- {geometry:new THREE.CylinderGeometry(.15,.27,3.1,6).translate(0,1.55,0),color:'#645840'},
- {geometry:new THREE.ConeGeometry(1.95,4.7,7).translate(0,3.65,0),color:'#365e4d'},
- {geometry:new THREE.ConeGeometry(1.35,3.4,7).translate(0,5.2,0),color:'#527463'}
-]);
-const world={surface:()=>0},prop={x:0,y:.08,z:0,size:1,turn:0,vx:0,vz:83.3};let playing=false,previous=performance.now();
+const library=await loadNatureLibrary(),effect=createTreeBreakage(scene,library.treeSources);
+const world={surface:()=>0},prop={x:0,y:.08,z:0,size:1,turn:0,vx:0,vz:83.3,variant:0};let playing=false,previous=performance.now();
 function stage(time){playing=false;effect.clear();effect.burst(prop);effect.update(0,world);effect.update(time,world);renderer.render(scene,camera);}
 for(const button of document.querySelectorAll('[data-time]'))button.onclick=()=>stage(Number(button.dataset.time));
+document.querySelector('#variant').onchange=e=>{prop.variant=Number(e.target.value);stage(0);};
 document.querySelector('#play').onclick=()=>{stage(0);playing=true;previous=performance.now();};
 function frame(now){requestAnimationFrame(frame);if(playing){effect.update(Math.min((now-previous)/1000,.1),world);renderer.render(scene,camera);if(!effect.count)playing=false;}previous=now;}stage(0);requestAnimationFrame(frame);
 addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);renderer.render(scene,camera);});
