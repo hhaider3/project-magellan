@@ -1,11 +1,17 @@
 import { createWorld, CHUNK, GRID, ROAD_SPACING } from './world.mjs?v=amphibious-1';
 import { createTerrain } from './terrain.mjs?v=amphibious-1';
 import { buildGrass } from './grass-data.mjs?v=amphibious-1';
+import { buildWaterData } from './water-data.mjs?v=timing-1';
 let world, terrain;
 self.onmessage = ({ data: job }) => {
   try {
     if (!world || world.seed !== job.seed) { world = createWorld(job.seed); terrain = createTerrain(world); }
     const start = performance.now();
+    if (job.kind === 'water') {
+      const water = buildWaterData(world, job.lake);
+      self.postMessage({ ...job, water, workMs: performance.now() - start }, Object.values(water).map(array => array.buffer));
+      return;
+    }
     const size = job.kind === 'near' ? CHUNK : CHUNK * 4;
     const wx = job.cx * size, wz = job.cz * size;
     const ground = terrain.build(wx, wz, size, job.kind === 'near' ? GRID : 24);

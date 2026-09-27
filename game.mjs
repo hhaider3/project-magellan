@@ -1,8 +1,8 @@
 import { createTerrain } from './terrain.mjs?v=amphibious-1';
-import { createWater } from './water.mjs?v=amphibious-1';
-import { FAR_SIZE, FAR_VIEW, NEAR_VIEW, farIndices } from './streaming-layout.mjs?v=grass-1';
+import { createWater } from './water.mjs?v=timing-1';
+import { FAR_SIZE, FAR_VIEW, NEAR_VIEW, farIndices, farCoverage } from './streaming-layout.mjs?v=timing-1';
 import { loadVehicleModel } from './vehicle-model.mjs?v=amphibious-1';
-import { createProfiler } from './profiling.mjs?v=grass-1';
+import { createProfiler } from './profiling.mjs?v=timing-1';
 import { createDebris } from './debris.mjs?v=grass-1';
 import { createVehiclePresentation } from './vehicle-presentation.mjs?v=amphibious-1';
 import { followTarget, followValue } from './camera-motion.mjs?v=grass-1';
@@ -280,9 +280,15 @@ function disposeChunk(chunk) {
 }
 function refreshFarTile(tx, tz) {
   const tile = farTiles.get(`${tx},${tz}`);
-  if (tile) tile.geometry.setIndex(farIndices(tx, tz, (cx, cz) => chunks.get(`${cx},${cz}`)?.group.visible));
+  if (!tile) return;
+  const hasFine = (cx, cz) => chunks.get(`${cx},${cz}`)?.group.visible;
+  const coverage = farCoverage(tx, tz, hasFine);
+  if (tile.userData.coverage === coverage) return;
+  tile.geometry.setIndex(farIndices(tx, tz, hasFine));
+  tile.userData.coverage = coverage;
 }
 function desired(job) {
+  if (job.kind === 'water') return waterSystem.wants(job.lake.id);
   const cx = Math.floor(vehicle.x / CHUNK), cz = Math.floor(vehicle.z / CHUNK);
   return job.kind === 'near' ? Math.max(Math.abs(job.cx - cx), Math.abs(job.cz - cz)) <= view + 1
     : Math.max(Math.abs(job.cx - Math.floor(vehicle.x / FAR_SIZE)), Math.abs(job.cz - Math.floor(vehicle.z / FAR_SIZE))) <= FAR_VIEW;
@@ -290,8 +296,9 @@ function desired(job) {
 function streamWorld(force = false) {
   const cx = Math.floor(vehicle.x / CHUNK), cz = Math.floor(vehicle.z / CHUNK);
   if (!force && cx === lastCX && cz === lastCZ) return;
+  const syncStarted = performance.now();
   lastCX = cx; lastCZ = cz;
-  waterSystem.sync(world, vehicle.x, vehicle.z);
+  const waterJobs = profiler.measure('waterSync', () => waterSystem.sync(world, vehicle.x, vehicle.z));
   const fx = Math.floor(vehicle.x / FAR_SIZE), fz = Math.floor(vehicle.z / FAR_SIZE);
   for (const [key, chunk] of chunks) {
     const ring = Math.max(Math.abs(chunk.cx - cx), Math.abs(chunk.cz - cz));
@@ -303,7 +310,7 @@ function streamWorld(force = false) {
       scene.remove(tile); tile.geometry.dispose(); farTiles.delete(key);
     } else refreshFarTile(tile.userData.cx, tile.userData.cz);
   }
-  const existing = new Set([...pending.values()].map(job => `${job.kind}:${job.cx},${job.cz}`));
+  const existing = new Set([...pending.values()].map(job => job.kind === 'water' ? `water:${job.lake.id}` : `${job.kind}:${job.cx},${job.cz}`));
   jobs = [];
   function enqueue(kind, x, z, priority) {
     if ((kind === 'near' ? chunks : farTiles).has(`${x},${z}`) || existing.has(`${kind}:${x},${z}`)) return;
@@ -315,11 +322,16 @@ function streamWorld(force = false) {
     enqueue('near', cx + dx, cz + dz, (ring > view ? 100 : 0) + Math.hypot(dx, dz) - (dx * vehicle.vx + dz * vehicle.vz) / 1000);
   }
   for (let dx = -FAR_VIEW; dx <= FAR_VIEW; dx++) for (let dz = -FAR_VIEW; dz <= FAR_VIEW; dz++) enqueue('far', fx + dx, fz + dz, 3 + Math.hypot(dx, dz) * 2);
+  for (const lake of waterJobs) if (!existing.has(`water:${lake.id}`)) {
+    jobs.push({ kind: 'water', lake, seed, generation, id: ++jobId,
+      priority: 2 + Math.max(0, Math.hypot(lake.x - vehicle.x, lake.z - vehicle.z) - Math.max(lake.rx, lake.rz)) / CHUNK });
+  }
   jobs.sort((a, b) => a.priority - b.priority);
+  profiler.record('streamSync', performance.now() - syncStarted);
 }
 function worldReady() {
   for (let dx = -view; dx <= view; dx++) for (let dz = -view; dz <= view; dz++) if (!chunks.has(`${lastCX + dx},${lastCZ + dz}`)) return false;
-  return farTiles.size === (FAR_VIEW * 2 + 1) ** 2;
+  return farTiles.size === (FAR_VIEW * 2 + 1) ** 2 && waterSystem.ready;
 }
 function drivable() {
   for (let dx = -2; dx <= 2; dx++) for (let dz = -2; dz <= 2; dz++) if (!chunks.has(`${lastCX + dx},${lastCZ + dz}`)) return false;
@@ -333,7 +345,9 @@ function processStreaming() {
   while (nature && completed.length && performance.now() - budgetStart < 4) {
     const job = completed.shift(); pending.delete(job.id);
     if (job.generation !== generation || !desired(job)) continue;
-    if (job.kind === 'near') {
+    if (job.kind === 'water') {
+      profiler.measure('waterInstall', () => waterSystem.install(job.lake, job.water));
+    } else if (job.kind === 'near') {
       buildChunk(job);
       chunks.get(`${job.cx},${job.cz}`).group.visible = Math.max(Math.abs(job.cx - lastCX), Math.abs(job.cz - lastCZ)) <= view;
       refreshFarTile(Math.floor(job.cx / 4), Math.floor(job.cz / 4));
@@ -372,13 +386,13 @@ function beginWorldLoad(continueDriving = false) {
   for (const tile of farTiles.values()) { scene.remove(tile); tile.geometry.dispose(); } farTiles.clear();
   terrain = createTerrain(world);
   waterSystem.clear();
-  worker = new Worker(new URL('./world-worker.mjs?v=amphibious-1', import.meta.url), { type: 'module' });
+  worker = new Worker(new URL('./world-worker.mjs?v=timing-1', import.meta.url), { type: 'module' });
   const failed = message => { streamError = message; running = false; $('loadError').hidden = false; $('startBtn').firstElementChild.textContent = 'Unable to prepare the world'; };
   worker.onerror = error => failed(error.message);
   worker.onmessage = ({ data }) => {
     if (data.generation !== generation) return;
     if (data.error) { failed(data.error); return; }
-    profiler.record('workerBuild', data.workMs); completed.push(data);
+    profiler.record(data.kind === 'water' ? 'workerWater' : 'workerBuild', data.workMs); completed.push(data);
   };
   lastCX = lastCZ = Infinity; streamWorld(true);
 }
@@ -576,6 +590,7 @@ function drawMap() {
   profiler.record('minimap', performance.now() - mapStarted);
 }
 function updateHUD() {
+  const hudStarted = performance.now();
   const speed = Math.abs(vehicle.speed) * 3.6;
   $('speed').textContent = Math.round(speed); $('speedBar').style.width = clamp(speed / 330 * 100, 0, 100) + '%';
   $('gear').textContent = vehicle.boatMode ? 'B' : speed < 1 ? 'N' : vehicle.speed < 0 ? 'R' : 'D';
@@ -606,6 +621,7 @@ function updateHUD() {
   $('biomeTxt').textContent = vehicle.waterDepth > 0 ? world.waterAt(vehicle.x, vehicle.z)?.lake.name ?? 'THE LAKES' : world.desertAt(vehicle.x, vehicle.z) > .55 ? 'THE SANDLANDS' : world.mountainAt(vehicle.x, vehicle.z) > .62 ? 'THE HIGHLANDS' : world.woodlandAt(vehicle.x, vehicle.z) > .58 ? 'PINE COUNTRY' : 'OPEN MEADOW';
   $('coordinates').textContent = `${Math.round(Math.abs(vehicle.x))} ${vehicle.x < 0 ? 'E' : 'W'} · ${Math.round(Math.abs(vehicle.z))} ${vehicle.z >= 0 ? 'N' : 'S'}`;
   $('elevation').textContent = Math.round(vehicle.floating ? vehicle.waterLevel : world.surface(vehicle.x, vehicle.z)) + ' M';
+  profiler.record('hud', performance.now() - hudStarted);
 }
 const vehiclePosition = new THREE.Vector3(), cameraPosition = new THREE.Vector3(), cameraTarget = new THREE.Vector3(), desiredCamera = new THREE.Vector3(), forward = new THREE.Vector3(), look = new THREE.Vector3();
 const previousDesiredCamera = new THREE.Vector3(), previousLook = new THREE.Vector3();
@@ -638,7 +654,7 @@ function render(dt) {
   car.rotation.set(pose.pitch, pose.heading, pose.roll, 'YXZ');
   rollPivot.set(0, 1, 0).applyEuler(car.rotation);
   car.position.set(pose.x - rollPivot.x, pose.y + 1 - rollPivot.y, pose.z - rollPivot.z);
-  transformation?.update(pose.transform);
+  if (transformation) profiler.measure('transformAnimation', () => transformation.update(pose.transform));
   body.position.y = -pose.impact * .3 * (1 - pose.transform);
   body.rotation.z = -pose.steer * Math.min(Math.abs(pose.speed) / 25, 1) * .055 * (1 - pose.transform);
   body.rotation.x = (input.up ? -.012 : input.down ? .024 : 0) * (1 - pose.transform);
@@ -661,17 +677,20 @@ function render(dt) {
   if (Math.abs(camera.fov - nextFov) > 1e-6) { camera.fov = nextFov; camera.updateProjectionMatrix(); }
   sky.position.copy(camera.position);
   sun.position.set(pose.x - 65, pose.y + 100, pose.z + 45); sun.target.position.copy(car.position); sun.target.updateMatrixWorld();
-  waterSystem.update(world, pose, dt);
+  profiler.measure('waterUpdate', () => waterSystem.update(world, pose, dt));
   if (audio && running) {
     const t = audio.context.currentTime, speed = Math.abs(vehicle.speed);
     audio.gain.gain.setTargetAtTime(muted ? 0 : .008 + speed * .00045 + (input.up ? .006 : 0), t, .12);
     audio.oscillator.frequency.setTargetAtTime(42 + speed * 3.4 + (input.up ? 14 : 0), t, .1);
     audio.filter.frequency.setTargetAtTime(180 + speed * 12, t, .1);
   }
-  profiler.measure('renderCPU', () => renderer.render(scene, camera));
+  const renderStarted = performance.now();
+  renderer.render(scene, camera);
+  profiler.record('renderCPU', performance.now() - renderStarted, testMode ? { time: pose.time, transform: pose.transform, wakes: waterSystem.wakeCount } : undefined);
 }
 function frame(now) {
   requestAnimationFrame(frame);
+  const frameStarted = performance.now();
   const dt = clamp((now - previousTime) / 1000, 0, .1); previousTime = now;
   if (document.hidden) return;
   if (running) profiler.record('frame', (now - (frame.lastNow || now)));
@@ -682,12 +701,14 @@ function frame(now) {
   if (wasLoading && !loading) { render(0); return; }
   if (!running) { if (now - idleRenderAt < (loading ? 100 : 200)) return; idleRenderAt = now; }
   if (running && drivable()) {
+    const physicsStarted = performance.now();
     accumulator += dt;
     const obstacles = nearbyObstacles();
     while (accumulator >= FIXED_DT) {
       stepVehicle(vehicle, input, world, obstacles);
       vehiclePresentation.advance(vehicle, FIXED_DT); accumulator -= FIXED_DT;
     }
+    profiler.record('physics', performance.now() - physicsStarted);
     processBreakage(); debris.update(dt, world); treeBreakage.update(dt, world);
     if (vehicle.boatMode !== reportedBoat) {
       reportedBoat = vehicle.boatMode;
@@ -702,6 +723,7 @@ function frame(now) {
     if (mapTime > (coarse ? .6 : .3)) { mapTime = 0; drawMap(); }
   }
   render(running ? dt : 0);
+  if (running) profiler.record('frameCPU', performance.now() - frameStarted);
 }
 addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
 renderer.domElement.addEventListener('webglcontextlost', e => { e.preventDefault(); pause(); toast('Graphics paused. Reload to restore the drive.'); });
@@ -710,7 +732,7 @@ syncSeed(); syncSound(); beginWorldLoad(); resetCamera(); updateHUD(); drawMap()
 requestAnimationFrame(frame);
 
 profiler.record('initialLoad', performance.now() - bootStarted);
-if (testMode) window.__driveTest = { snapshot: () => {
+if (testMode) window.__driveTest = { resetMetrics: () => profiler.reset(), snapshot: () => {
   const visibleGrass = [...chunks.values()].filter(c => c.group.visible && c.grassMesh?.visible);
   const grassStats = { range: grass.range, meshes: visibleGrass.length, tufts: visibleGrass.reduce((n, c) => n + c.grassMesh.geometry.instanceCount, 0) };
   let carMeshes = 0; car.traverse(o => { if (o.isMesh) carMeshes++; });

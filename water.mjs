@@ -3,6 +3,7 @@ import { waterWave } from './lakes.mjs?v=amphibious-1';
 
 export function createWater(scene) {
   const patches = new Map();
+  let wanted = new Map();
   const time = { value: 0 };
   const material = new THREE.ShaderMaterial({
     transparent: true, depthWrite: false, side: THREE.FrontSide,
@@ -37,37 +38,29 @@ export function createWater(scene) {
         #include <colorspace_fragment>
       }`
   });
-  function build(world, lake) {
-    const x0 = Math.floor((lake.x - lake.rx * 1.03) / 4) * 4, z0 = Math.floor((lake.z - lake.rz * 1.03) / 4) * 4;
-    const nx = Math.ceil(lake.rx * 2.06 / 4) + 1, nz = Math.ceil(lake.rz * 2.06 / 4) + 1;
-    const positions = [], depths = [], uv = [], indices = [];
-    for (let iz = 0; iz <= nz; iz++) for (let ix = 0; ix <= nx; ix++) {
-      const x = x0 + ix * 4, z = z0 + iz * 4;
-      positions.push(x, lake.level + .012, z); depths.push(lake.level - world.surface(x, z));
-      uv.push((x - lake.x) / lake.rx, (z - lake.z) / lake.rz);
-    }
-    for (let iz = 0; iz < nz; iz++) for (let ix = 0; ix < nx; ix++) {
-      const a = iz * (nx + 1) + ix, b = a + 1, c = a + nx + 1, d = c + 1;
-      if (Math.max(depths[a], depths[b], depths[c], depths[d]) <= 0) continue;
-      indices.push(a, c, b, b, c, d);
-    }
+  function install(lake, data) {
+    // The stream coordinator also rejects previous-world generations. This
+    // guards late results for lakes left behind, and duplicate results.
+    if (wanted.get(lake.id)?.level !== lake.level || patches.has(lake.id)) return false;
     const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-    geometry.setAttribute('bedDepth', new THREE.Float32BufferAttribute(depths, 1));
-    geometry.setAttribute('lakeUV', new THREE.Float32BufferAttribute(uv, 2));
-    geometry.setIndex(indices); geometry.computeBoundingSphere();
+    geometry.setAttribute('position', new THREE.BufferAttribute(data.position, 3));
+    geometry.setAttribute('bedDepth', new THREE.BufferAttribute(data.bedDepth, 1));
+    geometry.setAttribute('lakeUV', new THREE.BufferAttribute(data.lakeUV, 2));
+    geometry.setIndex(new THREE.BufferAttribute(data.index, 1)); geometry.computeBoundingSphere();
     const mesh = new THREE.Mesh(geometry, material); mesh.name = lake.name; mesh.renderOrder = 1;
     scene.add(mesh); patches.set(lake.id, mesh);
+    return true;
   }
   function sync(world, x, z) {
-    const lakes = world.lakesNear(x, z, 1000), wanted = new Set(lakes.map(l => l.id));
+    const lakes = world.lakesNear(x, z, 1000);
+    wanted = new Map(lakes.map(l => [l.id, l]));
     for (const [id, mesh] of patches) if (!wanted.has(id)) { scene.remove(mesh); mesh.geometry.dispose(); patches.delete(id); }
-    for (const lake of lakes) if (!patches.has(lake.id)) build(world, lake);
+    return lakes.filter(lake => !patches.has(lake.id));
   }
   const capacity = 80, ripples = [], dummy = new THREE.Object3D();
   const wakeGeometry = new THREE.RingGeometry(.85, 1, 28).rotateX(-Math.PI / 2);
   const opacity = new Float32Array(capacity);
-  wakeGeometry.setAttribute('wakeOpacity', new THREE.InstancedBufferAttribute(opacity, 1));
+  wakeGeometry.setAttribute('wakeOpacity', new THREE.InstancedBufferAttribute(opacity, 1).setUsage(THREE.DynamicDrawUsage));
   const wakeMaterial = new THREE.ShaderMaterial({ transparent: true, depthWrite: false,
     vertexShader: `attribute float wakeOpacity; varying float alpha;
       void main(){alpha=wakeOpacity;gl_Position=projectionMatrix*modelViewMatrix*instanceMatrix*vec4(position,1.);}`,
@@ -77,6 +70,7 @@ export function createWater(scene) {
     }`
   });
   const wakes = new THREE.InstancedMesh(wakeGeometry, wakeMaterial, capacity); wakes.frustumCulled = false; wakes.count = 0; wakes.renderOrder = 2; scene.add(wakes);
+  wakes.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
   let emission = 0;
   function update(world, pose, dt) {
     time.value = pose.time; emission += dt;
@@ -95,8 +89,10 @@ export function createWater(scene) {
       dummy.rotation.set(0, r.heading, 0); dummy.scale.set(.22 + r.age * .7, 1, .38 + r.age * 1.2); dummy.updateMatrix();
       wakes.setMatrixAt(i, dummy.matrix); opacity[i] = r.power * (1 - r.age / 2.8) * .46;
     });
-    wakes.count = ripples.length; wakes.instanceMatrix.needsUpdate = true; wakeGeometry.attributes.wakeOpacity.needsUpdate = true;
+    wakes.count = ripples.length;
+    if (ripples.length) { wakes.instanceMatrix.needsUpdate = true; wakeGeometry.attributes.wakeOpacity.needsUpdate = true; }
   }
-  function clear() { for (const mesh of patches.values()) { scene.remove(mesh); mesh.geometry.dispose(); } patches.clear(); ripples.length = 0; wakes.count = 0; emission = 0; }
-  return { sync, update, clear, get count() { return patches.size; }, get wakeCount() { return ripples.length; } };
+  function clear() { for (const mesh of patches.values()) { scene.remove(mesh); mesh.geometry.dispose(); } patches.clear(); wanted.clear(); ripples.length = 0; wakes.count = 0; emission = 0; }
+  return { sync, install, update, clear, wants: id => wanted.has(id), get ready() { return patches.size === wanted.size; },
+    get count() { return patches.size; }, get wakeCount() { return ripples.length; } };
 }

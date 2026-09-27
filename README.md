@@ -57,7 +57,7 @@ Touch devices and compact windows show steering, throttle, reverse, **Jump**, an
 - `assets/vehicles/`: editable Blender source, optimized `.glb`, studio preview and mesh statistics.
 - `scripts/build-car.py`: reproducible Blender modeling, studio rendering and game export.
 - `scripts/build-amphibious.py`: builds the playable amphibious car and its reversible Blender animation from the original expedition source.
-- `lakes.mjs` / `water.mjs` / `amphibious-motion.mjs`: deterministic lake basins, water and bounded wake rendering, buoyancy and boat controls.
+- `lakes.mjs` / `water-data.mjs` / `water.mjs` / `amphibious-motion.mjs`: deterministic lake basins, worker-generated water meshes, bounded wake rendering, buoyancy and boat controls.
 - `nature-models.mjs` / `assets/nature/`: bundled Blender scenery, variant selection and matching tree fragments.
 - `scripts/build-nature.py` / `scripts/export_nature.py`: build the editable nature library or export manually edited models.
 - `terrain.mjs` / `world-worker.mjs` / `streaming-layout.mjs`: reusable terrain data, background generation and seam-free near/far coverage.
@@ -138,6 +138,8 @@ Sandlands form broad, smoothly blended low-elevation regions alongside grass and
 The GitHub Actions workflow runs unit tests plus headless Chromium tests on pushes and pull requests. Browser tests block external resources and exercise WebGL output, stationary-frame stability, worker loading, streamed driving, jumping, recovery, camera resets, rapid world changes, compact touch controls, visible scenery destruction, debris cleanup, and airborne barrel rolls. Failure traces and screenshots are saved under `output/playwright/`. `npm run test:unit` runs the simulation/geometry suite alone; an installed Chrome can be used locally with `PW_CHANNEL=chrome npm run test:browser`.
 
 ## Performance checks
+
+For land-driving frame spikes, run `PROFILE_GPU=1 PW_CHANNEL=chrome node scripts/profile-frame-timing.mjs output/timing/drive.json` with the development server running. It drives the seed-3 road for 20 seconds and reports frame intervals, CPU percentiles, streaming work and the actual graphics renderer. See [performance measurements](docs/performance.md) for the before/after comparison and Retina, water-entry and saved-revision options. Nearby lakes build in the worker even when driving on land, and distant terrain indices update only when their fine-chunk coverage changes.
 
 Run `npm run dev` in one terminal, then `npm run profile` in another (`PW_CHANNEL=chrome npm run profile` also works). The repeatable headless run uses seed 1, a 1280×720 viewport and software rendering. It reports CPU timings for worker generation, chunk installation, rendering submission and the minimap, plus draw counts and scene sizes. Software-renderer FPS is not representative of normal GPU gameplay. `?test=browser` exposes the same read-only diagnostic snapshot and isolates saved records; normal play does not collect profiling samples.
 
