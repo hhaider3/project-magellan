@@ -262,7 +262,8 @@ test('oblique front approaches launch and slow ramp driving stays supported', ()
     car.vx = Math.sin(heading) * 40; car.vz = Math.cos(heading) * 40;
     let airborne = false;
     for (let i = 0; i < 600; i++) { stepVehicle(car, { up: true }, world, []); airborne ||= car.y - car.groundY > 2; }
-    assert.ok(airborne && car.landings > 0);
+    // The right-hand approach now lands in Mirror Lake and deploys its hull.
+    assert.ok(airborne && (car.landings > 0 || car.floating));
   }
   const world = createWorld(1), ramp = world.starterRamp, p = featurePoint(ramp, 0, ramp.length - 3);
   const car = createVehicle(world, p.x, p.z, ramp.heading + Math.PI); car.vz = -3;

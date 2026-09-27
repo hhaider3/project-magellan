@@ -36,6 +36,7 @@ Touch devices and compact windows show steering, throttle, reverse, **Jump**, an
 
 - Mountains are continuous terrain with broad foothills. Random cone mountains, abrupt biome switches, terrain walls, and deep-water barriers are gone.
 - Roads are painted directly onto the terrain, so there are no raised road ribbons or mismatched road collision surfaces.
+- Lakes have sandy shores, animated water, and boat wakes. Follow the blue lake hint or minimap water to Mirror Lake near spawn. Enter water deeper than **0.9 m** to automatically transform the ATLAS into a boat over **2.4 seconds**: its actual body halves spread, the wheels fold flat, a pointed bow and connecting deck extend, and water jets deploy. W/S and A/D control thrust and steering. Shift slows the boat; jumping is unavailable while floating. Return to water shallower than **0.4 m** to reverse the animation and drive onto shore. R recovers onto dry ground. Water crossing does not count as jump airtime.
 - Denser seeded pine clusters, shrubs, small rocks, boulders, roadside markers, cabins and lookout towers give the world more places to explore. Road and ramp approach clearances keep the extra scenery from blocking the route. Small rocks and shrubs are forgiving details; trees collide at the trunk. Cacti, trees and small rocks break above a direct impact speed of **65 km/h**; boulders require **94 km/h**. The car keeps most of its momentum while fragments scatter, bounce, and shrink away. The Blender trees retain their branch silhouettes and colors at contact, then separate into six authored solid sections with a 20 ms onset. Highway-speed hits separate the sections visibly within 80 ms, with independent tumbling and stronger scatter at higher speeds. Up to eight breaking trees share twelve instanced batches across the two variants; unused batches draw nothing. Broken props stay gone for this world visit, including after chunk reloads; a new world or page reload restores them. Small debris uses one instanced draw call and a 192-piece cap.
 - Jumping uses a real impulse, gravity, buffered input and a short grace period after leaving a crest. Quick taps are queued before the next physics tick. Holding Jump does not bounce the car repeatedly.
 - Fixed 120 Hz physics handles acceleration, hill climbing, drift, airborne motion, landing and collision sliding. Top speed on level asphalt is approximately **301 km/h**, with stronger braking and speed-sensitive steering. Recovery finds clear nearby ground without erasing trip or best-jump distance.
@@ -55,6 +56,8 @@ Touch devices and compact windows show steering, throttle, reverse, **Jump**, an
 - `vehicle-model.mjs`: loads the bundled Blender/glTF vehicle, validates its animation rig and lights, and supplies paint/glass reflections.
 - `assets/vehicles/`: editable Blender source, optimized `.glb`, studio preview and mesh statistics.
 - `scripts/build-car.py`: reproducible Blender modeling, studio rendering and game export.
+- `scripts/build-amphibious.py`: builds the playable amphibious car and its reversible Blender animation from the original expedition source.
+- `lakes.mjs` / `water.mjs` / `amphibious-motion.mjs`: deterministic lake basins, water and bounded wake rendering, buoyancy and boat controls.
 - `nature-models.mjs` / `assets/nature/`: bundled Blender scenery, variant selection and matching tree fragments.
 - `scripts/build-nature.py` / `scripts/export_nature.py`: build the editable nature library or export manually edited models.
 - `terrain.mjs` / `world-worker.mjs` / `streaming-layout.mjs`: reusable terrain data, background generation and seam-free near/far coverage.
@@ -83,6 +86,14 @@ The tests cover terrain continuity, seeded regeneration, scenery clearances, cha
 Vehicle checks also parse the actual exported GLB to verify meter scale, wheel origins, ground contact, lamp materials, self-contained resources and geometry budgets. Browser checks exercise the imported rig's steering, wheel spin and lights, and confirm that an asset-load failure shows an error instead of starting an invisible car.
 
 ## Blender car source
+
+The game now loads **`assets/vehicles/atlas-amphibious.glb`**. Its editable source is **`atlas-amphibious.blend`**: scrub frames **1–121** at 50 fps to see the staged transformation. The original expedition source below is retained as the modeling base. Rebuild the amphibious source and export with:
+
+```sh
+/Applications/Blender.app/Contents/MacOS/Blender --background --python scripts/build-amphibious.py
+```
+
+The exported `Transform_To_Boat` clip moves the same meshes in both directions. `WheelFold_*` owns each axle's folding motion; `Wheel_*` and `Spinner_*` remain independent steering and rolling pivots. Animated groups are batched separately, using about 52,000 triangles and fewer than 80 material draws; exact counts are in `atlas-amphibious.json`. The GLB embeds its animation and materials with no external textures. Tests check intermediate poses, exact reversal, buoyancy, shore exits, water landings, and dry recovery. Use `?seed=3&test=water` for a repeatable drive into the lake, or `?seed=3&test=boat` to preview the deployed hull.
 
 Open `assets/vehicles/atlas-expedition.blend` in Blender to edit the 803 named parts, material assignments and bevel modifiers. The studio camera and lights are included for rendering and excluded from the game export. All geometry is original to this project; no downloaded models or texture services are required.
 

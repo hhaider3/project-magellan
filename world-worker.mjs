@@ -1,6 +1,6 @@
-import { createWorld, CHUNK, GRID, ROAD_SPACING } from './world.mjs?v=grass-1';
-import { createTerrain } from './terrain.mjs?v=grass-1';
-import { buildGrass } from './grass-data.mjs?v=grass-1';
+import { createWorld, CHUNK, GRID, ROAD_SPACING } from './world.mjs?v=amphibious-1';
+import { createTerrain } from './terrain.mjs?v=amphibious-1';
+import { buildGrass } from './grass-data.mjs?v=amphibious-1';
 let world, terrain;
 self.onmessage = ({ data: job }) => {
   try {

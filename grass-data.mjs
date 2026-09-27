@@ -1,4 +1,4 @@
-import { CHUNK, GRID, hash, noise, random, smoothstep } from './world.mjs?v=grass-1';
+import { CHUNK, GRID, hash, noise, random, smoothstep } from './world.mjs?v=amphibious-1';
 
 export const GRASS_GRID = 40;
 export const MAX_GRASS_PER_CHUNK = GRASS_GRID * GRASS_GRID;
@@ -23,7 +23,7 @@ export function buildGrass(world, cx, cz, ground) {
       * (1 - smoothstep(.22, .5, slope)) * (1 - smoothstep(90, 110, h));
     const density = plains * (.45 + .5 * noise(px * .045, pz * .045, world.seed + 906));
     if (hash(gx, gz, world.seed + 903) > density || world.desertAt(px, pz, h) > .12) continue;
-    if (world.roadAt(px, pz).d < 7.5 || world.reserved(px, pz)) continue;
+    if (world.roadAt(px, pz).d < 7.5 || world.waterAt?.(px, pz) || world.reserved(px, pz)) continue;
     roots.push(x, h - .035, z);
     shapes.push(.3 + hash(gx, gz, world.seed + 904) * .4, hash(gx, gz, world.seed + 905) * Math.PI * 2, .85 + hash(gx, gz, world.seed + 907) * .3);
   }

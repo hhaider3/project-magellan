@@ -11,6 +11,35 @@ async function openGame(page, seed = 1, mode = 'browser') {
   return errors;
 }
 const snapshot = page => page.evaluate(() => window.__driveTest.snapshot());
+test('deep water transforms the Blender car, floats with a wake, and reverses on shore', async ({ page }, testInfo) => {
+  test.setTimeout(180000);
+  const errors = await openGame(page, 3, 'water');
+  const initial = await snapshot(page);
+  expect(initial.vehicle.transform).toBe(0); expect(initial.water.lakes).toBeGreaterThan(0);
+  await page.getByRole('button', { name: 'Start exploring', exact: true }).click();
+  await page.keyboard.down('KeyW');
+  await expect.poll(async () => (await snapshot(page)).vehicle.transform, { timeout: 45000, intervals: [100] }).toBeGreaterThan(.15);
+  const unfolding = await snapshot(page);
+  expect(unfolding.vehicle.transform).toBeLessThan(1);
+  expect(unfolding.carAsset.hullSpan).toBeGreaterThan(initial.carAsset.hullSpan);
+  await testInfo.attach('blender-transforming', { body: await page.screenshot(), contentType: 'image/png' });
+  await expect.poll(async () => (await snapshot(page)).vehicle.transform, { timeout: 30000 }).toBe(1);
+  const boat = await snapshot(page);
+  expect(boat.vehicle.floating).toBe(true); expect(boat.vehicle.airtime).toBe(0);
+  expect(boat.water.wakes).toBeGreaterThan(0); expect(boat.water.wakes).toBeLessThanOrEqual(80);
+  expect(boat.carAsset.hullSpan).toBeGreaterThan(initial.carAsset.hullSpan * 1.5);
+  expect(boat.vehicle.y).toBeGreaterThan(boat.vehicle.waterLevel - .85);
+  await expect(page.locator('#surfaceState')).toHaveText('BOAT MODE');
+  await testInfo.attach('blender-boat-on-lake', { body: await page.screenshot(), contentType: 'image/png' });
+  await expect.poll(async () => (await snapshot(page)).vehicle.transform, { timeout: 90000 }).toBe(0);
+  await page.keyboard.up('KeyW');
+  const shore = await snapshot(page);
+  expect(shore.vehicle.boatMode).toBe(false); expect(shore.vehicle.boatDistance).toBeGreaterThan(150);
+  expect(shore.carAsset.hullSpan).toBeCloseTo(initial.carAsset.hullSpan, 4);
+  await testInfo.attach('returned-to-car', { body: await page.screenshot(), contentType: 'image/png' });
+  expect(errors).toEqual([]);
+});
+
 test('Blender trees, cacti and rocks render as seeded instances in forest and desert worlds', async ({ page }, testInfo) => {
   for (const [seed, kind] of [[3, 'tree'], [100003, 'cactus']]) {
     const errors = await openGame(page, seed);
@@ -37,7 +66,7 @@ test('Blender vehicle loads, steers, spins its wheels and switches its lamps', a
   const errors = await openGame(page, 3);
   const initial = await snapshot(page);
   expect(initial.carAsset.ready).toBe(true); expect(initial.carAsset.error).toBeNull();
-  expect(initial.carAsset.triangles).toBeLessThan(90000); expect(initial.carMeshes).toBeLessThanOrEqual(30);
+  expect(initial.carAsset.triangles).toBeLessThan(90000); expect(initial.carMeshes).toBeLessThanOrEqual(80);
   await page.getByRole('button', { name: 'Start exploring', exact: true }).click();
   await page.keyboard.press('KeyL');
   await expect.poll(async () => (await snapshot(page)).carAsset.headlights).toBe(2);
@@ -55,7 +84,7 @@ test('Blender vehicle loads, steers, spins its wheels and switches its lamps', a
 });
 
 test('a missing car asset gives a visible error and prevents starting without a vehicle', async ({ page }) => {
-  await page.route('**/atlas-expedition.glb*', route => route.abort());
+  await page.route('**/atlas-amphibious.glb*', route => route.abort());
   await page.goto('/?seed=3&test=browser');
   await expect(page.locator('#loadError')).toBeVisible({ timeout: 15000 });
   await expect(page.getByRole('button', { name: 'Unable to load the car', exact: true })).toBeDisabled();
@@ -66,13 +95,16 @@ test('worker loading, actual WebGL rendering, and stationary scenery stay stable
   const state = await snapshot(page);
   expect(state.grass.tufts).toBeGreaterThan(0); expect(state.grass.meshes).toBeLessThanOrEqual(9);
   expect(state.grass.tufts * 3).toBeLessThanOrEqual(43200);
-  expect(state.loading).toBe(false); expect(state.carMeshes).toBeLessThan(40); expect(state.farTiles).toBe(81);
+  expect(state.loading).toBe(false); expect(state.carMeshes).toBeLessThan(80); expect(state.farTiles).toBe(81);
   expect(state.metrics.workerBuild.count).toBeGreaterThanOrEqual(162);
   await page.getByRole('button', { name: 'Start exploring', exact: true }).click();
   // The menu camera is already settled. Wait for gameplay to render before
   // checking convergence, otherwise a slow GPU can pass on that stale state.
   await expect.poll(async () => (await snapshot(page)).metrics.frame?.count ?? 0, { timeout: 20000 }).toBeGreaterThan(1);
   await expect.poll(async () => (await snapshot(page)).cameraError, { timeout: 20000 }).toBeLessThan(1e-7);
+  // Pause the simulation clock so the new water ripples are stationary too.
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(300);
   // The exact pixels may differ across GPUs; within one settled session they must not flicker.
   const first = await page.locator('#game canvas').screenshot();
   await page.waitForTimeout(500);

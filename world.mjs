@@ -1,4 +1,6 @@
 // Shared, deterministic world and vehicle simulation. No browser or renderer required.
+import { createLakes } from './lakes.mjs?v=amphibious-1';
+import { stepAmphibious } from './amphibious-motion.mjs?v=amphibious-1';
 export const CHUNK = 96;
 export const GRID = 4;
 export const ROAD_SPACING = 420;
@@ -87,7 +89,7 @@ export function createWorld(seed) {
     for (let cx = Math.floor((x - radius) / FEATURE_SPACING); cx <= Math.floor((x + radius) / FEATURE_SPACING); cx++) {
       for (let cz = Math.floor((z - radius) / FEATURE_SPACING); cz <= Math.floor((z + radius) / FEATURE_SPACING); cz++) result.push(featureAtCell(cx, cz));
     }
-    return result.filter(f => Math.hypot(f.x - x, f.z - z) < radius);
+    return result.filter(f => Math.hypot(f.x - x, f.z - z) < radius && !waterAt(f.x, f.z));
   }
   function rampLift(ramp, x, z) {
     if (ramp.type !== 'ramp') return 0;
@@ -100,6 +102,7 @@ export function createWorld(seed) {
     return Math.max(0, ramp.rise + bank) * profile * (1 - smoothstep(ramp.width / 2, ramp.width / 2 + 7, Math.abs(across)));
   }
   function rampAt(x, z) {
+    if (waterAt(x, z)?.depth > .1) return null;
     for (const ramp of [starterRamp, twistRamp, featureAtCell(Math.floor(x / FEATURE_SPACING), Math.floor(z / FEATURE_SPACING))]) {
       if (ramp.type !== 'ramp') continue;
       const p = featureLocal(ramp, x, z);
@@ -113,7 +116,7 @@ export function createWorld(seed) {
       return f.type === 'ramp' ? Math.abs(p.across) < f.width / 2 + 9 && p.along > -30 && p.along < f.length + 220 : Math.hypot(p.across, p.along) < 18;
     });
   }
-  function computeHeight(x, z) {
+  function baseHeight(x, z) {
     const highland = (noise(x * .0016 + 17.4, z * .0016 - 5.3, seed + 11) - .5) * 30;
     const hills = (noise(x * .0045 - 11.7, z * .0045 + 19.1, seed + 23) - .5) * 24;
     const offroad = smoothstep(9, 34, roadAt(x, z).d);
@@ -128,6 +131,14 @@ export function createWorld(seed) {
     // down to zero creates an artificial bowl with steep walls around the car.
     const feature = featureAtCell(Math.floor(x / FEATURE_SPACING), Math.floor(z / FEATURE_SPACING));
     return 12 + highland + hills + rollers + relief + gullies + rampLift(feature, x, z) + rampLift(starterRamp, x, z) + rampLift(twistRamp, x, z);
+  }
+  const lakes = createLakes(seed, baseHeight, roadAt);
+  function computeHeight(x, z) { return lakes.carve(x, z, baseHeight(x, z)); }
+  function waterAt(x, z) {
+    const lake = lakes.lakeAt(x, z);
+    if (!lake || Math.hypot((x - lake.x) / lake.rx, (z - lake.z) / lake.rz) > 1.02) return null;
+    const depth = lake.level - surface(x, z);
+    return depth > 0 ? { lake, level: lake.level, depth } : null;
   }
   // Chunk boundaries revisit most of the same terrain samples. Retain those
   // heights so a faster car doesn't rebuild the whole horizon every 96 m.
@@ -166,7 +177,7 @@ export function createWorld(seed) {
       const x = cx * CHUNK + 9 + rng() * (CHUNK - 18), z = cz * CHUNK + 9 + rng() * (CHUNK - 18);
       const chance = rng(), size = .8 + rng() * .65, turn = rng() * Math.PI * 2;
       const woodland = woodlandAt(x, z), mountain = mountainAt(x, z), desert = desertAt(x, z);
-      if (Math.hypot(x, z) < 24 || roadAt(x, z).d < 12 || reserved(x, z)) continue;
+      if (Math.hypot(x, z) < 24 || roadAt(x, z).d < 12 || waterAt(x, z) || reserved(x, z)) continue;
       const slope = gradient(x, z);
       if (Math.hypot(slope.x, slope.z) > .9) continue;
       if (list.some(p => Math.hypot(p.x - x, p.z - z) < 7.5)) continue;
@@ -186,7 +197,7 @@ export function createWorld(seed) {
     }
     return list.filter(p => !brokenProps.has(p.id));
   }
-  return { seed, phase, height, surface, gradient, mountainAt, woodlandAt, desertAt, roadCenter, roadAt, props, featuresNear, rampLift, rampAt, reserved, starterRamp, twistRamp, brokenProps, breakProp, drainBreakEvents: () => breakEvents.splice(0) };
+  return { seed, phase, height, surface, gradient, mountainAt, woodlandAt, desertAt, roadCenter, roadAt, props, featuresNear, rampLift, rampAt, reserved, starterRamp, twistRamp, waterAt, lakeAt: lakes.lakeAt, lakesNear: lakes.near, starterLake: lakes.starter, brokenProps, breakProp, drainBreakEvents: () => breakEvents.splice(0) };
 }
 
 export function featureLocal(feature, x, z) {
@@ -206,7 +217,8 @@ export function groundAt(world, x, z, heading) {
 }
 export function createVehicle(world, x = 0, z = 0, heading = 0) {
   const g = groundAt(world, x, z, heading);
-  return { x, z, y: g.y, vx: 0, vz: 0, vy: 0, heading, steer: 0, grounded: true, groundY: g.y, pitch: g.pitch, roll: g.roll, rollVelocity: 0, airRoll: 0, rolls: 0, smashed: 0, distance: 0, airtime: 0, bestAir: 0, airDistance: 0, bestJump: 0, landings: 0, jumps: 0, jumpBuffer: 0, coyote: .1, jumpHeld: false, landLock: 0, impact: 0, speed: 0, onRoad: true };
+  const water = world.waterAt?.(x, z), floating = Boolean(water && water.depth > .9);
+  return { x, z, y: floating ? Math.max(g.y, water.level - .52) : g.y, vx: 0, vz: 0, vy: 0, heading, steer: 0, grounded: !floating, groundY: g.y, pitch: floating ? 0 : g.pitch, roll: floating ? 0 : g.roll, rollVelocity: 0, airRoll: 0, rolls: 0, smashed: 0, distance: 0, airtime: 0, bestAir: 0, airDistance: 0, bestJump: 0, landings: 0, jumps: 0, jumpBuffer: 0, coyote: .1, jumpHeld: false, landLock: 0, impact: 0, speed: 0, onRoad: !floating, time: 0, transform: floating ? 1 : 0, boatMode: floating, floating, waterDepth: water?.depth ?? 0, waterLevel: water?.level ?? null, boatDistance: 0, transformations: 0 };
 }
 export function resolveObstacles(car, obstacles, world) {
   for (let pass = 0; pass < 3; pass++) for (const o of obstacles) {
@@ -239,6 +251,7 @@ function launchRoll(car, ramp, speed) {
   car.airRoll = 0;
 }
 export function stepVehicle(car, input, world, obstacles, dt = FIXED_DT) {
+  if (stepAmphibious(car, input, world, dt, groundAt)) { resolveObstacles(car, obstacles, world); return; }
   const throttle = Number(!!input.up) - Number(!!input.down), brake = !!input.brake;
   const jumpPressed = !!input.jump && !car.jumpHeld;
   car.jumpHeld = !!input.jump;
@@ -321,7 +334,7 @@ export function stepVehicle(car, input, world, obstacles, dt = FIXED_DT) {
 }
 export function recoverVehicle(car, world) {
   const road = world.roadAt(car.x, car.z);
-  const origin = road.d < 55 ? road : car;
+  const origin = road.d < 55 || world.waterAt?.(car.x, car.z) ? road : car;
   // A recovery search repeatedly visits the same few chunk neighborhoods.
   // Scope the cache to this attempt so callers never see stale/mutable props.
   const propCache = new Map();
@@ -332,14 +345,15 @@ export function recoverVehicle(car, world) {
   };
   for (let ring = 0; ring < 14; ring++) for (let i = 0; i < (ring ? 12 : 1); i++) {
     const x = origin.x + Math.cos(i * Math.PI / 6) * ring * 3, z = origin.z + Math.sin(i * Math.PI / 6) * ring * 3;
+    if (world.waterAt?.(x, z)) continue;
     const cx = Math.floor(x / CHUNK), cz = Math.floor(z / CHUNK);
     const nearby = [];
     for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) nearby.push(...cachedProps(cx + dx, cz + dz));
     if (nearby.some(o => o.r && Math.hypot(x - o.x, z - o.z) < o.r + 3)) continue;
     const slope = world.gradient(x, z);
     if (Math.hypot(slope.x, slope.z) > .6) continue;
-    const { distance, bestAir, jumps, bestJump, landings, rolls, smashed } = car;
-    Object.assign(car, createVehicle(world, x, z, car.heading), { distance, bestAir, jumps, bestJump, landings, rolls, smashed });
+    const { distance, bestAir, jumps, bestJump, landings, rolls, smashed, boatDistance, transformations } = car;
+    Object.assign(car, createVehicle(world, x, z, car.heading), { distance, bestAir, jumps, bestJump, landings, rolls, smashed, boatDistance, transformations });
     return true;
   }
   return false;

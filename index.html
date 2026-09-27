@@ -7,7 +7,7 @@
   <meta name="description" content="Take the long way. An endless driving escape through a new procedural wilderness on every visit.">
   <title>Endless Drive — Take the long way</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' rx='10' fill='%23253d39'/%3E%3Cpath d='m10 29 8-19h4l8 19M14 23h12' fill='none' stroke='%23f3dfba' stroke-width='3'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=amphibious-1">
   <script type="importmap">{"imports":{"three":"/vendor/three.module.js"}}</script>
 </head>
 <body>
@@ -19,11 +19,12 @@
   </header>
   <div id="compass" class="in-game"><span id="headingTxt">N</span><i></i><span id="biomeTxt">OPEN MEADOW</span></div>
   <div id="rampHint" class="in-game">↑ RAMP AHEAD</div>
+  <div id="lakeHint" class="in-game">DEEP WATER TRANSFORMS YOUR CAR</div>
   <main id="menu" role="dialog" aria-modal="true" aria-labelledby="menuTitle">
     <section class="intro">
       <div class="eyebrow"><span></span> A LITTLE FURTHER, EVERY TIME</div>
       <h1 id="menuTitle">Take the<br><em>long way.</em></h1>
-      <p id="menuCopy">Orange ramps launch. Purple ramps roll.<br>Build up speed and smash through the wild.</p>
+      <p id="menuCopy">Orange ramps launch. Purple ramps roll.<br>Find a lake. Your car becomes a boat.</p>
       <button id="startBtn" class="primary" disabled><span>Preparing your world</span><span aria-hidden="true">↗</span></button>
       <div id="menuStats" hidden><span><b id="runDistance">0.00</b> km this drive</span><span><b id="bestDistance">0.00</b> km personal best</span></div>
       <div id="pauseTools" hidden><button id="recoverBtn">↻ Recover car</button><button id="cameraBtn">Camera: Chase</button></div>
@@ -38,7 +39,7 @@
     <canvas id="minimap" width="288" height="240" aria-label="Nearby roads and terrain"></canvas>
     <div class="map-footer"><span id="coordinates">0 E · 0 N</span><span id="elevation">12 M</span></div>
   </section>
-  <div id="driveHint" class="in-game"><span><kbd>SPACE</kbd> jump</span><span><kbd>SHIFT</kbd> drift</span><span><kbd>R</kbd> recover</span></div>
+  <div id="driveHint" class="in-game"><span><kbd id="modeKey">SPACE</kbd> <span id="modeAction">jump</span></span><span><kbd>SHIFT</kbd> <span id="brakeAction">drift</span></span><span><kbd>R</kbd> recover</span></div>
   <section id="dashboard" class="in-game" aria-label="Driving instruments">
     <div id="surfaceState">ON THE ROAD</div>
     <div class="speed-row"><span id="gear">N</span><strong id="speed">0</strong><span class="unit">KM/H</span></div>
@@ -47,7 +48,7 @@
   </section>
   <div id="toast" role="status" aria-live="polite"></div>
   <div id="touch" aria-label="Touch driving controls"><div><button data-control="left" aria-label="Steer left">←</button><button data-control="right" aria-label="Steer right">→</button></div><div class="touch-center"><button data-control="jump" aria-label="Jump">JUMP</button><button data-control="brake" aria-label="Drift">DRIFT</button></div><div><button data-control="down" aria-label="Brake or reverse">↓</button><button data-control="up" aria-label="Accelerate">↑</button></div></div>
-  <script type="module" src="game.mjs?v=nature-1"></script>
+  <script type="module" src="game.mjs?v=amphibious-1"></script>
   <script>window.addEventListener('error',()=>{if(document.querySelector('#startBtn').disabled)document.querySelector('#loadError').hidden=false;});</script>
 </body>
 </html>

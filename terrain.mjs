@@ -1,5 +1,5 @@
 import * as THREE from './vendor/three.module.js';
-import { GRID, hash, smoothstep } from './world.mjs?v=grass-1';
+import { GRID, hash, smoothstep } from './world.mjs?v=amphibious-1';
 export function createTerrain(world) {
   const seed = world.seed;
   const groundColors = { grass: new THREE.Color('#7e9059'), sand: new THREE.Color('#d9b873'), lush: new THREE.Color('#536e48'), dry: new THREE.Color('#b2a477'), rock: new THREE.Color('#8e9385'), snow: new THREE.Color('#dddeda') };
@@ -17,6 +17,8 @@ export function createTerrain(world) {
     tmpColor.lerp(groundColors.rock, smoothstep(.26, .65, Math.hypot(gx, gz)) * .65 + world.mountainAt(x, z) * .12);
     tmpColor.lerp(groundColors.sand, world.desertAt(x, z, h));
     tmpColor.lerp(groundColors.snow, smoothstep(117, 168, h) * .87);
+    const lake = world.lakeAt?.(x, z);
+    if (lake) tmpColor.lerp(groundColors.sand, (1 - smoothstep(.5, 3.8, h - lake.level)) * (1 - smoothstep(1.05, 1.4, Math.hypot((x - lake.x) / lake.rx, (z - lake.z) / lake.rz))) * .84);
     const sample = { height: h, normal: [-gx / length, 1 / length, -gz / length], color: [tmpColor.r, tmpColor.g, tmpColor.b] };
     if (step === 24) {
       if (coarseSamples.size >= 30000) coarseSamples.delete(coarseSamples.keys().next().value);

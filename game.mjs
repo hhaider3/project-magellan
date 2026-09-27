@@ -1,9 +1,10 @@
-import { createTerrain } from './terrain.mjs?v=grass-1';
+import { createTerrain } from './terrain.mjs?v=amphibious-1';
+import { createWater } from './water.mjs?v=amphibious-1';
 import { FAR_SIZE, FAR_VIEW, NEAR_VIEW, farIndices } from './streaming-layout.mjs?v=grass-1';
-import { loadVehicleModel } from './vehicle-model.mjs?v=atlas-1';
+import { loadVehicleModel } from './vehicle-model.mjs?v=amphibious-1';
 import { createProfiler } from './profiling.mjs?v=grass-1';
 import { createDebris } from './debris.mjs?v=grass-1';
-import { createVehiclePresentation } from './vehicle-presentation.mjs?v=grass-1';
+import { createVehiclePresentation } from './vehicle-presentation.mjs?v=amphibious-1';
 import { followTarget, followValue } from './camera-motion.mjs?v=grass-1';
 import { createTreeBreakage } from './tree-breakage.mjs?v=nature-1';
 import { loadNatureLibrary } from './nature-models.mjs?v=nature-1';
@@ -11,13 +12,13 @@ import { createBreakAudio } from './break-audio.mjs?v=grass-1';
 import { installSunShadowFade } from './shadow-fade.mjs?v=grass-1';
 import { createGrass } from './grass.mjs?v=grass-1';
 import * as THREE from 'three';
-import { CHUNK, GRID, ROAD_SPACING, ROAD_HALF, FIXED_DT, featurePoint, clamp, mix, smoothstep, hash, createWorld, createVehicle, stepVehicle, recoverVehicle } from './world.mjs?v=grass-1';
+import { CHUNK, GRID, ROAD_SPACING, ROAD_HALF, FIXED_DT, featurePoint, clamp, mix, smoothstep, hash, createWorld, createVehicle, stepVehicle, recoverVehicle } from './world.mjs?v=amphibious-1';
 import { buildLandmark, cloneOwnedGeometry } from './scenery.mjs?v=grass-1';
 
 const $ = id => document.getElementById(id);
 const coarse = matchMedia('(pointer:coarse)').matches || navigator.maxTouchPoints > 0;
 const reducedMotion = matchMedia('(prefers-reduced-motion:reduce)').matches;
-const testMode = ['drive', 'ramp', 'ramp-side', 'twist', 'smash', 'tree-smash', 'browser'].includes(new URLSearchParams(location.search).get('test'));
+const testMode = ['drive', 'ramp', 'ramp-side', 'twist', 'smash', 'tree-smash', 'browser', 'water', 'boat'].includes(new URLSearchParams(location.search).get('test'));
 const profiler = createProfiler(testMode);
 const bootStarted = performance.now();
 if (coarse) document.body.classList.add('touch');
@@ -25,6 +26,10 @@ const seedFromUrl = Number(new URLSearchParams(location.search).get('seed'));
 const freshSeed = () => crypto.getRandomValues(new Uint32Array(1))[0] % 900000 + 100000;
 let seed = Number.isSafeInteger(seedFromUrl) && seedFromUrl > 0 ? seedFromUrl % 2147483647 || 1 : freshSeed();
 let world = createWorld(seed), vehicle = createVehicle(world);
+if (['water', 'boat'].includes(new URLSearchParams(location.search).get('test'))) {
+  const lake = world.starterLake, afloat = new URLSearchParams(location.search).get('test') === 'boat';
+  vehicle = createVehicle(world, lake.x, afloat ? lake.z : lake.z - lake.rz * 1.12, 0);
+}
 // Reproducible launch position used by the browser integration harness.
 if (new URLSearchParams(location.search).get('test') === 'ramp') {
   const p = featurePoint(world.starterRamp, 0, -35);
@@ -65,6 +70,7 @@ renderer.domElement.tabIndex = 0;
 renderer.domElement.setAttribute('aria-label', 'Driving world. WASD to drive, Space to jump, Shift to drift, R to recover, Escape to pause.');
 $('game').append(renderer.domElement);
 const scene = new THREE.Scene();
+const waterSystem = createWater(scene);
 const skyColor = new THREE.Color('#b9cdd0');
 scene.background = skyColor;
 scene.fog = new THREE.Fog(skyColor, 350, 1450);
@@ -285,6 +291,7 @@ function streamWorld(force = false) {
   const cx = Math.floor(vehicle.x / CHUNK), cz = Math.floor(vehicle.z / CHUNK);
   if (!force && cx === lastCX && cz === lastCZ) return;
   lastCX = cx; lastCZ = cz;
+  waterSystem.sync(world, vehicle.x, vehicle.z);
   const fx = Math.floor(vehicle.x / FAR_SIZE), fz = Math.floor(vehicle.z / FAR_SIZE);
   for (const [key, chunk] of chunks) {
     const ring = Math.max(Math.abs(chunk.cx - cx), Math.abs(chunk.cz - cz));
@@ -364,7 +371,8 @@ function beginWorldLoad(continueDriving = false) {
   for (const chunk of chunks.values()) disposeChunk(chunk); chunks.clear();
   for (const tile of farTiles.values()) { scene.remove(tile); tile.geometry.dispose(); } farTiles.clear();
   terrain = createTerrain(world);
-  worker = new Worker(new URL('./world-worker.mjs?v=grass-1', import.meta.url), { type: 'module' });
+  waterSystem.clear();
+  worker = new Worker(new URL('./world-worker.mjs?v=amphibious-1', import.meta.url), { type: 'module' });
   const failed = message => { streamError = message; running = false; $('loadError').hidden = false; $('startBtn').firstElementChild.textContent = 'Unable to prepare the world'; };
   worker.onerror = error => failed(error.message);
   worker.onmessage = ({ data }) => {
@@ -385,9 +393,10 @@ const car = new THREE.Group(); scene.add(car); car.rotation.order = 'YXZ';
 let body = new THREE.Group(), wheelPivots = [], wheelSpinners = [];
 let headMat = material('#f9efce'), brakeMat = material('#af3c25');
 let carReady = false, carError = null, carTriangles = 0, carBatching = [];
+let transformation = null;
 loadVehicleModel(renderer).then(asset => {
   car.add(asset.model);
-  ({ body, wheelPivots, wheelSpinners, headMat, brakeMat } = asset);
+  ({ body, wheelPivots, wheelSpinners, headMat, brakeMat, transformation } = asset);
   carTriangles = asset.triangles; carBatching = asset.batching; carReady = true;
 }).catch(error => {
   carError = error.message;
@@ -472,7 +481,7 @@ function newWorld() {
   debris.clear(); treeBreakage?.clear(); audio?.breaks.clear();
   const url = new URL(location.href); url.searchParams.set('seed', seed); history.replaceState(null, '', url);
   beginWorldLoad(continueDriving); resetCamera(); syncSeed(); updateHUD(); drawMap();
-  reportedLanding = 0; $('runDistance').textContent = '0.00'; toast('A new road ahead. World ' + seed);
+  reportedLanding = 0; reportedBoat = false; $('runDistance').textContent = '0.00'; toast('A new road ahead. World ' + seed);
 }
 function syncSeed() { $('seedTxt').textContent = String(seed).padStart(6, '0'); }
 $('startBtn').onclick = resume; $('pauseBtn').onclick = pause; $('newWorld').onclick = newWorld;
@@ -536,7 +545,8 @@ function drawMap() {
   ctx.fillStyle = '#32493b'; ctx.fillRect(0, 0, w, h);
   for (let iy = 0; iy < h; iy += step) for (let ix = 0; ix < w; ix += step) {
     const x = vehicle.x - (ix - w / 2) / scale, z = vehicle.z - (iy - h / 2) / scale, elev = world.height(x, z);
-    const band = Math.floor(elev / 9), sand = world.desertAt(x, z, elev); ctx.fillStyle = `hsl(${mix(89 - band * 1.5, 40, sand)} ${mix(16, 38, sand)}% ${25 + band * 1.7 + sand * 13}%)`; ctx.fillRect(ix, iy, step + 1, step + 1);
+    const band = Math.floor(elev / 9), sand = world.desertAt(x, z, elev);
+    ctx.fillStyle = world.waterAt(x, z) ? '#548c99' : `hsl(${mix(89 - band * 1.5, 40, sand)} ${mix(16, 38, sand)}% ${25 + band * 1.7 + sand * 13}%)`; ctx.fillRect(ix, iy, step + 1, step + 1);
   }
   ctx.strokeStyle = '#d6c99c'; ctx.lineWidth = 2.4; ctx.lineCap = 'round';
   for (const dir of ['x', 'z']) for (let k = -1; k <= 1; k++) {
@@ -568,10 +578,24 @@ function drawMap() {
 function updateHUD() {
   const speed = Math.abs(vehicle.speed) * 3.6;
   $('speed').textContent = Math.round(speed); $('speedBar').style.width = clamp(speed / 330 * 100, 0, 100) + '%';
-  $('gear').textContent = speed < 1 ? 'N' : vehicle.speed < 0 ? 'R' : 'D';
+  $('gear').textContent = vehicle.boatMode ? 'B' : speed < 1 ? 'N' : vehicle.speed < 0 ? 'R' : 'D';
   $('distance').textContent = (vehicle.distance / 1000).toFixed(2);
-  $('surfaceState').textContent = !vehicle.grounded ? 'A LITTLE AIR' : input.brake && speed > 10 ? 'TAKE IT SIDEWAYS' : vehicle.onRoad ? 'ON THE ROAD' : 'OFF THE BEATEN PATH';
-  $('airtime').textContent = !vehicle.grounded ? `${Math.round(vehicle.airDistance)} M · ${vehicle.airtime.toFixed(1)} S AIR` : vehicle.bestJump > 5 ? 'BEST JUMP ' + Math.round(vehicle.bestJump) + ' M' : vehicle.bestAir > .4 ? 'BEST AIR ' + vehicle.bestAir.toFixed(1) + ' S' : 'READY TO ROAM';
+  const transforming = vehicle.transform > 0 && vehicle.transform < 1;
+  $('modeKey').textContent = vehicle.floating ? 'W / S' : 'SPACE';
+  $('modeAction').textContent = vehicle.floating ? 'throttle' : 'jump';
+  $('brakeAction').textContent = vehicle.floating ? 'slow' : 'drift';
+  document.querySelector('[data-control="jump"]').disabled = vehicle.floating;
+  const touchBrake = document.querySelector('[data-control="brake"]');
+  touchBrake.textContent = vehicle.floating ? 'SLOW' : 'DRIFT';
+  touchBrake.setAttribute('aria-label', vehicle.floating ? 'Slow boat' : 'Drift');
+  $('surfaceState').textContent = transforming ? vehicle.boatMode ? 'DEPLOYING BOAT HULL' : 'RETURNING TO WHEELS' : vehicle.boatMode ? 'BOAT MODE' : !vehicle.grounded ? 'A LITTLE AIR' : input.brake && speed > 10 ? 'TAKE IT SIDEWAYS' : vehicle.onRoad ? 'ON THE ROAD' : 'OFF THE BEATEN PATH';
+  $('airtime').textContent = transforming ? `TRANSFORMING · ${Math.round((vehicle.boatMode ? vehicle.transform : 1 - vehicle.transform) * 100)}%` : vehicle.floating ? `${vehicle.waterDepth.toFixed(1)} M WATER · W/S THROTTLE` : !vehicle.grounded ? `${Math.round(vehicle.airDistance)} M · ${vehicle.airtime.toFixed(1)} S AIR` : vehicle.bestJump > 5 ? 'BEST JUMP ' + Math.round(vehicle.bestJump) + ' M' : vehicle.bestAir > .4 ? 'BEST AIR ' + vehicle.bestAir.toFixed(1) + ' S' : 'READY TO ROAM';
+  const lake = world.lakesNear(vehicle.x, vehicle.z, 700).sort((a, b) => Math.hypot(a.x - vehicle.x, a.z - vehicle.z) - Math.hypot(b.x - vehicle.x, b.z - vehicle.z))[0];
+  if (lake) {
+    const angle = Math.atan2(lake.x - vehicle.x, lake.z - vehicle.z) - vehicle.heading;
+    const arrow = Math.cos(angle) < -.5 ? '↓' : Math.sin(angle) > .2 ? '↖' : Math.sin(angle) < -.2 ? '↗' : '↑';
+    $('lakeHint').textContent = vehicle.floating ? 'RETURN TO SHORE TO DRIVE' : `${arrow} LAKE ${Math.round(Math.max(0, Math.hypot(lake.x - vehicle.x, lake.z - vehicle.z) - Math.min(lake.rx, lake.rz)))} M · AUTO BOAT`;
+  } else $('lakeHint').textContent = 'DEEP WATER TRANSFORMS YOUR CAR';
   const ramps = world.featuresNear(vehicle.x, vehicle.z, 450).filter(f => f.type === 'ramp').sort((a, b) => Math.hypot(a.x - vehicle.x, a.z - vehicle.z) - Math.hypot(b.x - vehicle.x, b.z - vehicle.z));
   if (ramps.length) {
     const ramp = ramps[0], angle = Math.atan2(ramp.x - vehicle.x, ramp.z - vehicle.z) - vehicle.heading;
@@ -579,9 +603,9 @@ function updateHUD() {
   } else $('rampHint').textContent = 'EXPLORE FOR MORE RAMPS';
   const headings = ['N', 'NW', 'W', 'SW', 'S', 'SE', 'E', 'NE'];
   $('headingTxt').textContent = headings[((Math.round(vehicle.heading / (Math.PI / 4)) % 8) + 8) % 8];
-  $('biomeTxt').textContent = world.desertAt(vehicle.x, vehicle.z) > .55 ? 'THE SANDLANDS' : world.mountainAt(vehicle.x, vehicle.z) > .62 ? 'THE HIGHLANDS' : world.woodlandAt(vehicle.x, vehicle.z) > .58 ? 'PINE COUNTRY' : 'OPEN MEADOW';
+  $('biomeTxt').textContent = vehicle.waterDepth > 0 ? world.waterAt(vehicle.x, vehicle.z)?.lake.name ?? 'THE LAKES' : world.desertAt(vehicle.x, vehicle.z) > .55 ? 'THE SANDLANDS' : world.mountainAt(vehicle.x, vehicle.z) > .62 ? 'THE HIGHLANDS' : world.woodlandAt(vehicle.x, vehicle.z) > .58 ? 'PINE COUNTRY' : 'OPEN MEADOW';
   $('coordinates').textContent = `${Math.round(Math.abs(vehicle.x))} ${vehicle.x < 0 ? 'E' : 'W'} · ${Math.round(Math.abs(vehicle.z))} ${vehicle.z >= 0 ? 'N' : 'S'}`;
-  $('elevation').textContent = Math.round(world.surface(vehicle.x, vehicle.z)) + ' M';
+  $('elevation').textContent = Math.round(vehicle.floating ? vehicle.waterLevel : world.surface(vehicle.x, vehicle.z)) + ' M';
 }
 const vehiclePosition = new THREE.Vector3(), cameraPosition = new THREE.Vector3(), cameraTarget = new THREE.Vector3(), desiredCamera = new THREE.Vector3(), forward = new THREE.Vector3(), look = new THREE.Vector3();
 const previousDesiredCamera = new THREE.Vector3(), previousLook = new THREE.Vector3();
@@ -590,6 +614,7 @@ const debris = createDebris(scene), rollPivot = new THREE.Vector3();
 let treeBreakage = null;
 const vehiclePresentation = createVehiclePresentation(vehicle);
 let previousTime = performance.now(), accumulator = 0, uiTime = 0, mapTime = 0, idleRenderAt = 0, reportedLanding = 0;
+let reportedBoat = vehicle.boatMode;
 function updateDesiredCamera(pose = vehicle) {
   vehiclePosition.set(pose.x, pose.y, pose.z);
   forward.set(Math.sin(pose.heading), 0, Math.cos(pose.heading));
@@ -613,11 +638,12 @@ function render(dt) {
   car.rotation.set(pose.pitch, pose.heading, pose.roll, 'YXZ');
   rollPivot.set(0, 1, 0).applyEuler(car.rotation);
   car.position.set(pose.x - rollPivot.x, pose.y + 1 - rollPivot.y, pose.z - rollPivot.z);
-  body.position.y = -pose.impact * .3;
-  body.rotation.z = -pose.steer * Math.min(Math.abs(pose.speed) / 25, 1) * .055;
-  body.rotation.x = (input.up ? -.012 : input.down ? .024 : 0);
+  transformation?.update(pose.transform);
+  body.position.y = -pose.impact * .3 * (1 - pose.transform);
+  body.rotation.z = -pose.steer * Math.min(Math.abs(pose.speed) / 25, 1) * .055 * (1 - pose.transform);
+  body.rotation.x = (input.up ? -.012 : input.down ? .024 : 0) * (1 - pose.transform);
   wheelSpinners.forEach(w => w.rotation.x = pose.wheelAngle);
-  wheelPivots.forEach(p => { if (p.position.z > 0) p.rotation.y = pose.steer * .4; });
+  wheelPivots.forEach(p => { if (p.name.startsWith('Wheel_F')) p.rotation.y = pose.steer * .4 * (1 - pose.transform); });
   brakeMat.emissiveIntensity = input.down || input.brake ? 2 : .25;
   car.visible = cameraMode !== 2 || !running;
   contact.position.set(pose.x, world.surface(pose.x, pose.z) + .035, pose.z);
@@ -635,6 +661,7 @@ function render(dt) {
   if (Math.abs(camera.fov - nextFov) > 1e-6) { camera.fov = nextFov; camera.updateProjectionMatrix(); }
   sky.position.copy(camera.position);
   sun.position.set(pose.x - 65, pose.y + 100, pose.z + 45); sun.target.position.copy(car.position); sun.target.updateMatrixWorld();
+  waterSystem.update(world, pose, dt);
   if (audio && running) {
     const t = audio.context.currentTime, speed = Math.abs(vehicle.speed);
     audio.gain.gain.setTargetAtTime(muted ? 0 : .008 + speed * .00045 + (input.up ? .006 : 0), t, .12);
@@ -662,6 +689,10 @@ function frame(now) {
       vehiclePresentation.advance(vehicle, FIXED_DT); accumulator -= FIXED_DT;
     }
     processBreakage(); debris.update(dt, world); treeBreakage.update(dt, world);
+    if (vehicle.boatMode !== reportedBoat) {
+      reportedBoat = vehicle.boatMode;
+      toast(reportedBoat ? 'Deep water — deploying boat hull' : 'Shore reached — returning to wheels');
+    }
     if (vehicle.landings > reportedLanding) {
       reportedLanding = vehicle.landings;
       if (vehicle.airDistance > 25) toast(`${vehicle.airRoll > Math.PI ? 'Barrel roll! · ' : ''}${Math.round(vehicle.airDistance)} m jump · ${vehicle.airtime.toFixed(1)} seconds of air`);
@@ -691,5 +722,5 @@ if (testMode) window.__driveTest = { snapshot: () => {
   }
   const natureInstances = {};
   for (const chunk of chunks.values()) if (chunk.group.visible) chunk.group.traverse(o => { if (o.isInstancedMesh && o.userData.natureKind) natureInstances[o.userData.natureKind] = (natureInstances[o.userData.natureKind] || 0) + o.count; });
-  return { natureAsset: { ready: Boolean(nature), error: natureError, assets: nature?.stats ?? [], instances: natureInstances }, grass: grassStats, metrics: profiler.snapshot(), draws: renderer.info.render.calls, triangles: renderer.info.render.triangles, carMeshes, carAsset: { ready: carReady, error: carError, name: 'ATLAS Expedition 4x4', triangles: carTriangles, wheelPivots: wheelPivots.map(p => p.position.toArray()), wheelSteer: wheelPivots.map(p => p.rotation.y), wheelSpin: wheelSpinners.map(p => p.rotation.x), headlights: headMat.emissiveIntensity, brakes: brakeMat.emissiveIntensity }, chunks: chunks.size, farTiles: farTiles.size, loading, generation, streamError, pending: pending.size, queued: jobs.length, carBatching: carBatching.map(({ before, after }) => ({ before, after })), vehicle: { ...vehicle }, renderPose: { ...vehiclePresentation.pose }, debris: debris.count, fallingTrees: treeBreakage?.count ?? 0, sound: audio ? { muted, played: audio.breaks.played, active: audio.breaks.active, masterGain: audio.master.gain.value } : null, brokenProps: world.brokenProps.size, hiddenProps, accumulator, cameraError: cameraPosition.distanceTo(desiredCamera) + cameraTarget.distanceTo(look), camera: cameraPosition.toArray(), target: cameraTarget.toArray() };
+  return { water: { lakes: waterSystem.count, wakes: waterSystem.wakeCount }, natureAsset: { ready: Boolean(nature), error: natureError, assets: nature?.stats ?? [], instances: natureInstances }, grass: grassStats, metrics: profiler.snapshot(), draws: renderer.info.render.calls, triangles: renderer.info.render.triangles, carMeshes, carAsset: { ready: carReady, error: carError, name: 'ATLAS Amphibious', animationDuration: transformation?.duration, hullSpan: car.getObjectByName('Hull_R')?.position.x - car.getObjectByName('Hull_L')?.position.x, triangles: carTriangles, wheelPivots: wheelPivots.map(p => p.parent.position.toArray()), wheelSteer: wheelPivots.map(p => p.rotation.y), wheelSpin: wheelSpinners.map(p => p.rotation.x), headlights: headMat.emissiveIntensity, brakes: brakeMat.emissiveIntensity }, chunks: chunks.size, farTiles: farTiles.size, loading, generation, streamError, pending: pending.size, queued: jobs.length, carBatching: carBatching.map(({ before, after }) => ({ before, after })), vehicle: { ...vehicle }, renderPose: { ...vehiclePresentation.pose }, debris: debris.count, fallingTrees: treeBreakage?.count ?? 0, sound: audio ? { muted, played: audio.breaks.played, active: audio.breaks.active, masterGain: audio.master.gain.value } : null, brokenProps: world.brokenProps.size, hiddenProps, accumulator, cameraError: cameraPosition.distanceTo(desiredCamera) + cameraTarget.distanceTo(look), camera: cameraPosition.toArray(), target: cameraTarget.toArray() };
 } };

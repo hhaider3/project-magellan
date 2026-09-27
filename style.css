@@ -871,7 +871,7 @@ header,#compass {
   color:var(--cream);
 }
 
-#rampHint {
+#rampHint, #lakeHint {
   position: fixed;
   top: 68px;
   left: 50%;
@@ -886,5 +886,7 @@ header,#compass {
   letter-spacing: .15em;
   white-space: nowrap;
 }
-@media (max-width: 800px) { #rampHint { top: 109px; } }
-@media (max-height: 600px) { #rampHint { top: 60px; } }
+#lakeHint { top: 103px; color: #c3e4e9; border-color: #87c8d144; background: #213e4880; }
+#touch button:disabled { opacity: .35; }
+@media (max-width: 800px) { #rampHint { top: 109px; } #lakeHint { top: 143px; } }
+@media (max-height: 600px) { #rampHint { top: 60px; } #lakeHint { top: 94px; } }

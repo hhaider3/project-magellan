@@ -1,0 +1,112 @@
+{
+  "name": "ATLAS Amphibious",
+  "source": "atlas-amphibious.blend",
+  "asset": "atlas-amphibious.glb",
+  "duration": 2.4,
+  "triangles": 52356,
+  "meshes": 72,
+  "batching": [
+    {
+      "group": "Body",
+      "before": 20,
+      "after": 7
+    },
+    {
+      "group": "Bow_Extension",
+      "before": 48,
+      "after": 7
+    },
+    {
+      "group": "Bridge_Deck",
+      "before": 9,
+      "after": 2
+    },
+    {
+      "group": "Cabin_Slide",
+      "before": 64,
+      "after": 8
+    },
+    {
+      "group": "Hull_L",
+      "before": 35,
+      "after": 6
+    },
+    {
+      "group": "Pontoon_L",
+      "before": 8,
+      "after": 3
+    },
+    {
+      "group": "Hull_R",
+      "before": 35,
+      "after": 6
+    },
+    {
+      "group": "Pontoon_R",
+      "before": 8,
+      "after": 3
+    },
+    {
+      "group": "Jet_L",
+      "before": 5,
+      "after": 2
+    },
+    {
+      "group": "Jet_R",
+      "before": 5,
+      "after": 2
+    },
+    {
+      "group": "Keel_Deploy",
+      "before": 3,
+      "after": 2
+    },
+    {
+      "group": "Spare mount",
+      "before": 120,
+      "after": 4
+    },
+    {
+      "group": "Stern_Deck",
+      "before": 6,
+      "after": 4
+    },
+    {
+      "group": "Spinner_FL",
+      "before": 120,
+      "after": 4
+    },
+    {
+      "group": "Spinner_FR",
+      "before": 120,
+      "after": 4
+    },
+    {
+      "group": "Spinner_RL",
+      "before": 120,
+      "after": 4
+    },
+    {
+      "group": "Spinner_RR",
+      "before": 120,
+      "after": 4
+    }
+  ],
+  "transformParts": [
+    "Bow_Extension",
+    "Bridge_Deck",
+    "Cabin_Slide",
+    "Hull_L",
+    "Pontoon_L",
+    "Hull_R",
+    "Pontoon_R",
+    "Jet_L",
+    "Jet_R",
+    "Keel_Deploy",
+    "Stern_Deck",
+    "WheelFold_FL",
+    "WheelFold_FR",
+    "WheelFold_RL",
+    "WheelFold_RR"
+  ]
+}
