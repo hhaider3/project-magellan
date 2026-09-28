@@ -4,7 +4,7 @@ import { FAR_SIZE, FAR_VIEW, NEAR_VIEW, farIndices, farCoverage } from './stream
 import { loadVehicleModel } from './vehicle-model.mjs?v=amphibious-1';
 import { createProfiler } from './profiling.mjs?v=timing-1';
 import { createDebris } from './debris.mjs?v=grass-1';
-import { createVehiclePresentation } from './vehicle-presentation.mjs?v=amphibious-1';
+import { createVehiclePresentation } from './vehicle-presentation.mjs?v=alignment-1';
 import { followTarget, followValue } from './camera-motion.mjs?v=grass-1';
 import { createTreeBreakage } from './tree-breakage.mjs?v=nature-1';
 import { loadNatureLibrary } from './nature-models.mjs?v=nature-1';
@@ -12,7 +12,7 @@ import { createBreakAudio } from './break-audio.mjs?v=grass-1';
 import { installSunShadowFade } from './shadow-fade.mjs?v=grass-1';
 import { createGrass } from './grass.mjs?v=grass-1';
 import * as THREE from 'three';
-import { CHUNK, GRID, ROAD_SPACING, ROAD_HALF, FIXED_DT, featurePoint, clamp, mix, smoothstep, hash, createWorld, createVehicle, stepVehicle, recoverVehicle } from './world.mjs?v=amphibious-1';
+import { CHUNK, GRID, ROAD_SPACING, ROAD_HALF, FIXED_DT, featurePoint, clamp, mix, smoothstep, hash, createWorld, createVehicle, stepVehicle, recoverVehicle, groundAt } from './world.mjs?v=amphibious-1';
 import { buildLandmark, cloneOwnedGeometry } from './scenery.mjs?v=grass-1';
 
 const $ = id => document.getElementById(id);
@@ -628,7 +628,7 @@ const previousDesiredCamera = new THREE.Vector3(), previousLook = new THREE.Vect
 let previousTargetFov = camera.fov;
 const debris = createDebris(scene), rollPivot = new THREE.Vector3();
 let treeBreakage = null;
-const vehiclePresentation = createVehiclePresentation(vehicle);
+const vehiclePresentation = createVehiclePresentation(vehicle, (x, z, heading) => groundAt(world, x, z, heading).y);
 let previousTime = performance.now(), accumulator = 0, uiTime = 0, mapTime = 0, idleRenderAt = 0, reportedLanding = 0;
 let reportedBoat = vehicle.boatMode;
 function updateDesiredCamera(pose = vehicle) {

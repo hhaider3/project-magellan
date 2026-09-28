@@ -1,5 +1,13 @@
 # Performance verification
 
+## Car and terrain frame alignment
+
+`scripts/audit-frame-alignment.mjs` checks the actual renderer after each frame, using a test-only response injection. Three 20-second drives cover the seed-3 road, a seed-100003 turn into the desert, and the seed-3 water approach. On Apple M2 / Chrome ANGLE Metal at 960×600, the corrected build checked 3,602 rendered frames and 33 chunk crossings. No missing ground, shifting terrain transforms, backwards pose time, stale camera view matrices, terrain-detail-center mismatch or water-clock mismatch was detected. The car's world-space pivot matched its interpolated pose within floating-point precision. Raycast terrain heights agreed with physics sampling to less than 0.002 mm. The normal interpolation delay remained below one 120 Hz physics tick (8.33 ms).
+
+The audit did find a spatial mismatch before the correction: linear interpolation of supported endpoint heights did not follow the actual terrain between those endpoints. The largest measured difference was 6.6 mm on the road, 5.2 mm on the desert turn and 20.4 mm on the water route's grounded portions. Grounded car presentation now samples support at the interpolated horizontal position and heading, retaining its ground clearance. In the repeat audit, the measured support-height error was zero in all three routes. Airborne, launch/landing and transformation intervals preserve their existing interpolation, and no physics state is modified by rendering.
+
+These measurements establish pose/terrain alignment for the sampled routes, not the absence of every visible jitter or GPU/compositor stall. The probe adds raycasting and diagnostic work, so use the separate frame-timing harness for performance measurements. Unit regressions also cover synthetic ridges/valleys, the previously failing desert path, preserved flight/transformation interpolation, clearance and world resets.
+
 ## Map-wide streaming after the amphibious update
 
 The lake update generated water meshes on the animation thread whenever new lakes entered the 1 km streaming radius, including during dry road driving with those lakes off-screen. Each chunk crossing also rebuilt the index buffers of every retained coarse terrain tile. Lake generation now runs in the existing world worker and transfers its typed arrays directly into the render geometry. Coarse tiles cache their 16-bit fine-chunk coverage and only replace indices when that coverage changes. Empty wake buffers no longer upload every dry frame.

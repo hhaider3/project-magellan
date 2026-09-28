@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createVehiclePresentation } from '../vehicle-presentation.mjs';
-import { createVehicle, FIXED_DT } from '../world.mjs';
+import { createWorld, createVehicle, stepVehicle, groundAt, FIXED_DT } from '../world.mjs';
 const flat = { surface: () => 0 };
 
 test('car and wheel motion remain uniform between physics ticks at different refresh rates', () => {
@@ -63,4 +63,66 @@ test('recovery and world reset discard the old interpolation path', () => {
     const pose = presentation.sample(alpha);
     assert.equal(pose.x, -1000); assert.equal(pose.z, 2500); assert.equal(pose.wheelAngle, 0);
   }
+});
+
+test('grounded interpolation follows terrain creases without moving the simulation', () => {
+  // The two physics ticks straddle a ridge or valley in a triangular grid.
+  for (const direction of [-1, 1]) {
+    const world = { surface: x => direction * Math.abs(x) };
+    const car = createVehicle(world, -.4, 0);
+    const presentation = createVehiclePresentation(car, (x, z, heading) => groundAt(world, x, z, heading).y);
+    Object.assign(car, createVehicle(world, .4, 0)); presentation.advance(car, FIXED_DT);
+    const before = { ...car };
+    for (const alpha of [0, .1, .5, .9, 1]) {
+      const pose = presentation.sample(alpha);
+      assert.ok(Math.abs(pose.x - (-.4 + .8 * alpha)) < 1e-12);
+      assert.equal(pose.y, groundAt(world, pose.x, pose.z, pose.heading).y);
+      assert.equal(pose.groundY, pose.y);
+    }
+    assert.deepEqual(car, before);
+  }
+});
+
+test('grounded presentation matches support between real desert physics ticks', () => {
+  const world = createWorld(100003), car = createVehicle(world);
+  const presentation = createVehiclePresentation(car, (x, z, heading) => groundAt(world, x, z, heading).y);
+  let checked = 0, uncorrectedError = 0;
+  for (let i = 0; i < 900; i++) {
+    const previous = { ...car };
+    stepVehicle(car, { up: true }, world, []); presentation.advance(car, FIXED_DT);
+    if (!previous.grounded || !car.grounded || previous.transform !== 0 || car.transform !== 0) continue;
+    for (const alpha of [.25, .5, .75]) {
+      const pose = presentation.sample(alpha), support = groundAt(world, pose.x, pose.z, pose.heading).y;
+      uncorrectedError = Math.max(uncorrectedError, Math.abs(previous.y + (car.y - previous.y) * alpha - support));
+      assert.ok(Math.abs(pose.y - support) < 1e-10);
+      checked++;
+    }
+  }
+  assert.ok(checked > 500);
+  assert.ok(uncorrectedError > .015, 'fixture reproduces the original contact-height mismatch');
+});
+
+test('launch, landing and transformation intervals retain their interpolated flight height', () => {
+  for (const [fromGrounded, toGrounded, fromTransform, toTransform] of [
+    [true, false, 0, 0], [false, true, 0, 0], [false, false, 0, 0],
+    [true, true, 0, .1], [true, true, .1, 0], [false, false, 1, 1],
+  ]) {
+    const car = createVehicle(flat); car.grounded = fromGrounded; car.transform = fromTransform;
+    let reads = 0;
+    const presentation = createVehiclePresentation(car, () => { reads++; return 100; });
+    car.y = 10; car.grounded = toGrounded; car.transform = toTransform;
+    presentation.advance(car, FIXED_DT); reads = 0;
+    assert.ok(Math.abs(presentation.sample(.5).y - 5.03) < 1e-10);
+    assert.equal(reads, 0, 'airborne and transforming poses must not snap to land');
+  }
+});
+
+test('ground support follows the new world on reset and retains intentional clearance', () => {
+  let world = flat;
+  const car = createVehicle(world); car.y += .12;
+  const presentation = createVehiclePresentation(car, (x, z, heading) => groundAt(world, x, z, heading).y);
+  assert.equal(presentation.sample(.5).y, .18);
+  world = { surface: () => 42 };
+  presentation.reset(createVehicle(world, 1000, -1000));
+  for (const alpha of [0, .5, 1]) assert.equal(presentation.sample(alpha).y, 42.06);
 });
