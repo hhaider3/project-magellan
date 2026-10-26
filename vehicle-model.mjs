@@ -45,6 +45,14 @@ export function thrusterNozzles(model) {
   return nozzles;
 }
 
+// A soft studio room's reflections for the paint and glass.
+function bakeReflections(renderer) {
+  const pmrem = new THREE.PMREMGenerator(renderer), room = new RoomEnvironment();
+  const reflections = pmrem.fromScene(room, .04);
+  room.dispose(); pmrem.dispose();
+  return reflections;
+}
+
 // Blender owns the geometry, materials, wheel origins and static draw batching.
 // The simulation continues to own the pose and collision dimensions in metres.
 // kind: 'atlas' (with its boat and plane clips and propeller) or 'roadster'
@@ -72,10 +80,7 @@ export async function loadVehicleModel(renderer, kind = 'atlas') {
   const wing = atlas ? null : required('Rear_Wing');
   const materials = new Map();
   let triangles = 0, meshes = 0;
-  const pmrem = new THREE.PMREMGenerator(renderer);
-  const room = new RoomEnvironment();
-  const reflections = pmrem.fromScene(room, .04);
-  room.dispose(); pmrem.dispose();
+  let reflections = bakeReflections(renderer);
   model.traverse(node => {
     if (!node.isMesh) return;
     meshes++;
@@ -89,6 +94,12 @@ export async function loadVehicleModel(renderer, kind = 'atlas') {
   });
   const headMat = materials.get('Headlamp'), brakeMat = materials.get('Brake_Lamp');
   if (!headMat || !brakeMat) throw new Error('Vehicle asset is missing its working lamp materials');
-  return { kind, model, body, wheelPivots, wheelSpinners, headMat, brakeMat, meshes, triangles, transformation, flight, propeller, nozzles, wing,
+  // After a lost graphics context the baked reflections are gone (a render
+  // target's pixels don't survive): bake them again.
+  function relight() {
+    reflections.dispose(); reflections = bakeReflections(renderer);
+    for (const material of materials.values()) { material.envMap = reflections.texture; material.needsUpdate = true; }
+  }
+  return { kind, model, body, relight, wheelPivots, wheelSpinners, headMat, brakeMat, meshes, triangles, transformation, flight, propeller, nozzles, wing,
     batching: [body, ...wheelSpinners, ...(wing ? [wing] : [])].map(group => ({ before: group.userData.sourceParts, after: group.children.filter(o => o.isMesh).length })) };
 }

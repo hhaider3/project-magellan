@@ -220,17 +220,20 @@ export function createWorld(seed) {
   // Chunk boundaries revisit most of the same terrain samples. Retain those
   // heights so a faster car doesn't rebuild the whole horizon every 96 m.
   // Eviction is bounded; cache contents never affect procedural generation.
-  const heightCache = new Map();
+  // Once full, each new sample evicts the oldest, kept in a ring of keys so
+  // finding it costs nothing (asking the Map for its first key would skip
+  // every deleted entry still at its front). Dropping 16,000 at once cost a
+  // frame up to a millisecond every 16,000 samples.
+  const HEIGHT_CACHE = 120000, heightCache = new Map(), heightOrder = new Array(HEIGHT_CACHE);
+  let heightNext = 0;
   function height(x, z) {
     if (!Number.isInteger(x) || !Number.isInteger(z)) return computeHeight(x, z);
     const key = `${x},${z}`;
     if (heightCache.has(key)) return heightCache.get(key);
     const h = computeHeight(x, z);
-    if (heightCache.size >= 120000) {
-      const oldest = heightCache.keys();
-      for (let i = 0; i < 16000; i++) heightCache.delete(oldest.next().value);
-    }
-    heightCache.set(key, h); return h;
+    if (heightCache.size >= HEIGHT_CACHE) heightCache.delete(heightOrder[heightNext]);
+    heightCache.set(key, h); heightOrder[heightNext] = key; heightNext = (heightNext + 1) % HEIGHT_CACHE;
+    return h;
   }
   // Exactly the same triangles as the rendered 4 m terrain grid. This avoids
   // invisible bumps, wheel clipping, or a mismatch between visuals and physics.

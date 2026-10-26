@@ -1,7 +1,7 @@
 import { createTerrain } from './terrain.mjs?v=classes-3';
 import { createWater } from './water.mjs?v=rivers-1';
 import { FAR_SIZE, FAR_VIEW, NEAR_VIEW, ULTRA_SIZE, ULTRA_VIEW, ULTRA_BLEND_START, ULTRA_BLEND_END, farIndices, farCoverage, ultraIndices, ultraCoverage } from './streaming-layout.mjs?v=classes-3';
-import { loadVehicleModel, VEHICLE_NAMES } from './vehicle-model.mjs?v=roadster-1';
+import { loadVehicleModel, VEHICLE_NAMES } from './vehicle-model.mjs?v=restore-1';
 import { createProfiler } from './profiling.mjs?v=timing-1';
 import { createDebris } from './debris.mjs?v=perf-1';
 import { createDust } from './dust.mjs?v=roadster-1';
@@ -26,7 +26,7 @@ import { createSky } from './sky.mjs?v=clouds-8';
 import { daylight, advanceClock, clockLabel, startHour } from './daylight.mjs?v=day-3';
 import { createWeatherEffects, toneMappedHorizon } from './weather-effects.mjs?v=day-1';
 import * as THREE from 'three';
-import { CHUNK, GRID, ROAD_HALF, FIXED_DT, featurePoint, clamp, mix, smoothstep, hash, createWorld, createVehicle, stepVehicle, recoverVehicle, groundAt } from './world.mjs?v=roadster-1';
+import { CHUNK, GRID, ROAD_HALF, FIXED_DT, featurePoint, clamp, mix, smoothstep, hash, createWorld, createVehicle, stepVehicle, recoverVehicle, groundAt } from './world.mjs?v=restore-1';
 import { SNOW_LINE } from './landforms.mjs?v=classes-2';
 import { ROAD_MAP } from './roads.mjs?v=classes-2';
 import { buildLandmark, cloneOwnedGeometry, buildLandmarkStandins, landmarkSwapDistance } from './scenery.mjs?v=roof-1';
@@ -85,8 +85,10 @@ if (new URLSearchParams(location.search).get('test') === 'tree-smash') {
   const prop = world.props(-1, -1).find(p => p.type === 'tree');
   if (prop) vehicle = createVehicle(world, prop.x, prop.z - 32, 0, vehicleKind);
 }
+let contextLost = false; // until the browser restores the graphics context
 let running = false, started = false, cameraMode = 0, muted = true, lightsOn = false, lightsChosen = false, bestDistance = 0;
-if (!testMode) try { muted = localStorage.getItem('endless-drive-muted') !== '0'; bestDistance = Number(JSON.parse(localStorage.getItem('endless-drive-records') || '{}').distance) || 0; } catch {}
+// Sound is on unless you've muted it (M or the speaker button); test modes stay silent.
+if (!testMode) try { muted = localStorage.getItem('endless-drive-muted') === '1'; bestDistance = Number(JSON.parse(localStorage.getItem('endless-drive-records') || '{}').distance) || 0; } catch {}
 const input = {}, keyStates = new Set(), touchStates = new Map();
 // Graphics and touch preferences. Tests use fixed, device-appropriate settings
 // unless ?quality= is given, so slow software rendering never changes a level.
@@ -1051,7 +1053,7 @@ function beginWorldLoad(continueDriving = false) {
   for (const tile of ultraTiles.values()) disposeTile(tile); ultraTiles.clear();
   terrain = createTerrain(world);
   waterSystem.clear(); distantAt = { x: Infinity, z: Infinity }; distantReady = false;
-  workers = [0, 1].map(() => new Worker(new URL('./world-worker.mjs?v=classes-2', import.meta.url), { type: 'module' }));
+  workers = [0, 1].map(() => new Worker(new URL('./world-worker.mjs?v=restore-1', import.meta.url), { type: 'module' }));
   const failed = message => { streamError = message; running = false; $('loadError').hidden = false; $('startBtn').firstElementChild.textContent = 'Unable to prepare the world'; };
   const received = ({ data }) => {
     if (data.generation !== generation) return;
@@ -1208,7 +1210,7 @@ function syncInput() {
 }
 const throttleInput = () => controlAxis(input.throttle, input.up, input.down);
 function resume() {
-  if ($('startBtn').disabled || upright()) return;
+  if ($('startBtn').disabled || upright() || contextLost) return;
   running = true; started = true; resetTiming(); auto?.reset(performance.now());
   if (settings.tilt) { requestTilt(); tilt.neutral = null; } // re-centre the climb/dive tilt
   $('menu').classList.add('closed'); $('menu').inert = true; $('menu').setAttribute('aria-hidden', 'true');
@@ -1565,7 +1567,11 @@ function drawMap() {
   const ctx = mapContext, w = 288, h = 240, range = 155 * (1 + Math.min(1.6, altitude / 120)), scale = w / (2 * range), step = 12;
   ctx.fillStyle = '#32493b'; ctx.fillRect(0, 0, w, h);
   for (let iy = 0; iy < h; iy += step) for (let ix = 0; ix < w; ix += step) {
-    const x = vehicle.x - (ix - w / 2) / scale, z = vehicle.z - (iy - h / 2) / scale, elev = world.height(x, z);
+    // Sampled at the nearest 4 m grid point, whose height is cached: between
+    // grid points every sample was a full terrain evaluation (480 a redraw).
+    // Sampled at the nearest 4 m grid point, whose height is cached: between
+    // grid points every sample was a full terrain evaluation (480 a redraw).
+    const x = Math.round((vehicle.x - (ix - w / 2) / scale) / GRID) * GRID, z = Math.round((vehicle.z - (iy - h / 2) / scale) / GRID) * GRID, elev = world.height(x, z);
     // Lighter with height; the square root keeps plains varied and peaks below white.
     const band = Math.floor(Math.sqrt(Math.max(0, elev)) * 1.2), sand = world.desertAt(x, z, elev);
     ctx.fillStyle = world.waterAt(x, z) ? '#548c99' : `hsl(${mix(89 - band * 1.5, 40, sand)} ${mix(16, 38, sand)}% ${25 + band * 1.7 + sand * 13}%)`; ctx.fillRect(ix, iy, step + 1, step + 1);
@@ -1904,7 +1910,18 @@ addEventListener('resize', () => {
   // Moving between displays can change devicePixelRatio.
   renderer.setPixelRatio(Math.min(devicePixelRatio, levels[qualityLevel].pixelRatio));
 });
-renderer.domElement.addEventListener('webglcontextlost', e => { e.preventDefault(); pause(); toast('Graphics paused. Reload to restore the drive.'); });
+// Phones drop the graphics context when you switch apps. Three.js rebuilds its
+// GPU state when the browser hands it back (geometry and textures re-upload
+// from memory; shadow maps and the blur's targets are redrawn every frame),
+// so only the cars' baked reflections need making again. The drive carries
+// on from the pause menu, where it stopped.
+renderer.domElement.addEventListener('webglcontextlost', e => { e.preventDefault(); pause(); contextLost = true; toast('Graphics paused · restoring…'); });
+renderer.domElement.addEventListener('webglcontextrestored', () => {
+  contextLost = false;
+  for (const loading of vehicleAssets.values()) loading.then(asset => asset.relight()).catch(() => {});
+  motionBlur.reset(); render(0);
+  toast('Graphics restored · pick up where you left off');
+});
 
 syncSeed(); syncSound(); syncSettings(); beginWorldLoad(); resetCamera(); updateHUD(); drawMap(); render(0);
 requestAnimationFrame(frame);

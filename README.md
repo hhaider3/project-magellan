@@ -115,7 +115,7 @@ On phones and compact windows:
 - **Fullscreen:** in landscape the game goes fullscreen on your next tap, and leaves it when you turn back to portrait. Safari on iPhone doesn't allow fullscreen for web pages, so on iPhone use Share → **Add to Home Screen**: the game then opens fullscreen like an app.
 - **Sensitivity** (50–150%) is in the menu. It changes how quickly small slider, ring or tilt movements turn; full deflection is always full lock.
 
-The game pauses when the window loses focus. Sound starts muted on your first visit; trip records and settings are saved in your browser.
+The game pauses when the window loses focus. If the browser drops the graphics (phones do when you switch apps), the drive pauses there and carries on from the pause menu once they're restored, with no reload. Sound is on from the start (it begins with your first click or tap, as browsers require); press M or the speaker button to mute, and the game remembers. Trip records and settings are saved in your browser.
 
 ## What's in the world
 

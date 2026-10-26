@@ -309,6 +309,36 @@ test('the Roadster boosts, skims a lake and hovers on its thrusters, and swaps w
   expect(errors).toEqual([]);
 });
 
+test('a lost graphics context pauses the drive, and it carries on once restored', async ({ page }, testInfo) => {
+  const errors = await openGame(page, 3, 'browser', 'roadster');
+  await page.getByRole('button', { name: 'Start exploring', exact: true }).click();
+  await page.keyboard.down('KeyW');
+  await expect.poll(async () => (await snapshot(page)).vehicle.distance, { timeout: 10000 }).toBeGreaterThan(30);
+  const lose = () => page.evaluate(() => { window.__lost = document.querySelector('#game canvas').getContext('webgl2').getExtension('WEBGL_lose_context'); window.__lost.loseContext(); });
+  await lose();
+  await expect(page.locator('#menu')).not.toHaveClass(/closed/); // paused, as on any interruption
+  await expect(page.locator('#toast')).toHaveText(/restoring/);
+  await page.keyboard.up('KeyW');
+  const stopped = (await snapshot(page)).vehicle;
+  await page.getByRole('button', { name: 'Keep exploring', exact: true }).click(); // can't resume yet
+  await expect(page.locator('#menu')).not.toHaveClass(/closed/);
+  await page.evaluate(() => window.__lost.restoreContext());
+  await expect(page.locator('#toast')).toHaveText(/restored/);
+  // Same world, same place: the drive carries on, and the scene draws again.
+  const restored = await snapshot(page);
+  expect(restored.vehicle.distance).toBeCloseTo(stopped.distance, 6); expect(restored.vehicle.kind).toBe('roadster');
+  await page.getByRole('button', { name: 'Keep exploring', exact: true }).click();
+  await page.keyboard.down('KeyW');
+  await expect.poll(async () => (await snapshot(page)).vehicle.distance, { timeout: 10000 }).toBeGreaterThan(stopped.distance + 20);
+  await expect.poll(async () => (await snapshot(page)).draws, { timeout: 5000 }).toBeGreaterThan(50);
+  const shot = PNG.sync.read(await page.screenshot());
+  let lit = 0; for (let i = 0; i < shot.data.length; i += 4 * 97) lit += shot.data[i] + shot.data[i + 1] + shot.data[i + 2] > 60 ? 1 : 0;
+  expect(lit).toBeGreaterThan(shot.data.length / (4 * 97) * .8); // not a black screen
+  await testInfo.attach('after-context-restore', { body: await page.screenshot(), contentType: 'image/png' });
+  await page.keyboard.up('KeyW');
+  expect(errors).toEqual([]);
+});
+
 test('the plane takes off, climbs, flies on three axes, and lands', async ({ page }, testInfo) => {
   test.skip(softwareRendering(), 'a real-time take-off, climb and landing needs GPU frame rates');
   test.setTimeout(150000);
