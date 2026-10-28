@@ -56,6 +56,42 @@ test('from a standstill the propeller taxis the car to lift-off speed, and hands
   assert.ok(Math.abs(car.climb) < .12, 'and flies level');
 });
 
+function uphillWorld(degrees, heading = 0) {
+  const rise = Math.tan(degrees * Math.PI / 180), x = Math.sin(heading) * rise, z = Math.cos(heading) * rise;
+  return { surface: (px, pz) => px * x + pz * z, gradient: () => ({ x, z }), roadAt: () => ({ d: 0 }) };
+}
+
+test('uphill take-off carries the rising ground velocity and keeps the nose above the slope', () => {
+  for (const degrees of [10, 20]) for (const heading of [0, 1.2]) {
+    const hill = uphillWorld(degrees, heading), car = createVehicle(hill, 0, 0, heading);
+    Object.assign(car, { flightMode: true, flight: 1, vx: Math.sin(heading) * 40, vz: Math.cos(heading) * 40, speed: 40 });
+    stepVehicle(car, { throttleUp: true }, hill, []);
+    const slope = hill.gradient(car.x, car.z), groundRise = slope.x * car.vx + slope.z * car.vz;
+    assert.equal(car.flying, true);
+    assert.ok(car.vy > groundRise, `${degrees}°: climbing faster than the ground rises (${car.vy} > ${groundRise})`);
+    assert.ok(noseUp(car) > Math.sin(degrees * Math.PI / 180), `${degrees}°: nose stays above the slope`);
+    assert.ok(Math.abs(car.airspeed - Math.hypot(car.vx, car.vy, car.vz)) < 1e-9);
+  }
+});
+
+test('full and simple uphill take-offs climb clear without cycling back to taxi', () => {
+  for (const degrees of [10, 20]) for (const simpleFlight of [false, true]) for (const speed of [0, 40]) {
+    const hill = uphillWorld(degrees), car = createVehicle(hill);
+    Object.assign(car, { vz: speed, speed }); toggleFlight(car);
+    let lifted = false;
+    for (let i = 0; i < 10 / FIXED_DT; i++) {
+      stepVehicle(car, { up: true, simpleFlight }, hill, []);
+      lifted ||= car.flying;
+      if (lifted) assert.equal(car.flying, true, `${degrees}°, ${simpleFlight ? 'simple' : 'full'}, start ${speed} m/s: remains airborne at ${i * FIXED_DT} s`);
+      assert.equal(car.flightMode, true);
+    }
+    assert.equal(lifted, true);
+    assert.equal(car.flights, 1, 'a single continuous take-off');
+    assert.equal(car.wingCrashes ?? 0, 0);
+    assert.ok(car.y - hill.surface(car.x, car.z) > 10, 'climbed clear of the hillside');
+  }
+});
+
 test('the wing makes lift from its angle of attack and stalls past 16°', () => {
   assert.ok(liftCoefficient(0) > 0 && liftCoefficient(.2) > liftCoefficient(.1));
   assert.ok(liftCoefficient(.4) < liftCoefficient(.28) * .8, 'stalled');
