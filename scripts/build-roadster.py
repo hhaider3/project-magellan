@@ -2,8 +2,10 @@
 
 Run: /Applications/Blender.app/Contents/MacOS/Blender --background --factory-startup --python scripts/build-roadster.py
 Coordinates below use game axes: X right, Y up, Z forward; p() maps to Blender.
-An original low-poly study of the 2026 Roadster's proportions: a faceted wedge
-on a 2.825 m wheelbase, 2.0 m wide and 1.1 m tall, with no badges or wordmarks.
+Original geometry studied from Tesla's October 2026 Roadster photographs:
+https://www.tesla.com/roadster (front, profile, canopy and rear-deck views).
+Retains the game's 2.82 m wheelbase and tyre envelopes. No downloaded geometry,
+photographic textures, badges or lettering are included.
 Ten thruster nozzles follow the reported Rocket layout: four in the rear
 diffuser, four lift nozzles at the corners and two yaw nozzles on the flanks.
 Each nozzle has an Exhaust_* empty at its mouth whose 'thrust' property is the
@@ -48,17 +50,16 @@ def mat(name, color, metal=0, rough=.4, emission=0, coat=0):
         bs.inputs['Coat Roughness'].default_value = .18
     return m
 
-paint = mat('Ano_White', (.78, .79, .77), .12, .34, coat=.35)
-glass = mat('Gold_Glass', (.06, .04, .014), .8, .1)
+paint = mat('Ano_White', (.83, .85, .84), .18, .26, coat=.5)
+glass = mat('Gold_Glass', (.065, .043, .018), .5, .19, coat=.65)
 carbon = mat('Carbon', (.022, .024, .027), .25, .42)
 titanium = mat('Titanium', (.45, .45, .47), .85, .28)
-graphite = mat('Wheel_Graphite', (.045, .05, .055), .6, .34)
+graphite = mat('Wheel_Graphite', (.065, .073, .083), .78, .24)
 rubber = mat('Rubber', (.019, .022, .024), 0, .8)
 head = mat('Headlamp', (.9, .94, 1), .1, .15, .6)
 brake = mat('Brake_Lamp', (.75, .02, .015), .15, .2, .35)
 throat = mat('Thruster_Throat', (.012, .012, .014), .3, .85)
-caliper = mat('Caliper_Gold', (.72, .5, .16), .85, .3)
-strap = mat('Tow_Red', (.62, .035, .025), 0, .6)
+caliper = mat('Caliper_Gold', (.61, .34, .075), .75, .29)
 lens = mat('Lens_White', (.82, .84, .86), .1, .18)
 
 def empty(name, loc=(0, 0, 0), parent=None):
@@ -69,7 +70,9 @@ def empty(name, loc=(0, 0, 0), parent=None):
     return o
 
 root = empty('Roadster_Rocket')
-root['asset'] = 'Roadster Rocket / original Blender study, cold-gas thruster trim'
+root['asset'] = 'Roadster Rocket / reference-sculpted Blender model, revision 3'
+root['revision'] = 3
+root['reference'] = 'https://www.tesla.com/roadster'
 root['forward'] = '+Z in glTF'; root['wheelRadius'] = (FRONT['radius'] + REAR['radius']) / 2
 body = empty('Body', parent=root)
 parent = body
@@ -80,7 +83,7 @@ def finish(o, name, material, bevel=0, smooth=True):
     o.data.materials.append(material)
     if bevel:
         mod = o.modifiers.new('Edge radius', 'BEVEL')
-        mod.width = bevel; mod.segments = 2
+        mod.width = bevel; mod.segments = 1 if bevel < .005 else 3
     if smooth:
         for face in o.data.polygons:
             face.use_smooth = True
@@ -150,256 +153,358 @@ def mirrored(z, half):
     left = [(-x, y, z) for x, y in half[-2:0:-1]]
     return right + left
 
-# ---- Body shell: a faceted wedge lofted through fifteen stations, nose to tail.
-# The shoulder rises over each axle, so the wheel arches stay below the crease.
-# Each half profile: keel, sill, side crease, shoulder, fender top, deck edge, centre.
-BODY = [
-    (2.23, [(0, .19), (.62, .19), (.78, .29), (.80, .36), (.74, .42), (.42, .415), (0, .41)]),
-    (2.14, [(0, .15), (.80, .15), (.95, .29), (.96, .41), (.89, .51), (.50, .475), (0, .47)]),
-    (1.82, [(0, .12), (.86, .12), (1.0, .31), (1.0, .52), (.93, .69), (.53, .575), (0, .565)]),
-    (1.66, [(0, .12), (.87, .12), (1.0, .31), (1.0, .66), (.935, .75), (.53, .60), (0, .59)]),
-    (1.41, [(0, .12), (.87, .12), (1.0, .32), (1.0, .74), (.935, .80), (.53, .64), (0, .63)]),
-    (1.16, [(0, .12), (.87, .12), (1.0, .325), (1.0, .68), (.935, .79), (.54, .67), (0, .665)]),
-    (.95, [(0, .12), (.87, .12), (.995, .33), (.995, .58), (.93, .775), (.55, .70), (0, .695)]),
-    (.62, [(0, .12), (.86, .12), (.985, .33), (.985, .56), (.91, .77), (.62, .755), (0, .75)]),
-    (0, [(0, .12), (.85, .12), (.97, .33), (.975, .56), (.90, .785), (.70, .79), (0, .79)]),
-    (-.80, [(0, .12), (.87, .12), (1.0, .34), (1.0, .58), (.94, .80), (.70, .80), (0, .80)]),
-    (-1.16, [(0, .12), (.875, .12), (1.0, .345), (1.0, .72), (.95, .815), (.66, .80), (0, .80)]),
-    (-1.41, [(0, .13), (.88, .13), (1.0, .35), (1.0, .78), (.95, .83), (.60, .80), (0, .80)]),
-    (-1.66, [(0, .15), (.88, .15), (1.0, .355), (1.0, .72), (.95, .82), (.58, .795), (0, .79)]),
-    (-1.96, [(0, .19), (.86, .19), (.98, .36), (.98, .60), (.93, .79), (.55, .785), (0, .78)]),
-    (-2.14, [(0, .25), (.80, .25), (.93, .38), (.94, .58), (.89, .76), (.52, .76), (0, .76)]),
+# ---- Sculpted body. Longitudinal splines keep the fenders continuous while
+# the cross-section preserves the hood, shoulder and lower door creases.
+# z, outer width, sill height, belt height, fender crown, hood/deck centre
+STATIONS = [
+    (2.23, .79, .18, .36, .45, .42),
+    (2.12, .91, .14, .39, .51, .47),
+    (1.91, .98, .13, .47, .63, .54),
+    (1.66, .999, .13, .61, .75, .60),
+    (1.41, 1.0, .13, .70, .80, .65),
+    (1.17, .995, .13, .67, .80, .69),
+    (.90, .982, .13, .60, .78, .735),
+    (.58, .967, .14, .60, .785, .77),
+    (.05, .956, .15, .63, .80, .795),
+    (-.48, .977, .16, .66, .824, .81),
+    (-.94, .998, .16, .70, .85, .82),
+    (-1.19, 1.0, .17, .75, .873, .82),
+    (-1.41, 1.0, .18, .79, .888, .815),
+    (-1.65, .99, .19, .76, .881, .81),
+    (-1.94, .969, .22, .66, .845, .80),
+    (-2.14, .922, .29, .61, .785, .78),
 ]
-shell = loft('Body shell', [mirrored(z, half) for z, half in BODY], paint, .018)
-# Open wheel wells, lined in carbon: the cutter's faces keep its material.
-# Each side is cut separately, so the bonnet and deck between the wheels stay whole.
+
+def spline(a, b, c, d, t):
+    return .5*((2*b)+(-a+c)*t+(2*a-5*b+4*c-d)*t*t+(-a+3*b-3*c+d)*t*t*t)
+
+def sample(rows, z):
+    for i in range(len(rows)-1):
+        b, c = rows[i], rows[i+1]
+        if c[0] <= z <= b[0]:
+            t = (b[0]-z)/(b[0]-c[0]); a = rows[max(0, i-1)]; d = rows[min(len(rows)-1, i+2)]
+            return [z]+[spline(a[k], b[k], c[k], d[k], t) for k in range(1, len(b))]
+    return list(rows[0] if z > rows[0][0] else rows[-1])
+
+def body_profile(z):
+    _, w, sill, belt, crown, deck = sample(STATIONS, z)
+    return [(0, sill), (w*.78, sill), (w*.94, sill+.028),
+            (w*.98, sill+.11), (w, belt), (w*.978, crown-.035),
+            (w*.92, crown), (w*.76, crown*.66+deck*.34),
+            (w*.57, deck+.012), (w*.28, deck+.008), (0, deck)]
+
+def curve_point(points, u):
+    i=min(len(points)-2,int(u)); t=u-i
+    a,b,c,d=points[max(0,i-1)],points[i],points[i+1],points[min(len(points)-1,i+2)]
+    # Bounded interpolation preserves the tyre/roof envelope and panel creases.
+    return tuple(max(min(b[k],c[k]),min(max(b[k],c[k]),spline(a[k],b[k],c[k],d[k],t))) for k in range(len(b)))
+
+def dense_profile(points, steps=3):
+    return [curve_point(points,i+j/steps) for i in range(len(points)-1) for j in range(steps)]+[points[-1]]
+
+def subtract(target, cutter, name):
+    bpy.context.view_layer.objects.active=target
+    mod=target.modifiers.new(name,'BOOLEAN');mod.operation='DIFFERENCE';mod.object=cutter
+    mod.material_mode='TRANSFER'
+    for previous in list(target.modifiers): bpy.ops.object.modifier_apply(modifier=previous.name)
+    bpy.data.objects.remove(cutter,do_unlink=True)
+
+zs = [a[0]+(b[0]-a[0])*j/6 for a, b in zip(STATIONS, STATIONS[1:]) for j in range(6)]+[STATIONS[-1][0]]
+shell = loft('Sculpted monocoque', [mirrored(z, dense_profile(body_profile(z))) for z in zs], paint, 0)
+# True open arches with clean circular edges and black inner walls.
 for z, wheel in ((FRONT_AXLE, FRONT), (REAR_AXLE, REAR)):
     for s in (-1, 1):
-        cutter = cylinder('Wheel arch tool', (s*(wheel['x'] + .3), wheel['radius'], z), wheel['radius'] + .035, .62 + wheel['width'] * .5, carbon, vertices=40, bevel=0)
-        mod = shell.modifiers.new('Open wheel well', 'BOOLEAN'); mod.operation = 'DIFFERENCE'; mod.object = cutter
-        mod.material_mode = 'TRANSFER'
-        bpy.context.view_layer.objects.active = shell
-        for previous in list(shell.modifiers):
-            bpy.ops.object.modifier_apply(modifier=previous.name)
+        cutter = cylinder('Arch cutter', (s*1.08, wheel['radius'], z), wheel['radius']+.027, .72, carbon, vertices=96, bevel=0)
+        mod = shell.modifiers.new('Open arch', 'BOOLEAN'); mod.operation='DIFFERENCE'; mod.object=cutter
+        mod.material_mode='TRANSFER'
+        bpy.context.view_layer.objects.active=shell
+        for previous in list(shell.modifiers): bpy.ops.object.modifier_apply(modifier=previous.name)
         bpy.data.objects.remove(cutter, do_unlink=True)
+        # The lip follows the cut, rather than a painted circle over a solid side.
+        pts=[]
+        for i in range(41):
+            a=-.35+(math.pi+.7)*i/40
+            zz=z+math.cos(a)*(wheel['radius']+.029)
+            yy=wheel['radius']+math.sin(a)*(wheel['radius']+.029)
+            w=sample(STATIONS, zz)[1]
+            pts.append((s*(w+.001), yy, zz))
+        tube('Arch edge', pts, .006, paint)
+        # Shadowed well behind the tyre, recessed from the outer skin.
+        pts=[(s*.745, wheel['radius']+math.sin(a)*(wheel['radius']+.035), z+math.cos(a)*(wheel['radius']+.035)) for a in [i*math.pi/32 for i in range(33)]]
+        tube('Inner arch liner', pts, .014, carbon)
 
-# ---- Greenhouse: a gold-glazed canopy from the windshield base to the B-pillar
-# line, then a white fastback falling to the tail with a narrow rear window.
-def canopy_ring(z, base, side, roof, crown):
-    half = [(0, base[1] - .04), (base[0], base[1] - .04), base, side, roof, (0, crown)]
-    return mirrored(z, half)
+# ---- Gold wraparound glass with a tapered fastback, defined A/B pillars and
+# flush perimeter seals. Long side glazing is a defining reference feature.
+# z, base width, base height, shoulder width/height, crown width/height, centre
 CANOPY = [
-    (.84, (.83, .735), (.79, .745), (.66, .752), .757),
-    (.64, (.855, .755), (.79, .82), (.59, .87), .885),
-    (.42, (.87, .775), (.78, .885), (.52, .97), .99),
-    (.2, (.877, .788), (.775, .935), (.50, 1.045), 1.065),
-    (0, (.88, .80), (.77, .97), (.48, 1.075), 1.10),
-    (-.42, (.88, .815), (.76, .975), (.46, 1.075), 1.095),
-    (-.66, (.866, .82), (.74, .958), (.44, 1.048), 1.066),
-    (-.90, (.85, .825), (.72, .935), (.42, 1.015), 1.03),
+    (.91, .79, .745, .76, .754, .60, .762, .766),
+    (.66, .842, .777, .76, .832, .60, .87, .882),
+    (.35, .858, .799, .735, .927, .58, .988, 1.004),
+    (.02, .858, .815, .71, 1.006, .57, 1.071, 1.086),
+    (-.30, .854, .828, .70, 1.027, .565, 1.09, 1.10),
+    (-.64, .846, .840, .70, 1.025, .558, 1.078, 1.092),
+    (-.92, .828, .850, .695, 1.003, .548, 1.046, 1.06),
+    (-1.19, .78, .850, .66, .961, .515, .995, 1.006),
+    (-1.47, .67, .842, .58, .901, .455, .923, .932),
+    (-1.73, .49, .823, .46, .839, .36, .85, .855),
 ]
-FASTBACK = [
-    CANOPY[-1],
-    (-1.42, (.93, .81), (.82, .87), (.45, .94), .955),
-    (-1.98, (.93, .795), (.85, .815), (.46, .845), .853),
-    (-2.12, (.90, .77), (.84, .78), (.45, .795), .80),
-]
-loft('Gold glazed canopy', [canopy_ring(*s) for s in CANOPY], glass, .008)
-loft('Fastback deck', [canopy_ring(*s) for s in FASTBACK], paint, .015)
-# A titanium spine along the crown of the canopy.
-tube('Roof spine', [(0, .893, .64), (0, .997, .42), (0, 1.072, .2), (0, 1.107, 0), (0, 1.102, -.42), (0, 1.073, -.66), (0, 1.037, -.9)], .011, titanium)
-# Narrow trapezoid rear window, set just proud of the fastback.
-mesh('Rear window', [(-.33, 1.036, -.92), (.33, 1.036, -.92), (.24, .912, -1.70), (-.24, .912, -1.70)], [(0, 3, 2, 1)], glass)
-for s in (-1, 1):
-    # Titanium beltline trim and the slim A-pillars of the canopy.
-    tube('Beltline trim', [(s*.835, .74, .84), (s*.858, .758, .64), (s*.875, .778, .42), (s*.882, .79, .2), (s*.885, .803, 0), (s*.885, .818, -.42), (s*.87, .823, -.66), (s*.855, .828, -.90)], .009, titanium)
-    tube('B pillar', [(s*.86, .83, -.90), (s*.75, .95, -.90), (s*.51, 1.03, -.90)], .02, paint)
-    # A titanium accent along the lower body crease, between the arches.
-    box('Crease accent', (s*.985, .33, -.03), (.012, .014, 1.9), titanium, .004)
-    # Butterfly door shut lines.
-    tube('Door shut line', [(s*.99, .35, .70), (s*.995, .56, .66), (s*.92, .775, .62), (s*.93, .80, -.80), (s*1.0, .58, -.86), (s*.99, .35, -.84)], .005, carbon)
+def canopy_half(z):
+    _, w, h, sw, sh, rw, rh, crown = sample(CANOPY, z)
+    return [(0,h-.018), (w,h-.018), (w,h), (sw,sh), (rw,rh), (rw*.5, crown-.002), (0,crown)]
+czs=[a[0]+(b[0]-a[0])*j/6 for a,b in zip(CANOPY,CANOPY[1:]) for j in range(6)]+[CANOPY[-1][0]]
+canopy=loft('Panoramic gold canopy', [mirrored(z, dense_profile(canopy_half(z),4)) for z in czs], glass, 0)
+for mod in list(canopy.modifiers): canopy.modifiers.remove(mod)
+def canopy_side(z,q,s,offset=.005):
+    # q=0 at roof rail, q=1 at beltline; exactly follows the glass shell.
+    x,y=curve_point(canopy_half(z),4-2*q)
+    return (s*(x+offset*.35),y+offset,z)
 
-# ---- Lower aero in carbon: splitter, sill blades, side intakes and diffuser.
-box('Front splitter', (0, .13, 2.06), (1.74, .035, .34), carbon, .008)
-box('Front intake', (0, .265, 2.232), (1.2, .1, .02), carbon, .006)
-for x in (-.45, -.15, .15, .45): box('Intake fin', (x, .265, 2.243), (.014, .09, .016), titanium, .002)
-box('Intake lip', (0, .212, 2.24), (1.24, .012, .02), titanium, .003)
-def bonnet_y(z):
-    # Height of the bonnet's centre line between body stations, just above it.
-    for (z0, h0), (z1, h1) in zip(BODY, BODY[1:]):
-        if z1 <= z <= z0: return h1[-1][1] + (h0[-1][1] - h1[-1][1]) * (z - z1) / (z0 - z1) + .009
-for s in (-1, 1):
-    # Canards on the front corners and splitter end fences.
-    for y, z, lean in ((.25, 2.06, .1), (.34, 1.98, .16)):
-        box('Canard', (s*.95, y, z), (.07, .01, .16), carbon, .003, (0, s*.3, s*lean))
-    box('Splitter fence', (s*.86, .175, 2.1), (.012, .07, .26), carbon, .003)
-    # NACA ducts let air into the bonnet.
-    x = s*.27
-    mesh('Bonnet duct', [(x - .02, bonnet_y(1.74), 1.74), (x + .02, bonnet_y(1.74), 1.74), (x + .085, bonnet_y(1.2), 1.2), (x - .085, bonnet_y(1.2), 1.2)], [(0, 3, 2, 1)], carbon)
-bpy.ops.mesh.primitive_torus_add(major_segments=16, minor_segments=4, major_radius=.045, minor_radius=.012, location=p((.62, .13, 2.17)))
-o = bpy.context.object; o.rotation_euler = p((1, 0, 0)).to_track_quat('Z', 'Y').to_euler(); finish(o, 'Tow strap', strap)
-for s in (-1, 1):
-    box('Sill blade', (s*.94, .145, 0), (.13, .07, 1.92), carbon, .008)
-    box('Side intake', (s*.993, .5, -.66), (.02, .06, .34), carbon, .006, (s*.12, 0, 0))
-    box('Flank vent', (s*.994, .44, .82), (.014, .2, .34), carbon, .008)
-    for z in (.7, .76): box('Flank vent slat', (s*1.0, .44, z), (.01, .17, .016), titanium, .002)
-    for z in (-.7, -.8, -.9): box('Sill fin', (s*1.0, .18, z), (.03, .08, .012), carbon, .002)
-    box('Rear haunch vent', (s*.86, .79, -1.62), (.16, .012, .32), carbon, .004)
-box('Rear diffuser', (0, .30, -2.03), (1.78, .32, .26), carbon, .015)
-for x in (-.66, -.33, 0, .33, .66):
-    box('Diffuser strake', (x, .15, -2.0), (.018, .16, .5), carbon, .003)
-# Louvres over the rear deck, between the haunches, behind the rear window.
-for i in range(6):
-    z = -1.76 - i * .055
-    box('Deck louvre', (0, .955 + (z + 1.42) * .182 + .006, z), (.64, .012, .034), carbon, .003, (.3, 0, 0))
-# Suction fans in the diffuser, between the strakes.
-for x in (-.495, -.165, .165, .495):
-    cylinder('Suction fan', (x, .225, -2.162), .072, .012, throat, (0, 0, 1), 20, 0)
-    bpy.ops.mesh.primitive_torus_add(major_segments=20, minor_segments=4, major_radius=.075, minor_radius=.011, location=p((x, .225, -2.168)))
-    finish(bpy.context.object, 'Fan ring', titanium)
-    cylinder('Fan hub', (x, .225, -2.168), .022, .012, titanium, (0, 0, 1), 12, 0)
-for s in (-1, 1):
-    box('Reversing lens', (s*.78, .405, -2.164), (.12, .035, .01), lens, .004)
-bpy.ops.mesh.primitive_torus_add(major_segments=16, minor_segments=4, major_radius=.045, minor_radius=.012, location=p((-.82, .18, -2.12)))
-o = bpy.context.object; o.rotation_euler = p((1, 0, 0)).to_track_quat('Z', 'Y').to_euler(); finish(o, 'Tow strap', strap)
+for s in (-1,1):
+    tube('Glass lower seal', [(s*sample(CANOPY,z)[1], sample(CANOPY,z)[2]+.002,z) for z in czs], .005, carbon)
+    tube('Titanium roof rail', [(s*sample(CANOPY,z)[5], sample(CANOPY,z)[6]+.004,z) for z in czs if -.84<=z<=-.19], .004, titanium)
+    tube('A pillar', [canopy_side(.71-.9*i/12,1-i/12,s) for i in range(13)], .007, paint)
+    tube('B pillar seal', [canopy_side(-.73-.1*i/8,1-i/8,s) for i in range(9)], .008, carbon)
+    # A fitted surface, with the same cross-sections as the canopy, avoids
+    # floating triangles or intersections with the rear quarter window.
+    verts=[]; nu,nv=16,16
+    for j in range(nv+1):
+        t=j/nv
+        for i in range(nu+1):
+            q=i/nu; start=-.86-.61*q; z=start+(-1.73-start)*t
+            verts.append(canopy_side(z,q,s,.007))
+    faces=[(j*(nu+1)+i,j*(nu+1)+i+1,(j+1)*(nu+1)+i+1,(j+1)*(nu+1)+i) for j in range(nv) for i in range(nu)]
+    mesh('Fitted rear buttress',verts,faces,paint,0,True)
+    tube('Quarter window seal',[canopy_side(-.86-.61*i/12,i/12,s,.009) for i in range(13)],.004,carbon)
+    tube('Rear deck shut line', [(s*.91,.838,-1.94),(s*.74,.81,-2.00),(s*.55,.807,-2.015)],.003,carbon)
+# The transverse roof seam is subtle; the glazing remains uninterrupted at centre.
+tube('Roof panel seam', [(-.56,1.094,-.30),(-.28,1.103,-.30),(0,1.104,-.30),(.28,1.103,-.30),(.56,1.094,-.30)],.003,carbon)
 
-# ---- Lamps: hidden headlight slits at the front corners and the full-length taillight.
-for s in (-1, 1):
-    box('Headlight housing', (s*.65, .422, 2.198), (.40, .05, .03), carbon, .006, (0, s*.17, s*.1))
-    box('Headlight slit', (s*.65, .425, 2.206), (.36, .02, .03), head, .004, (0, s*.17, s*.1))
-box('Taillight band', (0, .675, -2.139), (1.76, .07, .012), carbon, .004)
-box('Taillight bar', (0, .675, -2.146), (1.66, .026, .014), brake, .004)
-box('Taillight trim', (0, .716, -2.142), (1.72, .008, .01), titanium, .002)
-for s in (-1, 1):
-    box('Taillight return', (s*.86, .665, -2.10), (.02, .03, .1), brake, .003, (0, s*.4, 0))
-# A blank plate on the tail: no badges or lettering anywhere on the car.
-box('Plate', (0, .555, -2.168), (.34, .1, .012), titanium, .006)
+# ---- Body seams and flush details. Project the door lines onto the side loft.
+def side_at(z,y,s,offset=.004):
+    profile=body_profile(z)
+    for (x0,y0),(x1,y1) in zip(profile[2:5],profile[3:6]):
+        if y0<=y<=y1:
+            return (s*(x0+(x1-x0)*(y-y0)/(y1-y0)+offset),y,z)
+    return (s*(sample(STATIONS,z)[1]+offset),y,z)
+for s in (-1,1):
+    door=[(.66,.71),(.60,.57),(.53,.32),(.47,.245),(.15,.25),(-.25,.265),(-.64,.29),(-.75,.49),(-.83,.72)]
+    tube('Door perimeter', [side_at(z,y,s) for z,y in door],.0035,carbon)
+    # Gold side marker and a flush release, not protruding door handles.
+    box('Flush door release',(s*.967,.723,-.54),(.009,.021,.11),titanium,.003)
+    box('Side marker recess',(s*.99,.65,.96),(.008,.022,.16),carbon,.004)
+    box('Side marker',(s*.995,.65,.96),(.006,.008,.10),caliper,.002)
+    mesh('Recessed sill',[(s*.995,.245,.93),(s*1.005,.30,-.91),(s*1.005,.16,-.96),(s*.91,.13,.97)],[(0,1,2,3)],carbon,.006)
+    mesh('Sill aero edge',[(s*.94,.16,.99),(s*1.01,.18,-.95),(s*1.015,.125,-.98),(s*.94,.105,.99)],[(0,1,2,3)],carbon,.004)
 
-# ---- Rocket trim rear wing on swan-neck pylons.
-WING_Y, WING_Z = 1.16, -1.93
-mesh('Rear wing', [(-.98, WING_Y, WING_Z + .2), (.98, WING_Y, WING_Z + .2), (.98, WING_Y - .045, WING_Z - .2), (-.98, WING_Y - .045, WING_Z - .2),
-    (-.98, WING_Y + .03, WING_Z + .05), (.98, WING_Y + .03, WING_Z + .05)],
-    [(0, 1, 5, 4), (4, 5, 2, 3), (0, 3, 2, 1), (0, 4, 3), (1, 2, 5)], carbon, .006, True)
-for s in (-1, 1):
-    mesh('Wing endplate', [(s*.98, WING_Y - .12, WING_Z + .24), (s*.98, WING_Y + .08, WING_Z + .24), (s*.98, WING_Y + .12, WING_Z - .26), (s*.98, WING_Y - .10, WING_Z - .26),
-        (s*1.0, WING_Y - .12, WING_Z + .24), (s*1.0, WING_Y + .08, WING_Z + .24), (s*1.0, WING_Y + .12, WING_Z - .26), (s*1.0, WING_Y - .10, WING_Z - .26)],
-        [(0, 1, 2, 3), (4, 7, 6, 5), (0, 4, 5, 1), (1, 5, 6, 2), (2, 6, 7, 3), (3, 7, 4, 0)], carbon, .004)
-    mesh('Wing pylon', [(s*.42, .80, -1.70), (s*.42, .80, -1.98), (s*.42, WING_Y, WING_Z + .02), (s*.42, WING_Y, WING_Z - .14),
-        (s*.45, .80, -1.70), (s*.45, .80, -1.98), (s*.45, WING_Y, WING_Z + .02), (s*.45, WING_Y, WING_Z - .14)],
-        [(0, 1, 3, 2), (4, 6, 7, 5), (0, 2, 6, 4), (1, 5, 7, 3), (2, 3, 7, 6), (0, 4, 5, 1)], carbon, .004)
-box('Wing light', (0, WING_Y - .02, WING_Z - .205), (1.5, .014, .012), brake, .002)
-box('Gurney flap', (0, WING_Y - .005, WING_Z - .195), (1.94, .03, .008), carbon, .002)
-for s in (-1, 1):
-    box('Wing mount', (s*.435, WING_Y + .028, WING_Z - .04), (.07, .012, .16), titanium, .003)
-    box('Pylon foot', (s*.435, .803, -1.84), (.08, .014, .32), titanium, .003)
-# The wing pivots on the pylon tops: braking, the game tilts it up as an air brake.
-wing = empty('Rear_Wing', (0, WING_Y, WING_Z - .04), body)
-bpy.context.view_layer.update()
-for o in [o for o in body.children if o.name.startswith(('Rear wing', 'Wing endplate', 'Wing light', 'Gurney flap', 'Wing mount'))]:
-    matrix = o.matrix_world.copy(); o.parent = wing; o.matrix_world = matrix
+# ---- Front: a broad blank wedge, angular light pockets and a recessed lower
+# mouth. The long hood's diagonal edges converge into the front opening.
+intake=box('Intake cutter',(0,.27,2.23),(1.36,.205,.40),carbon,.035)
+# Evaluate the cutter's rounded corners before the difference.
+bpy.context.view_layer.objects.active=intake
+for mod in list(intake.modifiers): bpy.ops.object.modifier_apply(modifier=mod.name)
+subtract(shell,intake,'Recessed front intake')
+box('Intake back wall',(0,.27,2.035),(1.35,.20,.012),throat,.025)
+for x in [i*.06 for i in range(-10,11)]:
+    box('Intake grille fin',(x,.27,2.065),(.008,.14,.025),graphite,.002)
+mesh('Splitter lip',[(-.89,.15,2.08),(-.72,.12,2.26),(.72,.12,2.26),(.89,.15,2.08),(.84,.11,2.08),(.66,.095,2.25),(-.66,.095,2.25),(-.84,.11,2.08)],
+     [(0,1,2,3),(4,7,6,5),(0,4,5,1),(1,5,6,2),(2,6,7,3)],carbon,.006)
+def hood_y(x,z):
+    row=dense_profile(body_profile(z)[4:]);x=abs(x)
+    for (x0,y0),(x1,y1) in zip(row,row[1:]):
+        if x1<=x<=x0: return y1+(y0-y1)*(x-x1)/(x0-x1)
+    return row[-1][1]
+def hood_patch(name,corners,material,offset):
+    verts=[];n=5
+    for j in range(n+1):
+        for i in range(n+1):
+            u,v=i/n,j/n
+            x=(corners[0][0]*(1-u)+corners[1][0]*u)*(1-v)+(corners[3][0]*(1-u)+corners[2][0]*u)*v
+            z=(corners[0][1]*(1-u)+corners[1][1]*u)*(1-v)+(corners[3][1]*(1-u)+corners[2][1]*u)*v
+            verts.append((x,hood_y(x,z)+offset,z))
+    return mesh(name,verts,[(j*(n+1)+i,j*(n+1)+i+1,(j+1)*(n+1)+i+1,(j+1)*(n+1)+i) for j in range(n) for i in range(n)],material,0,True)
+for s in (-1,1):
+    # A tapered cavity cut through the fender, with a recessed bed and separate
+    # projector optics. The old version only laid a dark face over the paint.
+    corners=[(s*.64,2.14),(s*.89,2.04),(s*.85,1.70),(s*.58,1.87)]
+    verts=[(x,hood_y(x,z)+dy,z) for dy in (-.060,.18) for x,z in corners]
+    cutter=mesh('Lamp cavity cutter',verts,[(0,3,2,1),(4,5,6,7),(0,1,5,4),(1,2,6,5),(2,3,7,6),(3,0,4,7)],carbon)
+    subtract(shell,cutter,'Recessed headlight well')
+    hood_patch('Headlight well floor',corners,carbon,-.047)
+    # A fine machined surround follows the body, with true wall depth inside it.
+    edge=[]
+    for a,b in zip(corners,corners[1:]+corners[:1]):
+        for j in range(8):
+            x=a[0]+(b[0]-a[0])*j/8;z=a[1]+(b[1]-a[1])*j/8
+            edge.append((x,hood_y(x,z)+.003,z))
+    tube('Headlight bezel',edge+[edge[0]],.004,titanium)
+    # Projectors face upward and forward through the cavity; DRLs outline its nose.
+    for i in range(3):
+        x=s*(.69+i*.058);z=2.045-i*.026;y=hood_y(x,z)-.012
+        cylinder('Projector housing',(x,y,z),.022,.020,graphite,(0,.85,.53),32,.002)
+        cylinder('Projector lens',(x,y+.010,z+.006),.017,.004,head,(0,.85,.53),32,.001)
+    hood_patch('Daylight blade',[(s*.657,2.108),(s*.862,2.024),(s*.856,2.003),(s*.652,2.087)],head,-.006)
+    tube('Bonnet seam',[(s*x,hood_y(x,z)+.003,z) for x,z in [(.64,2.12),(.57,1.86),(.55,1.42),(.59,.96)]],.0025,carbon)
+    box('Yaw recess',(s*.99,.43,.92),(.012,.13,.17),carbon,.018)
 
-# ---- Cold-gas thrusters: titanium bells with sooty throats, ten in all.
-def thruster(name, mouth, direction, scale=1):
-    d = Vector(direction).normalized()
-    bell = .13 * scale
-    start = Vector(mouth) - d * bell
-    cone(name + ' bell', tuple(start + d * bell / 2), .042 * scale, .07 * scale, bell, titanium, tuple(d))
-    cone(name + ' throat', tuple(start + d * bell * .55), .03 * scale, .058 * scale, bell * .9, throat, tuple(d))
-    cylinder(name + ' collar', tuple(start), .058 * scale, .04 * scale, carbon, tuple(d), 16, .004)
-    e = empty('Exhaust_' + name.replace(' ', '_'), tuple(mouth), body)
-    e['thrust'] = list(d); e['exitRadius'] = .07 * scale
-    return e
+# ---- Rear deck and aero. The working air brake sits close to the deck instead
+# of the old tall, square race wing. Its existing node still drives braking.
+mesh('Rear fascia',[(-.925,.725,-2.175),(.925,.725,-2.175),(.87,.20,-2.175),(-.87,.20,-2.175)],[(0,1,2,3)],carbon,.006)
+box('Taillight shadow line',(0,.752,-2.153),(1.82,.051,.018),carbon,.007)
+box('Continuous taillight',(0,.756,-2.166),(1.79,.018,.012),brake,.004)
+box('Tail titanium edge',(0,.783,-2.158),(1.8,.006,.012),titanium,.002)
+for s in (-1,1):
+    box('Reversing lens',(s*.79,.52,-2.173),(.095,.018,.008),lens,.003)
+mesh('Sculpted rear bumper', [(-.90,.708,-2.184),(-.48,.708,-2.184),(0,.708,-2.184),(.48,.708,-2.184),(.90,.708,-2.184),
+    (-.82,.60,-2.19),(-.48,.55,-2.20),(0,.585,-2.205),(.48,.55,-2.20),(.82,.60,-2.19)],
+    [(i,i+1,i+6,i+5) for i in range(4)],paint,.004,True)
+box('Tail inset',(0,.621,-2.211),(.29,.095,.012),titanium,.005)
+# A rising carbon undertray with separate, tapered diffuser strakes.
+mesh('Diffuser ramp',[(-.86,.13,-1.63),(.86,.13,-1.63),(.90,.30,-2.19),(-.90,.30,-2.19)],[(0,1,2,3)],carbon,.005)
+for x in (-.84,-.42,0,.42,.84):
+    mesh('Diffuser blade',[(x-.009,.13,-1.69),(x-.009,.085,-2.20),(x-.009,.32,-2.19),(x+.009,.13,-1.69),(x+.009,.085,-2.20),(x+.009,.32,-2.19)],
+         [(0,1,2),(3,5,4),(0,3,4,1),(1,4,5,2)],carbon,.003)
+# Recessed suction fans: axial rings, hubs and actual radial blades.
+for x in (-.48,-.16,.16,.48):
+    cylinder('Fan cavity',(x,.26,-2.164),.072,.014,throat,(0,0,1),24,0)
+    for k in range(5):
+        a=k*math.tau/5
+        beam('Fan blade',(x+math.cos(a)*.02,.26+math.sin(a)*.02,-2.177),(x+math.cos(a+.35)*.062,.26+math.sin(a+.35)*.062,-2.177),.009,graphite,4)
+    cylinder('Fan centre',(x,.26,-2.181),.019,.012,titanium,(0,0,1),12,0)
+    # Cylinder axis is along the rear face, not the ground (the old rings lay flat).
+    bpy.ops.mesh.primitive_torus_add(major_segments=20,minor_segments=4,major_radius=.073,minor_radius=.006,location=p((x,.26,-2.179)))
+    o=bpy.context.object; o.rotation_euler=p((0,0,1)).to_track_quat('Z','Y').to_euler(); finish(o,'Fan shroud',graphite)
+WING_Y,WING_Z=.95,-1.98
+for s in (-1,1):
+    mesh('Air brake support',[(s*.59,.815,-1.78),(s*.59,.81,-2.03),(s*.59,WING_Y,-1.93),(s*.59,WING_Y,-2.00),
+                               (s*.615,.815,-1.78),(s*.615,.81,-2.03),(s*.615,WING_Y,-1.93),(s*.615,WING_Y,-2.00)],
+         [(0,1,3,2),(4,6,7,5),(0,2,6,4),(1,5,7,3),(2,3,7,6)],carbon,.004)
+wing=empty('Rear_Wing',(0,WING_Y,WING_Z),body)
+parent=wing
+# Coordinates local to the hinge. A curved airfoil with tapered tips.
+wrings=[]
+for x,chord,rise in [(-.94,.10,-.025),(-.82,.16,0),(0,.17,.006),(.82,.16,0),(.94,.10,-.025)]:
+    wrings.append([(x,rise,-chord),(x,rise+.025,-chord*.4),(x,rise+.035,chord*.55),(x,rise+.014,chord),(x,rise-.006,chord*.5)])
+loft('Active aero blade',wrings,carbon,.003)
+box('Air brake light',(0,.004,-.171),(1.54,.012,.008),brake,.002)
+parent=body
 
-for i, x in enumerate((-.6, -.2, .2, .6)):
-    box('Heat shield', (x, .37, -2.164), (.2, .18, .01), titanium, .03)
-    thruster(f'Rear {i+1}', (x, .37, -2.25), (0, 0, -1), 1.15)
-for label, x, z in (('Lift FL', -.78, 1.92), ('Lift FR', .78, 1.92), ('Lift RL', -.80, -1.92), ('Lift RR', .80, -1.92)):
-    box(label + ' pod', (x, .16, z), (.2, .07, .22), carbon, .01)
-    thruster(label, (x, .085, z), (0, -1, 0), .9)
-for label, s in (('Yaw L', -1), ('Yaw R', 1)):
-    thruster(label, (s*1.005, .44, .92), (s, 0, 0), .75)
-
-# ---- Wheels: slick low-profile tyres on thin six-spoke rims.
-def wheel(prefix, spec, outward=1):
-    R, rim, w = spec['radius'], spec['rim'], spec['width']
-    profile = [(-w/2 + .012, rim + .005), (-w/2, rim + .03), (-w/2 + .004, R - .035), (-w/2 + .03, R), (w/2 - .03, R), (w/2 - .004, R - .035), (w/2, rim + .03), (w/2 - .012, rim + .005)]
-    verts = []; n = 48
-    for x, r in profile:
+# ---- Ten visible cold-gas bells retain the established names and plume axes.
+def thruster(name,mouth,direction,scale=1):
+    d=Vector(direction).normalized(); bell=.13*scale; start=Vector(mouth)-d*bell
+    tangent=d.cross(Vector((0,1,0)) if abs(d.y)<.9 else Vector((1,0,0))).normalized()
+    bitangent=d.cross(tangent).normalized()
+    profile=[(0,.030),(.25,.032),(.50,.042),(.75,.058),(1,.070),(1,.064),(.75,.052),(.50,.036),(.25,.026),(0,.024)]
+    verts=[];n=32
+    for t,r in profile:
         for i in range(n):
-            a = i*math.tau/n; verts.append((x, math.cos(a)*r, math.sin(a)*r))
-    faces = []
-    for j in range(len(profile)):
+            a=i*math.tau/n
+            verts.append(tuple(start+d*(t*bell)+(tangent*math.cos(a)+bitangent*math.sin(a))*(r*scale)))
+    mesh(name+' curved bell',verts,[(j*n+i,j*n+(i+1)%n,((j+1)%len(profile))*n+(i+1)%n,((j+1)%len(profile))*n+i) for j in range(len(profile)) for i in range(n)],titanium,0,True)
+    cylinder(name+' throat back',tuple(start+d*.005),.029*scale,.008,throat,tuple(d),32,0)
+    cylinder(name+' mounting flange',tuple(start),.047*scale,.015,titanium,tuple(d),24,.002)
+    e=empty('Exhaust_'+name.replace(' ','_'),tuple(mouth),body)
+    e['thrust']=list(d); e['exitRadius']=.07*scale
+for i,x in enumerate((-.60,-.20,.20,.60)):
+    thruster(f'Rear {i+1}',(x,.395,-2.25),(0,0,-1),1.15)
+for label,x,z in [('Lift FL',-.78,1.92),('Lift FR',.78,1.92),('Lift RL',-.80,-1.92),('Lift RR',.80,-1.92)]:
+    box(label+' recessed socket',(x,.155,z),(.19,.055,.21),carbon,.014)
+    thruster(label,(x,.085,z),(0,-1,0),.9)
+for label,s in [('Yaw L',-1),('Yaw R',1)]: thruster(label,(s*1.005,.44,.92),(s,0,0),.75)
+
+# ---- Six sculpted turbine spokes, machined lips, brake discs and tread lines.
+# Geometry stays within the original tyre envelope so physics still agrees.
+def wheel(prefix,spec,outward):
+    R,rim,w=spec['radius'],spec['rim'],spec['width']
+    profile=[(-w/2+.014,rim+.005),(-w/2,rim+.025),(-w/2+.005,R-.025),(-w/2+.025,R-.004),(-w/2+.04,R),
+             (-w*.22-.006,R),(-w*.22,R-.006),(-w*.22+.006,R),(-.006,R),(0,R-.006),(.006,R),(w*.22-.006,R),(w*.22,R-.006),(w*.22+.006,R),(w/2-.04,R),(w/2-.025,R-.004),(w/2-.005,R-.025),(w/2,rim+.025),(w/2-.014,rim+.005)]
+    verts=[]; n=80
+    for x,r in profile:
         for i in range(n):
-            faces.append((j*n+i, j*n+(i+1)%n, ((j+1)%len(profile))*n+(i+1)%n, ((j+1)%len(profile))*n+i))
-    mesh(prefix + ' tyre', verts, faces, rubber, 0, True)
-    bpy.ops.mesh.primitive_torus_add(major_segments=48, minor_segments=4, major_radius=R - .055, minor_radius=.006, location=p((outward*w*.5, 0, 0)))
-    o = bpy.context.object; o.rotation_euler = p((1, 0, 0)).to_track_quat('Z', 'Y').to_euler()
-    finish(o, prefix + ' sidewall ridge', rubber)
-    # An open barrel, closed behind the spokes, so the rim reads as spoked.
-    cylinder(prefix + ' rim barrel', (0, 0, 0), rim, w * .9, graphite, vertices=32, caps=False)
-    cylinder(prefix + ' back plate', (-outward*w*.3, 0, 0), rim, .01, graphite, vertices=32, bevel=0)
-    bpy.ops.mesh.primitive_torus_add(major_segments=32, minor_segments=6, major_radius=rim - .01, minor_radius=.014, location=p((outward*w*.44, 0, 0)))
-    o = bpy.context.object; o.rotation_euler = p((1, 0, 0)).to_track_quat('Z', 'Y').to_euler()
-    finish(o, prefix + ' rim lip', titanium)
-    cylinder(prefix + ' carbon ceramic disc', (outward*w*.12, 0, 0), rim * .78, .03, graphite, vertices=24)
-    cylinder(prefix + ' centre', (outward*w*.4, 0, 0), .055, .06, graphite, vertices=16)
-    # Three pairs of thin spokes, splayed toward the rim.
-    for k in range(3):
-        for split in (-.16, .16):
-            a = k*math.tau/3
-            beam(prefix + ' spoke', (outward*w*.42, math.cos(a)*.05, math.sin(a)*.05), (outward*w*.36, math.cos(a + split)*(rim - .012), math.sin(a + split)*(rim - .012)), .013, graphite, 6)
-    cylinder(prefix + ' hub cap', (outward*w*.44, 0, 0), .028, .02, titanium, vertices=12)
+            a=i*math.tau/n; verts.append((x,math.cos(a)*r,math.sin(a)*r))
+    faces=[(j*n+i,j*n+(i+1)%n,((j+1)%len(profile))*n+(i+1)%n,((j+1)%len(profile))*n+i) for j in range(len(profile)) for i in range(n)]
+    mesh(prefix+' performance tyre',verts,faces,rubber,0,True)
+    def ring(name,x,r,t,material,segments=64):
+        bpy.ops.mesh.primitive_torus_add(major_segments=segments,minor_segments=6,major_radius=r,minor_radius=t,location=p((x,0,0)))
+        o=bpy.context.object; o.rotation_euler=p((1,0,0)).to_track_quat('Z','Y').to_euler();finish(o,prefix+' '+name,material)
+    ring('sidewall bead',outward*w*.499,R-.039,.003,rubber,80)
+    cylinder(prefix+' rim barrel',(0,0,0),rim,w*.89,graphite,vertices=64,bevel=0,caps=False)
+    ring('machined rim',outward*w*.45,rim-.007,.009,titanium)
+    ring('inner rim',outward*w*.46,rim-.027,.005,graphite)
+    disc=cylinder(prefix+' drilled rotor',(outward*w*.11,0,0),rim*.80,.016,titanium,vertices=64,bevel=0)
+    cutters=[]
+    for r,count in [(rim*.60,18),(rim*.70,24)]:
+        for k in range(count):
+            a=k*math.tau/count
+            cutters.append(cylinder('Rotor drilling tool',(outward*w*.11,math.cos(a)*r,math.sin(a)*r),.0045,.06,throat,vertices=8,bevel=0))
+    cutters.append(cylinder('Rotor hub opening',(outward*w*.11,0,0),rim*.30,.06,throat,vertices=32,bevel=0))
+    bpy.ops.object.select_all(action='DESELECT')
+    for o in cutters:o.select_set(True)
+    bpy.context.view_layer.objects.active=cutters[0];bpy.ops.object.join()
+    subtract(disc,bpy.context.object,'Drilled cooling holes')
+    for face in disc.data.polygons: face.use_smooth = abs(face.normal.z) < .95
+    cylinder(prefix+' brake hat',(outward*w*.14,0,0),rim*.34,.020,graphite,vertices=48,bevel=.002)
+    for k in range(8):
+        a=k*math.tau/8
+        cylinder(prefix+' rotor bolt',(outward*w*.185,math.cos(a)*rim*.29,math.sin(a)*rim*.29),.007,.008,titanium,vertices=8,bevel=0)
+    for k in range(6):
+        a=k*math.tau/6
+        def spokev(r,angle,depth):return (outward*depth,math.cos(a+angle)*r,math.sin(a+angle)*r)
+        v=[spokev(.045,-.19,w*.47),spokev(rim-.014,-.075,w*.41),spokev(rim-.014,.075,w*.41),spokev(.045,.19,w*.47),
+           spokev(.045,-.19,w*.37),spokev(rim-.014,-.075,w*.32),spokev(rim-.014,.075,w*.32),spokev(.045,.19,w*.37)]
+        mesh(prefix+' forged spoke',v,[(0,1,2,3),(4,7,6,5),(0,4,5,1),(1,5,6,2),(2,6,7,3),(3,7,4,0)],graphite,.003,True)
+        # Fine titanium edge on the dark spoke provides readable wheel rotation.
+        beam(prefix+' spoke edge',spokev(.07,-.08,w*.477),spokev(rim-.03,-.04,w*.43),.003,titanium,4)
+        beam(prefix+' spoke relief',spokev(.085,0,w*.48),spokev(rim-.045,0,w*.435),.006,carbon,8)
+    for k in range(5):
+        a=k*math.tau/5
+        cylinder(prefix+' wheel bolt',(outward*w*.50,math.cos(a)*.031,math.sin(a)*.031),.005,.007,titanium,vertices=8,bevel=0)
+    cylinder(prefix+' centre lock',(outward*w*.48,0,0),.042,.024,graphite,vertices=20,bevel=.003)
+    cylinder(prefix+' centre pin',(outward*w*.515,0,0),.018,.008,titanium,vertices=12,bevel=0)
 
-wheel_groups = []
-for side, label in [(-1, 'L'), (1, 'R')]:
-    for z, end, spec in [(FRONT_AXLE, 'F', FRONT), (REAR_AXLE, 'R', REAR)]:
-        pivot = empty('Wheel_' + end + label, (side*spec['x'], spec['radius'], z), root)
-        spinner = empty('Spinner_' + end + label, parent=pivot)
-        parent = spinner; wheel(end + label, spec, side); wheel_groups.append(spinner)
-        # The caliper hangs on the pivot: it steers with the wheel but doesn't spin.
-        parent = pivot
-        a = .9 if end == 'F' else math.pi - .9
-        box(end + label + ' caliper', (side*spec['width']*.12, math.sin(a)*spec['rim']*.68, math.cos(a)*spec['rim']*.68), (.06, .05, .15), caliper, .012, (-a + math.pi / 2, 0, 0))
-parent = body
+for side,label in [(-1,'L'),(1,'R')]:
+    for z,end,spec in [(FRONT_AXLE,'F',FRONT),(REAR_AXLE,'R',REAR)]:
+        pivot=empty('Wheel_'+end+label,(side*spec['x'],spec['radius'],z),root)
+        spinner=empty('Spinner_'+end+label,parent=pivot)
+        parent=spinner; wheel(end+label,spec,side)
+        parent=pivot
+        box(end+label+' fixed caliper',(side*spec['width']*.20,.04,-spec['rim']*.62),(.045,.13,.072),caliper,.012)
+parent=body
 
-# Save the editable model before any export batching.
-scene = bpy.context.scene
-scene.unit_settings.system = 'METRIC'
-scene.world.color = (.22, .22, .22)
-scene.render.engine = 'CYCLES'; scene.cycles.samples = 32
-scene.cycles.use_denoising = True
-scene.render.resolution_x = 1500; scene.render.resolution_y = 1100; scene.render.resolution_percentage = 100
-scene.view_settings.view_transform = 'AgX'
-bpy.context.preferences.filepaths.save_version = 0
-source_parts = len([o for o in root.children_recursive if o.type in {'MESH', 'CURVE', 'FONT'}])
-# A studio scene remains in the blend, but is excluded from glTF export.
-parent = None
-floor = box('Studio floor', (0, -.05, 0), (200, .1, 200), mat('Studio', (.065, .088, .086), 0, .68), 0)
-def area(name, loc, power, size, target=(0, .6, 0)):
-    d = bpy.data.lights.new(name, 'AREA'); d.energy = power; d.shape = 'DISK'; d.size = size
-    o = bpy.data.objects.new(name, d); scene.collection.objects.link(o); o.location = p(loc)
-    o.rotation_euler = (p(target)-o.location).to_track_quat('-Z', 'Y').to_euler()
-area('Large softbox', (-4, 6, 4), 1500, 5)
-area('Cool fill', (4, 3, 2), 900, 4)
-area('Tail rim', (1, 5, -5), 1600, 3)
-camdata = bpy.data.cameras.new('Hero camera'); cam = bpy.data.objects.new('Hero camera', camdata)
-# From the rear three-quarter, so the wing, taillight and rear thrusters show.
-scene.collection.objects.link(cam); cam.location = p((-6.2, 3.1, -6.6))
-cam.rotation_euler = (p((0, .3, -.2))-cam.location).to_track_quat('-Z', 'Y').to_euler()
-camdata.type = 'ORTHO'; camdata.ortho_scale = 4.9; scene.camera = cam
-bpy.ops.object.select_all(action='DESELECT'); root.select_set(True); bpy.context.view_layer.objects.active = root
+# ---- Editable source and studio. The studio is excluded from the game export.
+scene=bpy.context.scene; scene.unit_settings.system='METRIC'
+scene.world.use_nodes=True
+scene.world.node_tree.nodes['Background'].inputs[0].default_value=(.16,.19,.24,1)
+scene.world.node_tree.nodes['Background'].inputs[1].default_value=.35
+scene.render.engine='CYCLES';scene.cycles.samples=64;scene.cycles.use_denoising=True
+scene.render.resolution_x=1600;scene.render.resolution_y=1000;scene.render.resolution_percentage=100
+scene.view_settings.view_transform='AgX';bpy.context.preferences.filepaths.save_version=0
+source_parts=len([o for o in root.children_recursive if o.type in {'MESH','CURVE','FONT'}])
+parent=None
+box('Studio floor',(0,-.055,0),(200,.1,200),mat('Studio',(.034,.044,.058),.12,.48),0)
+def area(name,loc,power,size,target=(0,.5,0),color=(1,1,1)):
+    d=bpy.data.lights.new(name,'AREA');d.energy=power;d.shape='DISK';d.size=size;d.color=color
+    o=bpy.data.objects.new(name,d);scene.collection.objects.link(o);o.location=p(loc)
+    o.rotation_euler=(p(target)-o.location).to_track_quat('-Z','Y').to_euler()
+area('Key softbox',(-3,5,2),1500,5)
+area('Cool rim',(4,3,-3),1700,4,color=(.76,.85,1))
+area('Front strip',(1,4,5),1100,3)
+area('Rear fill',(-3,2,-5),800,3,color=(1,.87,.72))
+camdata=bpy.data.cameras.new('Hero camera');cam=bpy.data.objects.new('Hero camera',camdata);scene.collection.objects.link(cam)
+cam.location=p((-6.2,2.8,-6.6));cam.rotation_euler=(p((0,.48,-.05))-cam.location).to_track_quat('-Z','Y').to_euler()
+camdata.type='ORTHO';camdata.ortho_scale=5.7;scene.camera=cam
+bpy.ops.object.select_all(action='DESELECT');root.select_set(True);bpy.context.view_layer.objects.active=root
 for screen in bpy.data.screens:
     for area_ui in screen.areas:
-        if area_ui.type == 'VIEW_3D':
-            area_ui.spaces.active.region_3d.view_distance = 6
-            area_ui.spaces.active.region_3d.view_location = p((0, .6, 0))
-            area_ui.spaces.active.shading.type = 'MATERIAL'
+        if area_ui.type=='VIEW_3D':
+            area_ui.spaces.active.region_3d.view_distance=6
+            area_ui.spaces.active.region_3d.view_location=p((0,.6,0))
+            area_ui.spaces.active.shading.type='MATERIAL'
 bpy.ops.wm.save_as_mainfile(filepath=str(OUT/'roadster-rocket.blend'))
-scene.render.filepath = str(OUT/'roadster-preview.png')
-bpy.ops.render.render(write_still=True)
-
-# The same exporter can be run on a manually edited .blend without rebuilding it.
+scene.render.filepath=str(OUT/'roadster-preview.png');bpy.ops.render.render(write_still=True)
+# Front preview is kept with the assets so both ends can be inspected.
+cam.location=p((-6.2,2.55,6.6));cam.rotation_euler=(p((0,.48,.1))-cam.location).to_track_quat('-Z','Y').to_euler()
+scene.render.filepath=str(OUT/'roadster-front-preview.png');bpy.ops.render.render(write_still=True)
 import sys
-sys.path.insert(0, str(ROOT / 'scripts'))
+sys.path.insert(0,str(ROOT/'scripts'))
 from export_roadster import export_roadster
-export_roadster(root, OUT, source_parts)
+export_roadster(root,OUT,source_parts)

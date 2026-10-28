@@ -1,7 +1,7 @@
 import { createTerrain } from './terrain.mjs?v=uphill-1';
 import { createWater } from './water.mjs?v=rivers-1';
 import { FAR_SIZE, FAR_VIEW, NEAR_VIEW, ULTRA_SIZE, ULTRA_VIEW, ULTRA_BLEND_START, ULTRA_BLEND_END, farIndices, farCoverage, ultraIndices, ultraCoverage } from './streaming-layout.mjs?v=uphill-1';
-import { loadVehicleModel, VEHICLE_NAMES } from './vehicle-model.mjs?v=restore-1';
+import { loadVehicleModel, VEHICLE_NAMES } from './vehicle-model.mjs?v=roadster-3';
 import { createProfiler } from './profiling.mjs?v=timing-1';
 import { createDebris } from './debris.mjs?v=uphill-1';
 import { createDust } from './dust.mjs?v=roadster-1';
