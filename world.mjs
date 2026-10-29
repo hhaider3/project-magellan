@@ -5,7 +5,7 @@ import { createRivers } from './rivers.mjs?v=rivers-1';
 import { stepAmphibious } from './amphibious-motion.mjs?v=physics-16';
 import { controlAxis } from './controls.mjs?v=slider-1';
 import { stepFlight, wingStrikes } from './flight-motion.mjs?v=uphill-1';
-import { ROADSTER, SUCTION, hoverWorld, overWater, roadsterAcceleration, roadsterDrag, fireThrusters, roadsterState } from './roadster-motion.mjs?v=roadster-1';
+import { ROADSTER, SUCTION, hoverWorld, overWater, roadsterAcceleration, roadsterDrag, fireThrusters, roadsterState } from './roadster-motion.mjs?v=steer-1';
 import { clamp, mix, smoothstep, hash, random, noise } from './noise.mjs?v=terrain-1';
 import { createLandforms, TREELINE, SNOW_LINE } from './landforms.mjs?v=classes-2';
 export { clamp, mix, smoothstep, hash, random, noise };
@@ -485,7 +485,8 @@ export function stepVehicle(car, input, world, obstacles, dt = FIXED_DT) {
   // Thrust needs no grip: the rear nozzles push as hard in the air.
   if (thrust?.boost) { car.vx += fx * thrust.boost * dt; car.vz += fz * thrust.boost * dt; }
   const targetSteer = controlAxis(input.steer, input.left, input.right);
-  car.steer = mix(car.steer, targetSteer, 1 - Math.exp(-10 * dt));
+  // Steer-by-wire answers the Roadster's wheel quicker than the ATLAS's rack.
+  car.steer = mix(car.steer, targetSteer, 1 - Math.exp(-(roadster ? ROADSTER.steerRate : 10) * dt));
   // Hovering, the flank nozzles turn the car at any speed (its momentum
   // carries on the way it was going until the tyres touch down again).
   const yawing = roadster && !car.grounded && thrust.lifting;

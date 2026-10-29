@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { featurePoint, hash } from './world.mjs?v=uphill-1';
+import { featurePoint, hash } from './world.mjs?v=steer-1';
 
 // Three.js BufferGeometry.clone() shares userData with its source. Detach it
 // before marking ownership, or the shared template becomes disposable too.
@@ -139,6 +139,15 @@ const DECK_COLORS = { 0: new THREE.Color('#c27f4c'), 1: new THREE.Color('#9168b4
 // coarse and horizon terrain tiers sit from the real ground beneath it, so the
 // stand-in rests on whichever tier is drawn. Positions are relative to origin.
 export function buildLandmarkStandins(features, world, terrain, origin) {
+  const steps = landmarkStandinSteps(features, world, terrain, origin);
+  let step; while (!(step = steps.next()).done);
+  return step.value;
+}
+// The same, a little at a time: it yields between pieces and every 128
+// vertices of a large one, and returns the geometry. Built in one go, a
+// lookout's stand-in took up to 6 ms of a frame (each vertex samples the
+// coarse and horizon terrain beneath it).
+export function* landmarkStandinSteps(features, world, terrain, origin) {
   const position = [], normal = [], color = [], ground = [], swap = [], center = [];
   const v = new THREE.Vector3(), n = new THREE.Vector3(), m = new THREE.Matrix4(), instance = new THREE.Matrix4(), normals = new THREE.Matrix3();
   const box = unitBox.index ? unitBox.toNonIndexed() : unitBox;
@@ -152,11 +161,13 @@ export function buildLandmarkStandins(features, world, terrain, origin) {
   };
   for (const feature of features) {
     const group = buildLandmark(feature, world); group.updateMatrixWorld(true);
+    yield;
     const at = landmarkSwapDistance(feature);
-    const push = (geometry, matrix, tint, groundAt) => {
+    const push = function* (geometry, matrix, tint, groundAt) {
       normals.getNormalMatrix(matrix);
       const p = geometry.getAttribute('position'), q = geometry.getAttribute('normal');
       for (let i = 0; i < p.count; i++) {
+        if (i && i % 128 === 0) { yield; normals.getNormalMatrix(matrix); }
         v.fromBufferAttribute(p, i).applyMatrix4(matrix); n.fromBufferAttribute(q, i).applyMatrix3(normals).normalize();
         position.push(v.x - origin.x, v.y, v.z - origin.z); normal.push(n.x, n.y, n.z); color.push(tint.r, tint.g, tint.b);
         ground.push(...(groundAt ?? deltas(v.x, v.z))); swap.push(at); center.push(feature.x, feature.z);
@@ -167,11 +178,14 @@ export function buildLandmarkStandins(features, world, terrain, origin) {
         for (let k = 0; k < child.count; k++) {
           child.getMatrixAt(k, instance); m.multiplyMatrices(child.matrixWorld, instance);
           v.setFromMatrixPosition(m);
-          push(box, m, child.material.color, deltas(v.x, v.z)); // boxes stay rigid, as the real ones do
+          const at = m.clone(); // (m is reused if this piece pauses)
+          yield* push(box, at, child.material.color, deltas(v.x, v.z)); // boxes stay rigid, as the real ones do
+          if (k % 8 === 7) yield;
         }
       } else if (child.isMesh) {
-        push(child.geometry.index ? child.geometry.toNonIndexed() : child.geometry, child.matrixWorld, DECK_COLORS[feature.twist ? 1 : 0]);
+        yield* push(child.geometry.index ? child.geometry.toNonIndexed() : child.geometry, child.matrixWorld, DECK_COLORS[feature.twist ? 1 : 0]);
       }
+      yield;
     }
     group.traverse(o => { if (o.isMesh && o.geometry.userData.owned) o.geometry.dispose(); });
   }

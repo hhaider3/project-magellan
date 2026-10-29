@@ -38,11 +38,14 @@ const SLOW_MS = 1000 / 48, SMOOTH_MS = 1000 / 57;
 // alone stop at Medium, since they can also come from outside the game. Step up
 // after 6 s of smooth frames with few stutters, unless that level recently failed. A level that
 // fails twice is not retried during this visit, so Auto never oscillates.
-export function createAutoQuality({ start, max, settleMs = 1500, downMs = 2000, upMs = 6000, retryMs = 30000, stutterMs = 10000, stutterShare = .03 }) {
+// shed: called before each step down; it can give up an extra (motion blur)
+// instead, returning true, and the level stays put.
+export function createAutoQuality({ start, max, settleMs = 1500, downMs = 2000, upMs = 6000, retryMs = 30000, stutterMs = 10000, stutterShare = .03, shed = () => false }) {
   let level = start, settledAt = 0, slowSince = null, smoothSince = null, refreshMs = 1000 / 60, stutters = 0, sampled = 0;
   const intervals = [], recent = [], failures = new Map();
   function reset(now) { intervals.length = recent.length = stutters = 0; slowSince = smoothSince = null; settledAt = now + settleMs; }
   function stepDown(now) {
+    if (shed()) { reset(now); return null; }
     const failed = failures.get(level) ?? { count: 0 };
     failures.set(level, { count: failed.count + 1, until: now + retryMs });
     return change(level - 1, now);

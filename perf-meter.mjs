@@ -1,4 +1,4 @@
-import { refreshInterval, isSlowFrame } from './quality.mjs?v=perf-1';
+import { refreshInterval, isSlowFrame } from './quality.mjs?v=blur-1';
 
 // A debug overlay for frame rate and frame time (Settings → FPS meter).
 // Frame intervals come from requestAnimationFrame timestamps, so they are

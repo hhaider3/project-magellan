@@ -6,7 +6,7 @@ import { createProfiler } from './profiling.mjs?v=timing-1';
 import { createDebris } from './debris.mjs?v=uphill-1';
 import { createDust } from './dust.mjs?v=roadster-1';
 import { createThrusterPlumes, createVapour } from './thrusters.mjs?v=roadster-1';
-import { ROADSTER, hoverWorld } from './roadster-motion.mjs?v=roadster-1';
+import { ROADSTER, hoverWorld } from './roadster-motion.mjs?v=steer-1';
 import { createVehiclePresentation } from './vehicle-presentation.mjs?v=roadster-1';
 import { followTarget, followValue } from './camera-motion.mjs?v=grass-1';
 import { createTreeBreakage } from './tree-breakage.mjs?v=nature-1';
@@ -16,7 +16,7 @@ import { createVehicleAudio } from './vehicle-audio.mjs?v=roadster-1';
 import { installSunShadowFade, separateVehicleShadow } from './shadow-fade.mjs?v=shadow-2';
 import { createGrass } from './grass.mjs?v=uphill-1';
 import { createPerfMeter, createGpuTimer } from './perf-meter.mjs?v=perf-2';
-import { QUALITY_PRESETS, qualityLevels, presetLevel, autoStartLevel, createAutoQuality } from './quality.mjs?v=perf-1';
+import { QUALITY_PRESETS, qualityLevels, presetLevel, autoStartLevel, createAutoQuality } from './quality.mjs?v=blur-1';
 import { controlAxis, steerAxis } from './controls.mjs?v=slider-1';
 import { readTilt, tiltAxes } from './tilt.mjs?v=tilt-1';
 import { toggleFlight, flightAxes, TAKEOFF_SPEED, STALL_SPEED } from './flight-motion.mjs?v=uphill-1';
@@ -26,10 +26,10 @@ import { createSky } from './sky.mjs?v=clouds-8';
 import { daylight, advanceClock, clockLabel, startHour } from './daylight.mjs?v=day-3';
 import { createWeatherEffects, toneMappedHorizon } from './weather-effects.mjs?v=day-1';
 import * as THREE from 'three';
-import { CHUNK, GRID, ROAD_HALF, FIXED_DT, featurePoint, clamp, mix, smoothstep, hash, createWorld, createVehicle, stepVehicle, recoverVehicle, groundAt } from './world.mjs?v=uphill-1';
+import { CHUNK, GRID, ROAD_HALF, FIXED_DT, featurePoint, clamp, mix, smoothstep, hash, createWorld, createVehicle, stepVehicle, recoverVehicle, groundAt } from './world.mjs?v=steer-1';
 import { SNOW_LINE } from './landforms.mjs?v=classes-2';
 import { ROAD_MAP } from './roads.mjs?v=classes-2';
-import { buildLandmark, cloneOwnedGeometry, buildLandmarkStandins, landmarkSwapDistance } from './scenery.mjs?v=uphill-1';
+import { buildLandmark, cloneOwnedGeometry, landmarkStandinSteps, landmarkSwapDistance } from './scenery.mjs?v=stream-1';
 import { createMotionBlur } from './motion-blur.mjs?v=blur-2';
 
 const $ = id => document.getElementById(id);
@@ -117,9 +117,17 @@ perfMeter.setVisible(Boolean(settings.perfMeter));
 const saveSettings = () => { if (!testMode) try { localStorage.setItem('endless-drive-settings', JSON.stringify(settings)); } catch {} };
 const levels = qualityLevels(coarse);
 let auto = null, qualityLevel = 0;
+// Auto's first step down is motion blur (about 1 ms of GPU a frame at High,
+// more on large screens), before resolution or shadows: unless you turned it
+// on yourself in Settings. It stays off for this visit.
+let blurShed = false;
+function shedBlur() {
+  if (blurShed || !settings.motionBlur || settings.motionBlurChosen) return false;
+  blurShed = true; syncSettings(); return true;
+}
 function startQuality() {
   const saved = Number.isInteger(settings.autoLevel) && settings.autoLevel >= 0 && settings.autoLevel < levels.length ? settings.autoLevel : null;
-  auto = settings.quality === 'auto' ? createAutoQuality({ start: saved ?? autoStartLevel(coarse), max: levels.length - 1 }) : null;
+  auto = settings.quality === 'auto' ? createAutoQuality({ start: saved ?? autoStartLevel(coarse), max: levels.length - 1, shed: shedBlur }) : null;
   return auto ? auto.level : presetLevel(settings.quality);
 }
 qualityLevel = startQuality();
@@ -839,14 +847,19 @@ landmarkStandinMaterial.customProgramCacheKey = () => 'landmark-standin-v1';
 const landmarkQueue = [];
 // Built one landmark per frame (each takes about a millisecond); a tile's
 // pieces are merged into its single mesh once all of them are done.
-function stepLandmarkStandin(tile) {
+// Builds a tile's landmark stand-ins until the deadline, resuming next time
+// (even part-way through a landmark). True once the tile has them.
+function stepLandmarkStandin(tile, deadline) {
   const job = tile.userData.landmarkJob ??= (() => {
     const x0 = tile.position.x, z0 = tile.position.z;
-    return { features: world.featuresNear(x0 + FAR_SIZE / 2, z0 + FAR_SIZE / 2, FAR_SIZE * .75).filter(f => f.x >= x0 && f.x < x0 + FAR_SIZE && f.z >= z0 && f.z < z0 + FAR_SIZE), parts: [] };
+    return { features: world.featuresNear(x0 + FAR_SIZE / 2, z0 + FAR_SIZE / 2, FAR_SIZE * .75).filter(f => f.x >= x0 && f.x < x0 + FAR_SIZE && f.z >= z0 && f.z < z0 + FAR_SIZE), steps: null, parts: [] };
   })();
-  const feature = job.features.shift();
-  if (feature) { const part = buildLandmarkStandins([feature], world, terrain, tile.position); if (part) job.parts.push(part); }
-  if (job.features.length) return false;
+  while (performance.now() < deadline) {
+    if (!job.steps) { const feature = job.features.shift(); if (!feature) break; job.steps = landmarkStandinSteps([feature], world, terrain, tile.position); }
+    const step = job.steps.next();
+    if (step.done) { if (step.value) job.parts.push(step.value); job.steps = null; }
+  }
+  if (job.steps || job.features.length) return false;
   delete tile.userData.landmarkJob;
   if (!job.parts.length) return true;
   const geometry = mergeStandinParts(job.parts);
@@ -993,12 +1006,12 @@ function processStreaming() {
       const parent = ultraTiles.get(`${Math.floor(job.cx / 4)},${Math.floor(job.cz / 4)}`); if (parent) refreshUltraTile(parent);
     }
   }
-  // Landmark stand-ins for newly arrived far tiles: one landmark per frame, and
-  // only when this frame's installs left time, so they never cause a hitch.
+  // Landmark stand-ins for newly arrived far tiles: only when this frame's
+  // installs left time, and stopping when 2.5 ms of it are gone.
   while (landmarkQueue.length && performance.now() - budgetStart < 1.5) {
     const tile = landmarkQueue[0];
     if (farTiles.get(`${tile.userData.cx},${tile.userData.cz}`) !== tile) { landmarkQueue.shift(); continue; } // already unloaded
-    if (profiler.measure('landmarkStandins', () => stepLandmarkStandin(tile))) landmarkQueue.shift();
+    if (profiler.measure('landmarkStandins', () => stepLandmarkStandin(tile, budgetStart + 2.5))) landmarkQueue.shift();
     break;
   }
   profiler.record('streamInstall', performance.now() - budgetStart);
@@ -1041,6 +1054,17 @@ function precompileShaders() {
   renderer.compile(scene, camera);
   for (const warmup of [grass.warmup, waterSystem.riverWarmup, bridgeWarmup, roadsideWarmup]) renderer.compile(warmup, camera, scene);
   motionBlur.compile();
+  // Compiling isn't all: each shader finishes setting up on its first real
+  // draw, which waits for the GPU (about 50 ms in all). So draw one frame now
+  // as driving will: from the chase camera, through the blur, thrusters
+  // firing. The menu view is drawn over it in the same task, so it never shows.
+  const wasStarted = started; started = true;
+  updateDesiredCamera(); camera.position.copy(desiredCamera); camera.lookAt(look); camera.updateMatrixWorld();
+  if (plumes) for (const group of Object.values(plumes.groups)) for (const mesh of group.plumes) mesh.visible = true;
+  motionBlur.render(scene, camera, car, true, sunDirection);
+  plumes?.update({}, 1, 0);
+  started = wasStarted; resetCamera();
+  if (!testMode && !muted) initAudio(false); // (test modes start muted)
 }
 function beginWorldLoad(continueDriving = false) {
   if (running) pause();
@@ -1053,7 +1077,7 @@ function beginWorldLoad(continueDriving = false) {
   for (const tile of ultraTiles.values()) disposeTile(tile); ultraTiles.clear();
   terrain = createTerrain(world);
   waterSystem.clear(); distantAt = { x: Infinity, z: Infinity }; distantReady = false;
-  workers = [0, 1].map(() => new Worker(new URL('./world-worker.mjs?v=uphill-1', import.meta.url), { type: 'module' }));
+  workers = [0, 1].map(() => new Worker(new URL('./world-worker.mjs?v=steer-1', import.meta.url), { type: 'module' }));
   const failed = message => { streamError = message; running = false; $('loadError').hidden = false; $('startBtn').firstElementChild.textContent = 'Unable to prepare the world'; };
   const received = ({ data }) => {
     if (data.generation !== generation) return;
@@ -1166,8 +1190,12 @@ function updateSound(throttle, splashes, dt) {
   heard.wingStrikes = v.wingStrikes || 0; heard.wingCrashes = v.wingCrashes || 0;
 }
 let audio = null;
-function initAudio() {
-  if (audio) { audio.context.resume(); return; }
+// Building the sound bank (synthesized engine, effects and breaks) takes
+// 70–250 ms. It is built while the world loads, its context suspended until a
+// click may start it (browsers require one), so pressing Start doesn't freeze.
+// start: false builds it without starting it.
+function initAudio(start = true) {
+  if (audio) { if (start) audio.context.resume(); return; }
   try {
     const context = new AudioContext(), master = context.createGain(), limiter = context.createDynamicsCompressor();
     master.gain.value = muted ? 0 : 1;
@@ -1439,7 +1467,7 @@ function syncSettings() {
   if (copy) copy.innerHTML = roadster ? 'Your Roadster skims lakes on its thrusters.<br>Hold F to hover, E to boost.' : 'Find a lake. Your car becomes a boat.<br>Press F (or FLY) and it takes to the sky.';
   $('menuFly').innerHTML = roadster ? '<kbd>F</kbd> HOVER' : '<kbd>F</kbd> FLY';
   $('perfBtn').textContent = `FPS meter: ${settings.perfMeter ? 'On' : 'Off'}`; $('perfBtn').setAttribute('aria-pressed', String(Boolean(settings.perfMeter)));
-  $('blurBtn').textContent = `Motion blur: ${settings.motionBlur ? 'On' : 'Off'}`; $('blurBtn').setAttribute('aria-pressed', String(settings.motionBlur));
+  $('blurBtn').textContent = `Motion blur: ${!settings.motionBlur ? 'Off' : blurShed ? 'Off (Auto)' : 'On'}`; $('blurBtn').setAttribute('aria-pressed', String(settings.motionBlur && !blurShed));
 }
 $('qualityBtn').onclick = () => {
   settings.quality = QUALITY_PRESETS[(QUALITY_PRESETS.indexOf(settings.quality) + 1) % QUALITY_PRESETS.length];
@@ -1454,7 +1482,8 @@ $('vehicleBtn').onclick = switchVehicle;
 // V or the header's ⇄ button switches cars mid-drive.
 $('switchBtn').onclick = () => { if (running) { switchVehicle(); renderer.domElement.focus({ preventScroll: true }); } };
 $('blurBtn').onclick = () => {
-  settings.motionBlur = !settings.motionBlur; settings.motionBlurChosen = true; saveSettings(); syncSettings();
+  // Pressed while Auto has it off, it comes back on (and Auto leaves it).
+  settings.motionBlur = blurShed || !settings.motionBlur; blurShed = false; settings.motionBlurChosen = true; saveSettings(); syncSettings();
   toast(settings.motionBlur ? 'Motion blur on' : 'Motion blur off');
 };
 $('sensitivity').oninput = e => { settings.sensitivity = clamp(Number(e.target.value) / 100, .5, 1.5); saveSettings(); syncSettings(); };
@@ -1710,7 +1739,11 @@ const supportWorld = () => vehicle.kind === 'roadster' ? hoverWorld(world) : wor
 const vehiclePresentation = createVehiclePresentation(vehicle, (x, z, heading) => groundAt(supportWorld(), x, z, heading).y);
 let previousTime = performance.now(), accumulator = 0, uiTime = 0, mapTime = 0, idleRenderAt = 0, reportedLanding = 0;
 let reportedBoat = vehicle.boatMode, reportedFlying = vehicle.flying, reportedPlane = vehicle.flightMode, reportedWater = Boolean(vehicle.overWater), reportedEmpty = false;
-const CAMERA_RATE = 5, LOOK_RATE = 8; // per second: how quickly the camera and its aim follow
+// Per second: how quickly the camera, its aim and its field of view follow.
+// The Roadster's are quicker: at its speeds the ATLAS's easy follow (0.2 s,
+// 0.125 s, 0.4 s) left the view trailing behind the car's turns.
+const CAMERA_RATES = { atlas: { camera: 5, look: 8, fov: 2.45 }, roadster: { camera: 7, look: 13, fov: 4 } };
+const cameraRates = () => CAMERA_RATES[vehicle.kind] ?? CAMERA_RATES.atlas;
 function updateDesiredCamera(pose = vehicle) {
   vehiclePosition.set(pose.x, pose.y, pose.z);
   // In flight the camera follows the nose in three dimensions, so it stays
@@ -1737,7 +1770,7 @@ function updateDesiredCamera(pose = vehicle) {
     const distance = ((cameraMode === 1 ? 18 : 10.6 + Math.abs(pose.speed) * (low ? .008 : .027)) * (low ? .7 : 1) + wings * (cameraMode === 1 ? 8 : 7)) * (compact ? 1.4 : 1);
     desiredCamera.copy(vehiclePosition).addScaledVector(forward, -distance); desiredCamera.y += (cameraMode === 1 ? 10 : compact ? 5.8 : 4.7) * (low ? .62 : 1) + wings * 2.2;
     look.copy(vehiclePosition).addScaledVector(forward, (cameraMode === 1 ? 5 : 7) + wings * 8); look.y += low ? .8 : 1.4;
-    if (low && started) { desiredCamera.addScaledVector(forward, pose.speed * .8 / CAMERA_RATE); look.addScaledVector(forward, pose.speed * .8 / LOOK_RATE); }
+    if (low && started) { const rates = cameraRates(); desiredCamera.addScaledVector(forward, pose.speed * .8 / rates.camera); look.addScaledVector(forward, pose.speed * .8 / rates.look); }
   }
 }
 function render(dt) {
@@ -1777,19 +1810,24 @@ function render(dt) {
   wheelPivots.forEach(p => { if (p.name.startsWith('Wheel_F')) p.rotation.y = pose.steer * .4 * (1 - pose.transform); });
   brakeMat.emissiveIntensity = throttle < -.05 || (input.brake && !wingsActive) ? 2 : .25;
   car.visible = cameraMode !== 2 || !running;
-  contact.position.set(pose.x, supportWorld().surface(pose.x, pose.z) + .035, pose.z);
-  contact.rotation.set(-Math.PI / 2 + pose.pitch, 0, -pose.heading, 'YXZ');
+  // The soft shadow lies on the ground's own slope, both ways (as the wheels
+  // meet it): tilted only fore and aft, on a sideways slope half of it sank
+  // into the ground and cut a straight line along the car.
+  const underneath = groundAt(supportWorld(), pose.x, pose.z, pose.heading);
+  contact.position.set(pose.x, underneath.y - .025, pose.z);
+  contact.rotation.set(underneath.pitch, pose.heading, underneath.roll, 'YXZ'); contact.rotateX(-Math.PI / 2);
   // The contact shadow helps judge jumps; high above the ground it fades out.
   const height = pose.y - pose.groundY;
   contact.material.opacity = clamp(1 - height * .13, .25, 1) * (1 - smoothstep(8, 30, height));
   updateDesiredCamera(pose);
-  followTarget(cameraPosition, previousDesiredCamera, desiredCamera, CAMERA_RATE, !started || cameraMode === 2 && running ? 0 : dt);
+  const rates = cameraRates();
+  followTarget(cameraPosition, previousDesiredCamera, desiredCamera, rates.camera, !started || cameraMode === 2 && running ? 0 : dt);
   keepCameraInView(pose.x, pose.y + 1.2, pose.z);
   camera.position.copy(cameraPosition);
-  followTarget(cameraTarget, previousLook, look, LOOK_RATE, !started ? 0 : dt);
+  followTarget(cameraTarget, previousLook, look, rates.look, !started ? 0 : dt);
   camera.lookAt(cameraTarget);
   const targetFov = cameraMode === 2 ? 67 : 57 + (reducedMotion ? 0 : Math.min(Math.abs(pose.speed) * .15, vehicle.kind === 'roadster' ? 6 : 10));
-  const nextFov = followValue(camera.fov, previousTargetFov, targetFov, 2.45, dt);
+  const nextFov = followValue(camera.fov, previousTargetFov, targetFov, rates.fov, dt);
   previousTargetFov = targetFov;
   if (Math.abs(camera.fov - nextFov) > 1e-6) { camera.fov = nextFov; camera.updateProjectionMatrix(); }
   sky.mesh.position.copy(camera.position);
@@ -1833,7 +1871,7 @@ function render(dt) {
   if (timed) gpuTimer.begin();
   // Through the motion blur while driving or flying (on the menus nothing
   // moves); on computers through its target either way.
-  const blur = settings.motionBlur && running;
+  const blur = settings.motionBlur && !blurShed && running;
   if (blur || !screenMultisampled) { motionBlur.render(scene, camera, car.visible ? car : null, blur, sunDirection); drawStats = motionBlur.stats; }
   else { renderer.render(scene, camera); motionBlur.reset(); drawStats = renderer.info.render; }
   if (timed) gpuTimer.end();

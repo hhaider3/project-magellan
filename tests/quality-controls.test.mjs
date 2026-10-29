@@ -86,6 +86,21 @@ test('auto quality settles at the lowest level on a device locked at 30 fps', ()
   assert.equal(auto.level, 0);
 });
 
+test('auto quality gives up motion blur first, then lowers the level if frames stay slow', () => {
+  let shed = 0;
+  const auto = createAutoQuality({ start: 3, max: 3, shed: () => shed++ === 0 });
+  // 40 fps: the first step down sheds the blur and keeps High...
+  let changes = drive(auto, 1000 / 40, 4);
+  assert.equal(shed, 1); assert.equal(auto.level, 3); assert.deepEqual(changes, []);
+  // ...and if that wasn't enough, it steps down as before.
+  changes = drive(auto, 1000 / 40, 6, 4000);
+  assert.ok(shed > 1); assert.equal(changes[0].level, 2);
+  // Smooth after the blur goes: it stays at High, no level change at all.
+  const fine = createAutoQuality({ start: 3, max: 3, shed: () => true });
+  drive(fine, 1000 / 40, 4); assert.equal(fine.level, 3);
+  assert.deepEqual(drive(fine, 1000 / 60, 20, 4000), []);
+});
+
 test('steering slider: dead zone, full lock at the rim, sensitivity curve', () => {
   assert.equal(steerAxis(0), 0); assert.equal(steerAxis(.05), 0);
   assert.equal(steerAxis(1), -1); assert.equal(steerAxis(-1), 1);

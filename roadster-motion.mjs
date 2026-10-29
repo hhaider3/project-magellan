@@ -24,6 +24,7 @@ export const ROADSTER = {
   yawRate: 1.6, // rad/s from the flank nozzles while hovering, at any speed
   waterGap: .35, // m: the thrusters hold the car this far above water
   waterThrust: 10, // m/s² across water: the rear nozzles idle along, using no gas
+  steerRate: 18, // per second: steering reaches 90% of a new input in 0.13 s (the ATLAS: 10, 0.23 s)
 };
 // The multi-mode suction fans pull air from under the car on land ("enough
 // suction to hold the vehicle upside down"): the tyres keep their grip on
