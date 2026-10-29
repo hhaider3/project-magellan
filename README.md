@@ -292,7 +292,11 @@ The rig uses X right, Y up and Z forward:
 
 ![Studio render of the Roadster from behind, showing its rear wing, full-width taillight and four rear thruster nozzles](assets/vehicles/roadster-preview.png)
 
-**The Roadster.** The game loads `assets/vehicles/roadster-rocket.glb`, which `scripts/build-roadster.py` builds from scratch: a faceted body lofted through fifteen cross-sections with the wheel arches cut out, a gold-glazed canopy, carbon aero, the Rocket trim's rear wing and ten titanium thruster nozzles (193 named parts). Exported, it is 29 meshes and about 21,000 triangles. Each nozzle mouth is an `Exhaust_*` empty whose `thrust` property is the gas direction; the game hangs its plumes there. Wheel pivots and spinners follow the ATLAS's rig; the front tyres are 0.343 m in radius and the rears 0.367 m (295/30 R20 and 335/30 R21), on a 2.82 m wheelbase. `roadster-rocket.json` lists the nozzles and dimensions.
+**The Roadster.** The replacement model is authored in Blender from the front, side and rear photographs on [Tesla's Roadster page](https://www.tesla.com/roadster). It has a sculpted white body with open wheel wells, a smoothly curved gold canopy with fitted rear buttresses, cut-out headlight wells with separate projector lenses, a recessed front grille, and a continuous rear light. Six-spoke wheels carry grooved tires, drilled brake rotors, hub fasteners and fixed calipers. The carbon diffuser includes suction fans and ten curved titanium thruster bells. The lower rear wing still tilts into an air brake. The geometry is original; no downloaded models or photographic textures are bundled.
+
+`scripts/build-roadster.py` builds the editable `assets/vehicles/roadster-rocket.blend`, renders front and rear previews, then exports the game's `roadster-rocket.glb`. Revision 3 uses about 80,000 triangles; material batching keeps it under 40 draws. Exact counts are in `roadster-rocket.json`. The tests' size limits guard against accidental asset growth, rather than defining a hardware performance threshold. Each `Exhaust_*` empty retains its gas direction and plume attachment. The wheel pivots, tyre radii (0.343 m front, 0.367 m rear) and 2.82 m wheelbase retain the game's existing physics dimensions. The wing hinge is at `(0, 0.95, -1.98)` in game axes.
+
+![Front view of the rebuilt Roadster, showing the gold canopy, recessed headlights and six-spoke wheels](assets/vehicles/roadster-front-preview.png)
 
 ```sh
 # Rebuild the Roadster from scratch, with its preview, and export it

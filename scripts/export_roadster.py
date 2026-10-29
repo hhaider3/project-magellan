@@ -24,9 +24,7 @@ def export_roadster(root, OUT, source_parts):
         group['sourceParts'] = len(objects)
         buckets = {}
         for o in objects:
-            # Keep the editable bevels in the .blend; thin them for play.
-            for mod in o.modifiers:
-                if mod.type == 'BEVEL': mod.segments = 1 if max(o.dimensions) < .35 else 2
+            # Preserve authored bevels; batch by material without decimating the surfaces.
             bpy.ops.object.select_all(action='DESELECT'); o.select_set(True); bpy.context.view_layer.objects.active = o
             bpy.ops.object.convert(target='MESH')
             o = bpy.context.object
@@ -43,13 +41,22 @@ def export_roadster(root, OUT, source_parts):
     for o in root.children_recursive: o.select_set(True)
     bpy.context.view_layer.objects.active = root
     bpy.ops.export_scene.gltf(filepath=str(OUT/'roadster-rocket.glb'), export_format='GLB', use_selection=True, export_yup=True, export_apply=True, export_extras=True, export_cameras=False, export_lights=False, export_animations=False)
+    # Include evaluated modifiers on unbatched parts such as the fixed calipers.
+    depsgraph = bpy.context.evaluated_depsgraph_get()
+    tris = 0
     for o in root.children_recursive:
-        if o.type == 'MESH': o.data.calc_loop_triangles()
-    tris = sum(len(o.data.loop_triangles) for o in root.children_recursive if o.type == 'MESH')
+        if o.type == 'MESH':
+            evaluated = o.evaluated_get(depsgraph)
+            geometry = evaluated.to_mesh()
+            geometry.calc_loop_triangles()
+            tris += len(geometry.loop_triangles)
+            evaluated.to_mesh_clear()
     # Thruster mouths in game axes (X right, Y up, Z forward), from the Blender empties.
     thrusters = [{'name': o.name, 'position': [round(v, 4) for v in (o.matrix_world.translation.x, o.matrix_world.translation.z, -o.matrix_world.translation.y)], 'thrust': [round(v, 4) for v in o['thrust']]}
         for o in body.children if o.name.startswith('Exhaust_')]
-    metadata = {'name': 'Roadster Rocket', 'source': 'roadster-rocket.blend', 'asset': 'roadster-rocket.glb', 'sourceParts': source_parts, 'triangles': tris, 'batching': batching,
+    metadata = {'name': 'Roadster Rocket', 'revision': root.get('revision', 1),
+        'reference': root.get('reference', 'https://www.tesla.com/roadster'),
+        'source': 'roadster-rocket.blend', 'asset': 'roadster-rocket.glb', 'sourceParts': source_parts, 'triangles': tris, 'batching': batching,
         'wheelRadius': {'front': .343, 'rear': .367}, 'tyres': {'front': '295/30 R20', 'rear': '335/30 R21'}, 'wheelbase': 2.82, 'track': {'front': 1.69, 'rear': 1.66},
         'length': 4.37, 'width': 2.0, 'height': 1.1, 'thrusters': thrusters, 'axes': 'X right, Y up, Z forward (glTF)',
         'materials': sorted({slot.material.name for o in root.children_recursive if o.type == 'MESH' for slot in o.material_slots})}

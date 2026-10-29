@@ -89,15 +89,23 @@ function setAttitude(car, q) {
 // Turning also swings the flight path around the vertical, as the old arcade
 // turn did, so a full turn takes about ten seconds even at top speed.
 const SIMPLE_BANK = .75, SIMPLE_CLIMB = .45, SIMPLE_TURN = .5; // radians, radians, rad/s
-function simpleAxes(car, input, world, dt) {
+// Climb-out builds clearance above an uphill runway. A fixed angle above
+// horizontal can instead steer straight back into it. Over deep water the
+// runway is level, regardless of the lake bed's slope beneath the hull.
+function climbOutAngle(car, ground) {
+  const slope = car.waterDepth > .55 ? 0 : Math.max(0, -ground.pitch);
+  return slope + .22 * clamp((SAFE_ALTITUDE - (car.y - ground.y)) / SAFE_ALTITUDE, 0, 1);
+}
+
+function simpleAxes(car, input, dt, ground) {
   const q = [car.qx, car.qy, car.qz, car.qw], mast = rotate(q, [0, 1, 0]), wing = rotate(q, [1, 0, 0]);
   const speed = car.airspeed || 1, bank = Math.atan2(wing[1], mast[1]); // + right wing down
   const turn = controlAxis(input.steer, input.left, input.right), climb = controlAxis(input.pitchAxis, input.jump, input.brake);
   // Hands off right after a take-off, it still climbs out to a safe height.
   if (climb) car.climbOut = false;
-  const height = car.y - world.surface(car.x, car.z);
+  const height = car.y - ground.y;
   let wanted = climb * SIMPLE_CLIMB;
-  if (!climb && car.climbOut) { wanted = .22 * clamp((SAFE_ALTITUDE - height) / SAFE_ALTITUDE, 0, 1); if (!wanted) car.climbOut = false; }
+  if (!climb && car.climbOut) { if (height < SAFE_ALTITUDE) wanted = climbOutAngle(car, ground); else car.climbOut = false; }
   const path = Math.asin(clamp(car.vy / speed, -1, 1)), rate = car.assistPath == null ? 0 : (path - car.assistPath) / dt;
   car.assistPath = path;
   let error = bank + turn * SIMPLE_BANK; // turning left lowers the left wing (negative bank)
@@ -161,7 +169,14 @@ function taxi(car, input, world, dt, groundAt) {
   // Rotate at lift-off speed (holding Climb a little sooner): the nose comes
   // up to a flying angle of attack, and the wings take the weight.
   // Pushing the nose down keeps it rolling on its wheels, however fast.
-  if (climbInput >= 0 && speed > TAKEOFF_SPEED - (climbInput > 0 ? 4 : 0)) { startFlying(car, .03); car.vy = 1; rotateNose(car, -.16); car.climbOut = true; }
+  if (climbInput >= 0 && speed > TAKEOFF_SPEED - (climbInput > 0 ? 4 : 0)) {
+    // Taxiing follows the rising ground without storing its vertical speed.
+    // Carry that motion into flight before rotating, so an uphill launch
+    // neither points into the slope nor immediately falls back onto it.
+    car.vy = 1 + (onWater ? 0 : Math.max(0, -Math.tan(g.pitch) * speed));
+    startFlying(car, Math.atan2(car.vy, speed));
+    rotateNose(car, -.16); car.climbOut = true;
+  }
   return true;
 }
 
@@ -222,10 +237,10 @@ function land(car, ground, water) {
 function fly(car, input, world, dt, groundAt) {
   const simple = Boolean(input.simpleFlight);
   if (!simple) car.assistPath = null;
-  const { throttle, pitch, roll, yaw, turn: arcadeTurn = 0 } = simple ? simpleAxes(car, input, world, dt) : flightAxes(input);
+  const below = groundAt(world, car.x, car.z, car.heading);
+  const { throttle, pitch, roll, yaw, turn: arcadeTurn = 0 } = simple ? simpleAxes(car, input, dt, below) : flightAxes(input);
   car.pushingDown = (simple ? controlAxis(input.pitchAxis, input.jump, input.brake) : pitch) < -.25; // the pilot, not the simple controls' own trim
   const wings = car.flight, oldX = car.x, oldZ = car.z;
-  const below = groundAt(world, car.x, car.z, car.heading).y;
   let q = [car.qx, car.qy, car.qz, car.qw];
   const nose = rotate(q, [0, 0, 1]), mast = rotate(q, [0, 1, 0]), wing = rotate(q, [1, 0, 0]);
   const v = [car.vx, car.vy, car.vz], speed = Math.hypot(...v), dir = speed > 1e-3 ? v.map(c => c / speed) : nose;
@@ -251,12 +266,12 @@ function fly(car, input, world, dt, groundAt) {
   // up. The only exception is the climb-out right after a take-off from the
   // ground or water: hands off, the nose comes up to about 35 m and levels.
   // Any pitch input, or reaching that height, ends it for the rest of the flight.
-  const height = car.y - below, pathAngle = Math.asin(clamp(dir[1], -1, 1));
+  const height = car.y - below.y, pathAngle = Math.asin(clamp(dir[1], -1, 1));
   // (The simple controls run their own climb-out.)
   if (!simple) {
     if (pitch || mast[1] < .5) car.climbOut = false;
     else if (car.climbOut && height < SAFE_ALTITUDE) {
-      const target = .22 * clamp((SAFE_ALTITUDE - height) / SAFE_ALTITUDE, 0, 1);
+      const target = climbOutAngle(car, below);
       if (target > pathAngle) pitchRate = (target - pathAngle) * 2.5 + .3;
     } else if (car.climbOut && height < SAFE_ALTITUDE * 2) {
       pitchRate = -pathAngle * 1.5;

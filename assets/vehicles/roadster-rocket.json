@@ -1,39 +1,41 @@
 {
   "name": "Roadster Rocket",
+  "revision": 3,
+  "reference": "https://www.tesla.com/roadster",
   "source": "roadster-rocket.blend",
   "asset": "roadster-rocket.glb",
-  "sourceParts": 193,
-  "triangles": 20876,
+  "sourceParts": 330,
+  "triangles": 79596,
   "batching": [
     {
       "group": "Body",
-      "before": 126,
-      "after": 9
+      "before": 164,
+      "after": 10
     },
     {
       "group": "Spinner_FL",
-      "before": 14,
-      "after": 3
+      "before": 40,
+      "after": 4
     },
     {
       "group": "Spinner_RL",
-      "before": 14,
-      "after": 3
+      "before": 40,
+      "after": 4
     },
     {
       "group": "Spinner_FR",
-      "before": 14,
-      "after": 3
+      "before": 40,
+      "after": 4
     },
     {
       "group": "Spinner_RR",
-      "before": 14,
-      "after": 3
+      "before": 40,
+      "after": 4
     },
     {
       "group": "Rear_Wing",
-      "before": 7,
-      "after": 3
+      "before": 2,
+      "after": 2
     }
   ],
   "wheelRadius": {
@@ -109,7 +111,7 @@
       "name": "Exhaust_Rear_1",
       "position": [
         -0.6,
-        0.37,
+        0.395,
         -2.25
       ],
       "thrust": [
@@ -122,7 +124,7 @@
       "name": "Exhaust_Rear_2",
       "position": [
         -0.2,
-        0.37,
+        0.395,
         -2.25
       ],
       "thrust": [
@@ -135,7 +137,7 @@
       "name": "Exhaust_Rear_3",
       "position": [
         0.2,
-        0.37,
+        0.395,
         -2.25
       ],
       "thrust": [
@@ -148,7 +150,7 @@
       "name": "Exhaust_Rear_4",
       "position": [
         0.6,
-        0.37,
+        0.395,
         -2.25
       ],
       "thrust": [
@@ -196,7 +198,6 @@
     "Rubber",
     "Thruster_Throat",
     "Titanium",
-    "Tow_Red",
     "Wheel_Graphite"
   ]
 }
