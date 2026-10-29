@@ -1,35 +1,35 @@
 {
   "name": "Roadster Rocket",
-  "revision": 4,
+  "revision": 5,
   "reference": "https://www.tesla.com/roadster",
   "source": "roadster-rocket.blend",
   "asset": "roadster-rocket.glb",
-  "sourceParts": 301,
-  "triangles": 50132,
+  "sourceParts": 538,
+  "triangles": 46912,
   "batching": [
     {
       "group": "Body",
-      "before": 133,
+      "before": 178,
       "after": 10
     },
     {
       "group": "Spinner_FL",
-      "before": 40,
+      "before": 88,
       "after": 4
     },
     {
       "group": "Spinner_RL",
-      "before": 40,
+      "before": 88,
       "after": 4
     },
     {
       "group": "Spinner_FR",
-      "before": 40,
+      "before": 88,
       "after": 4
     },
     {
       "group": "Spinner_RR",
-      "before": 40,
+      "before": 88,
       "after": 4
     },
     {

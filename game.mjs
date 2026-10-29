@@ -1,8 +1,8 @@
 import { createTerrain } from './terrain.mjs?v=tail-1';
 import { createWater } from './water.mjs?v=rivers-1';
 import { FAR_SIZE, FAR_VIEW, NEAR_VIEW, ULTRA_SIZE, ULTRA_VIEW, ULTRA_BLEND_START, ULTRA_BLEND_END, farIndices, farCoverage, ultraIndices, ultraCoverage } from './streaming-layout.mjs?v=tail-1';
-import { loadVehicleModel, VEHICLE_NAMES } from './vehicle-model.mjs?v=tail-1';
-import { createShowroom } from './garage.mjs?v=tail-1';
+import { loadVehicleModel, VEHICLE_NAMES } from './vehicle-model.mjs?v=roadster-5';
+import { createShowroom } from './garage.mjs?v=roadster-5';
 import { VEHICLE_ORDER, VEHICLE_SPECS, PREVIEWS } from './vehicle-specs.mjs?v=garage-1';
 import { createProfiler } from './profiling.mjs?v=timing-1';
 import { createDebris } from './debris.mjs?v=tail-1';

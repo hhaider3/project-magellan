@@ -4,7 +4,7 @@ import { RoomEnvironment } from './vendor/environments/RoomEnvironment.js';
 
 export const VEHICLE_URLS = {
   atlas: new URL('./assets/vehicles/atlas-amphibious.glb?v=tail-1', import.meta.url),
-  roadster: new URL('./assets/vehicles/roadster-rocket.glb?v=roadster-4', import.meta.url),
+  roadster: new URL('./assets/vehicles/roadster-rocket.glb?v=roadster-5', import.meta.url),
 };
 export const VEHICLE_URL = VEHICLE_URLS.atlas;
 export const VEHICLE_NAMES = { atlas: 'ATLAS', roadster: 'Roadster' };
