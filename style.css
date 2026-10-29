@@ -1195,3 +1195,183 @@ body.roadster #toast { background:rgba(14,6,6,.86); border-color:rgba(255,59,47,
 /* Room only on larger screens; phones keep the view clear. */
 @media(max-height:560px), (max-width:900px) { #telemetry { display:none!important; } }
 body.touch #telemetry { display:none!important; }
+
+/* View cars, beside Start on the menu. */
+.menu-actions { display:flex; flex-wrap:wrap; align-items:center; gap:12px; }
+.secondary {
+  display:flex;
+  align-items:center;
+  gap:10px;
+  border:1px solid var(--line);
+  background:rgba(27,51,46,.22);
+  backdrop-filter:blur(10px);
+  border-radius:3px;
+  padding:17px 20px;
+  font-size:13px;
+  font-weight:600;
+  transition:border-color .2s,transform .2s;
+}
+.secondary:hover { border-color:var(--yellow); transform:translateY(-2px); }
+.secondary svg { width:21px; height:21px; }
+
+/* The garage: ratings and features on the left, the car on its turntable
+   (on the game's canvas) in the space to the right. Each car has its accent. */
+body.garage #menu { opacity:0; pointer-events:none; }
+#garage {
+  --accent:var(--yellow);
+  position:fixed;
+  inset:0;
+  z-index:11;
+  display:grid;
+  grid-template-columns:minmax(360px,36vw) 1fr;
+  animation:garage-in .45s ease-out;
+}
+#garage[data-car="roadster"] { --accent:#ff4a3d; }
+@keyframes garage-in { from { opacity:0; } }
+.garage-panel {
+  display:flex;
+  flex-direction:column;
+  min-height:0;
+  padding:104px 34px 32px max(40px,6vw);
+  overflow:hidden;
+  background:linear-gradient(90deg,rgba(8,17,14,.86),rgba(8,17,14,.62) 78%,rgba(8,17,14,0));
+}
+/* The panel's top padding clears the header: its content scrolls below that
+   line (fading out at it once scrolled), never under the logo. The margin
+   leaves room for focus outlines. */
+.garage-scroll {
+  flex:1;
+  min-height:0;
+  display:flex;
+  flex-direction:column;
+  overflow-y:auto;
+  scrollbar-width:thin;
+  margin:-8px;
+  padding:8px;
+}
+.garage-scroll.scrolled { mask-image:linear-gradient(transparent,#000 28px); -webkit-mask-image:linear-gradient(transparent,#000 28px); }
+.garage-back {
+  align-self:flex-start;
+  border:0;
+  background:none;
+  padding:4px 0;
+  margin-bottom:22px;
+  font-size:11px;
+  color:var(--faint);
+  border-bottom:1px solid var(--line);
+}
+.garage-back:hover { color:var(--cream); }
+#garage .eyebrow>span { background:var(--accent); }
+#garage .eyebrow b { font-weight:600; color:var(--faint); margin-left:4px; }
+#garageName {
+  font-family:'Manrope',sans-serif;
+  font-size:clamp(46px,4.6vw,68px);
+  font-weight:500;
+  letter-spacing:-.055em;
+  line-height:1;
+  margin:16px 0 10px;
+}
+#garageTagline { margin:0; font-size:13px; line-height:1.6; color:var(--faint); max-width:380px; }
+#garageRatings { display:grid; gap:12px; margin:26px 0 0; }
+#garageRatings>div {
+  display:grid;
+  grid-template-columns:92px 1fr 46px;
+  align-items:center;
+  column-gap:14px;
+  row-gap:4px;
+}
+#garageRatings dt { font-size:9px; font-weight:600; letter-spacing:.17em; text-transform:uppercase; color:var(--faint); }
+#garageRatings dd { display:contents; }
+.meter { display:flex; gap:3px; }
+.meter i { flex:1; height:7px; border-radius:1px; background:rgba(245,241,223,.1); }
+.meter i.on { background:var(--accent); animation:meter-on .35s calc(var(--n) * 30ms) both; }
+@keyframes meter-on { from { background:rgba(245,241,223,.1); } }
+#garageRatings b { font-family:'Manrope',sans-serif; font-size:16px; font-weight:700; text-align:right; font-variant-numeric:tabular-nums; }
+#garageRatings b small { font-size:9px; font-weight:500; color:var(--faint); margin-left:1px; }
+#garageRatings dd>small { grid-column:2 / -1; font-size:10.5px; color:var(--faint); }
+.garage-panel h3 { margin:28px 0 10px; font-size:9px; font-weight:600; letter-spacing:.2em; text-transform:uppercase; color:var(--faint); }
+#garageFeatures { list-style:none; margin:0; padding:0; display:grid; gap:7px; }
+.feature {
+  width:100%;
+  display:grid;
+  grid-template-columns:24px 1fr;
+  gap:12px;
+  padding:11px 13px;
+  text-align:left;
+  border:1px solid var(--line);
+  border-radius:4px;
+  background:rgba(245,241,223,.025);
+  transition:border-color .2s,background .2s;
+}
+button.feature:hover { border-color:var(--accent); }
+button.feature[aria-pressed="true"] { border-color:var(--accent); background:color-mix(in srgb,var(--accent) 13%,transparent); }
+.feature svg { width:22px; height:22px; margin-top:1px; stroke:var(--accent); }
+.feature b { display:flex; align-items:center; gap:8px; font-size:13px; font-weight:600; }
+.feature kbd { font-size:8px; padding:2px 5px; letter-spacing:.08em; color:var(--faint); }
+.feature em { margin-left:auto; font-style:normal; font-size:8.5px; font-weight:600; letter-spacing:.16em; color:var(--accent); }
+.feature>span>span { display:block; margin-top:3px; font-size:11.5px; line-height:1.5; color:var(--faint); }
+.garage-actions { margin-top:24px; padding-bottom:4px; }
+#garage .primary { background:var(--accent); }
+#garage[data-car="roadster"] .primary { color:#1b0605; }
+#garage[data-car="roadster"] .primary:hover { background:#ff6b60; }
+.garage-stage { position:relative; touch-action:none; cursor:grab; user-select:none; -webkit-user-select:none; }
+.garage-stage.turning { cursor:grabbing; }
+.garage-nav {
+  position:absolute;
+  left:50%;
+  bottom:max(64px,calc(env(safe-area-inset-bottom) + 50px));
+  transform:translateX(-50%);
+  display:flex;
+  align-items:center;
+  gap:16px;
+}
+.garage-nav button {
+  width:44px;
+  height:44px;
+  border-radius:50%;
+  border:1px solid var(--line);
+  background:rgba(8,17,14,.45);
+  backdrop-filter:blur(8px);
+  font-size:22px;
+  line-height:1;
+  padding:0 0 3px;
+}
+.garage-nav button:hover { border-color:var(--accent); }
+#garageModel { min-width:190px; white-space:nowrap; text-align:center; font-family:'Manrope',sans-serif; font-size:10px; font-weight:600; letter-spacing:.26em; text-transform:uppercase; }
+.garage-hint { position:absolute; left:0; right:0; bottom:max(26px,env(safe-area-inset-bottom)); margin:0; text-align:center; font-size:9px; letter-spacing:.12em; color:var(--faint); }
+.garage-hint kbd { font-size:8px; padding:2px 5px; }
+#garageLoading { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); font-size:11px; letter-spacing:.14em; color:var(--faint); }
+body.touch .garage-hint { display:none; }
+
+@media(max-width:900px) {
+  #garage { grid-template-columns:minmax(300px,48vw) 1fr; }
+  .garage-panel { padding:96px 22px 24px 24px; }
+  #garageModel { min-width:130px; }
+}
+/* Landscape phones: a tighter panel that scrolls. */
+@media(max-height:600px) {
+  .garage-panel { padding-top:70px; padding-bottom:18px; }
+  .garage-back { margin-bottom:12px; }
+  #garageName { font-size:38px; margin:10px 0 6px; }
+  #garageTagline { font-size:11.5px; }
+  #garageRatings { gap:7px; margin-top:16px; }
+  #garageRatings dd>small { display:none; }
+  .garage-panel h3 { margin:18px 0 8px; }
+  .feature { padding:8px 10px; }
+  .feature>span>span { font-size:10.5px; }
+  .garage-nav { bottom:24px; }
+  .garage-hint { display:none; }
+  .secondary { padding:11px 16px; }
+}
+/* Narrow windows: the car above, the panel below. */
+@media(max-width:600px) and (min-height:601px) {
+  #garage { grid-template-columns:1fr; grid-template-rows:42vh 1fr; }
+  .garage-stage { grid-row:1; }
+  .garage-panel { grid-row:2; padding:22px 20px 24px; background:rgba(8,17,14,.86); }
+  .garage-nav { bottom:14px; }
+  .garage-hint { display:none; }
+}
+@media(prefers-reduced-motion:reduce) {
+  #garage, .meter i.on { animation:none; }
+  .secondary:hover { transform:none; }
+}

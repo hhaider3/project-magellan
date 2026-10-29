@@ -100,6 +100,6 @@ export async function loadVehicleModel(renderer, kind = 'atlas') {
     reflections.dispose(); reflections = bakeReflections(renderer);
     for (const material of materials.values()) { material.envMap = reflections.texture; material.needsUpdate = true; }
   }
-  return { kind, model, body, relight, wheelPivots, wheelSpinners, headMat, brakeMat, meshes, triangles, transformation, flight, propeller, nozzles, wing,
+  return { kind, model, clips: gltf.animations, body, relight, wheelPivots, wheelSpinners, headMat, brakeMat, meshes, triangles, transformation, flight, propeller, nozzles, wing,
     batching: [body, ...wheelSpinners, ...(wing ? [wing] : [])].map(group => ({ before: group.userData.sourceParts, after: group.children.filter(o => o.isMesh).length })) };
 }

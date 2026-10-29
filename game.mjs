@@ -1,7 +1,9 @@
 import { createTerrain } from './terrain.mjs?v=uphill-1';
 import { createWater } from './water.mjs?v=rivers-1';
 import { FAR_SIZE, FAR_VIEW, NEAR_VIEW, ULTRA_SIZE, ULTRA_VIEW, ULTRA_BLEND_START, ULTRA_BLEND_END, farIndices, farCoverage, ultraIndices, ultraCoverage } from './streaming-layout.mjs?v=uphill-1';
-import { loadVehicleModel, VEHICLE_NAMES } from './vehicle-model.mjs?v=roadster-3';
+import { loadVehicleModel, VEHICLE_NAMES } from './vehicle-model.mjs?v=garage-1';
+import { createShowroom } from './garage.mjs?v=garage-1';
+import { VEHICLE_ORDER, VEHICLE_SPECS, PREVIEWS } from './vehicle-specs.mjs?v=garage-1';
 import { createProfiler } from './profiling.mjs?v=timing-1';
 import { createDebris } from './debris.mjs?v=uphill-1';
 import { createDust } from './dust.mjs?v=roadster-1';
@@ -1364,6 +1366,84 @@ function switchVehicle() {
     toast(kind === 'roadster' ? 'Roadster · hold F to hover, E to boost' : 'ATLAS · it sails and flies');
   }).catch(vehicleFailed);
 }
+// The garage (View cars on the menu): each car on a turntable, drawn on the
+// game's canvas in place of the world while it's open, beside its ratings,
+// figures and special features. Some features can be shown on the model.
+const showroom = createShowroom(), garage = { open: false, index: 0, last: 0, pointer: null, x: 0, at: 0 };
+const FEATURE_ICONS = {
+  plane: 'M2 13.5 22 9l-1.5-2L13 9.5 8 4H6l3 6.5-4.5 1.3L3 10H2l1 3.5ZM7 20h12',
+  boat: 'M3 14h18l-2.5 4.5h-13L3 14Zm3 0V9h9l3 5M9 9V5.5h4L15 9M2 21c2 0 2-1 4-1s2 1 4 1 2-1 4-1 2 1 4 1 2-1 4-1',
+  climb: 'M2 20h20L14 6l-3.5 5-2-2.5L2 20Zm12-14 2-2.5 2 2.5',
+  boost: 'M4 8l4 4-4 4m6-8 4 4-4 4m6-8 4 4-4 4',
+  hover: 'M5 15h14l-1.5-4h-11L5 15Zm2 3v3m10-3v3M12 2v6m-3-3 3-3 3 3',
+  water: 'M4 13h16l-2-4H6l-2 4ZM2 18c2 0 2-1 4-1s2 1 4 1 2-1 4-1 2 1 4 1 2-1 4-1M2 22c2 0 2-1 4-1s2 1 4 1 2-1 4-1 2 1 4 1 2-1 4-1',
+  fans: 'M12 12m-2 0a2 2 0 1 0 4 0 2 2 0 1 0-4 0M12 10c0-4 1-7 4-7 2 0 2 3-1 5M14 12c4 0 7 1 7 4 0 2-3 2-5-1M12 14c0 4-1 7-4 7-2 0-2-3 1-5M10 12c-4 0-7-1-7-4 0-2 3-2 5 1',
+  wing: 'M3 16h18M5 16l1-6h12l1 6M4 10h16l-1-3H5l-1 3Z',
+};
+const garageKind = () => VEHICLE_ORDER[garage.index];
+const drawPlain = (target, view) => { if (screenMultisampled) { renderer.render(target, view); drawStats = renderer.info.render; } else { motionBlur.render(target, view, null, false); drawStats = motionBlur.stats; } };
+function renderGarage() {
+  const now = performance.now(), dt = Math.min(.1, (now - garage.last) / 1000);
+  garage.last = now;
+  showroom.render(drawPlain, dt, { width: innerWidth, height: innerHeight }, stage.getBoundingClientRect());
+}
+function syncGaragePreview() {
+  const shown = showroom.kind === garageKind() ? showroom.previewing : null;
+  for (const button of $('garageFeatures').querySelectorAll('[data-preview]')) {
+    const on = button.dataset.preview === shown;
+    button.setAttribute('aria-pressed', String(on)); button.querySelector('em').textContent = on ? 'SHOWING' : 'SHOW ME';
+  }
+}
+function showGarageCar() {
+  const kind = garageKind(), spec = VEHICLE_SPECS[kind];
+  $('garage').dataset.car = kind; garageScroll.scrollTop = 0; garageScroll.classList.remove('scrolled');
+  $('garageCount').textContent = `${garage.index + 1} / ${VEHICLE_ORDER.length}`;
+  $('garageName').textContent = spec.name; $('garageModel').textContent = spec.model; $('garageTagline').textContent = spec.tagline;
+  $('garageRatings').innerHTML = spec.ratings.map(r => `<div><dt>${r.label}</dt><dd><span class="meter" role="meter" aria-valuemin="0" aria-valuemax="10" aria-valuenow="${r.score}" aria-label="${r.label}: ${r.score} out of 10">${Array.from({ length: 10 }, (_, i) => `<i${i < r.score ? ' class="on"' : ''} style="--n:${i}"></i>`).join('')}</span><b>${r.score}<small>/10</small></b><small>${r.detail}</small></dd></div>`).join('');
+  $('garageFeatures').innerHTML = spec.features.map(f => {
+    const shows = PREVIEWS[kind].includes(f.key), tag = shows ? 'button' : 'div';
+    return `<li><${tag} class="feature"${shows ? ` type="button" data-preview="${f.key}" aria-pressed="false"` : ''}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="${FEATURE_ICONS[f.key]}"/></svg><span><b>${f.title}${f.keys ? `<kbd>${f.keys === 'auto' ? 'AUTOMATIC' : f.keys}</kbd>` : ''}${shows ? '<em>SHOW ME</em>' : ''}</b><span>${f.text}</span></span></${tag}></li>`;
+  }).join('');
+  const current = kind === vehicleKind;
+  $('garageDrive').firstElementChild.textContent = current ? `Your car · back to menu` : `Choose the ${spec.name}`;
+  $('garageDrive').lastElementChild.textContent = current ? '✓' : '↗';
+  $('garageLoading').hidden = showroom.kind === kind;
+  loadVehicle(kind).then(asset => {
+    if (!garage.open || garageKind() !== kind) return;
+    showroom.show(asset); $('garageLoading').hidden = true; syncGaragePreview();
+  }).catch(() => { if (garageKind() === kind) $('garageLoading').textContent = 'This car couldn’t load.'; });
+}
+function openGarage() {
+  if (garage.open || running) return;
+  garage.open = true; garage.index = Math.max(0, VEHICLE_ORDER.indexOf(vehicleKind)); garage.last = performance.now();
+  $('garage').hidden = false; document.body.classList.add('garage'); $('menu').inert = true;
+  showGarageCar(); $('garageBack').focus({ preventScroll: true });
+}
+function closeGarage() {
+  if (!garage.open) return;
+  garage.open = false; garage.pointer = null;
+  $('garage').hidden = true; document.body.classList.remove('garage'); $('menu').inert = false;
+  render(0); $('garageBtn').focus({ preventScroll: true });
+}
+function stepGarage(by) { garage.index = (garage.index + by + VEHICLE_ORDER.length) % VEHICLE_ORDER.length; showGarageCar(); }
+const garageScroll = $('garage').querySelector('.garage-scroll');
+garageScroll.addEventListener('scroll', () => garageScroll.classList.toggle('scrolled', garageScroll.scrollTop > 2), { passive: true });
+$('garageBtn').onclick = openGarage; $('garageBack').onclick = closeGarage;
+$('garagePrev').onclick = () => stepGarage(-1); $('garageNext').onclick = () => stepGarage(1);
+$('garageDrive').onclick = () => { if (garageKind() !== vehicleKind) switchVehicle(); closeGarage(); };
+$('garageFeatures').addEventListener('click', e => {
+  const button = e.target.closest('[data-preview]');
+  if (button && showroom.kind === garageKind()) { showroom.preview(button.dataset.preview); syncGaragePreview(); }
+});
+// Drag the stage to turn the car; a flick keeps it turning for a moment.
+const stage = $('garage').querySelector('.garage-stage');
+stage.addEventListener('pointerdown', e => { if (e.target.closest('button')) return; garage.pointer = e.pointerId; garage.x = e.clientX; garage.at = e.timeStamp; stage.setPointerCapture(e.pointerId); stage.classList.add('turning'); });
+stage.addEventListener('pointermove', e => {
+  if (e.pointerId !== garage.pointer) return;
+  showroom.drag(e.clientX - garage.x, (e.timeStamp - garage.at) / 1000); garage.x = e.clientX; garage.at = e.timeStamp;
+});
+const endTurn = e => { if (e.pointerId === garage.pointer) { garage.pointer = null; stage.classList.remove('turning'); } };
+stage.addEventListener('pointerup', endTurn); stage.addEventListener('pointercancel', endTurn);
 // G (or FANS on touch) switches the Roadster's suction fans: on, it grips
 // through corners and up steep faces and stays down over crests; off, it
 // handles like any car and leaves crests in big jumps.
@@ -1387,6 +1467,12 @@ $('copySeed').onclick = async () => {
   try { await navigator.clipboard.writeText(url.href); toast('World link copied. Bring a friend.'); } catch { history.replaceState(null, '', url); toast('Your world link is in the address bar.'); }
 };
 addEventListener('keydown', e => {
+  if (garage.open) {
+    if (e.code === 'Escape') { e.preventDefault(); closeGarage(); }
+    if ((e.code === 'ArrowLeft' || e.code === 'ArrowRight') && !e.repeat) { e.preventDefault(); stepGarage(e.code === 'ArrowRight' ? 1 : -1); }
+    if (e.code === 'KeyM' && !e.repeat) toggleSound();
+    return;
+  }
   if (e.code === 'Escape' || e.code === 'KeyP') { e.preventDefault(); if (!e.repeat && started) running ? pause() : resume(); return; }
   if (keyMap[e.code]) {
     if (running) {
@@ -1421,10 +1507,10 @@ for (const el of document.querySelectorAll('[data-control]')) {
   const release = e => { touchStates.delete(e.pointerId); el.classList.remove('active'); syncInput(); };
   el.addEventListener('pointerup', release); el.addEventListener('pointercancel', release); el.addEventListener('lostpointercapture', release);
 }
-// Keep keyboard focus within the visible menu without trapping gameplay controls.
-$('menu').addEventListener('keydown', e => {
+// Keep keyboard focus within the visible menu (or garage) without trapping gameplay controls.
+for (const dialog of [$('menu'), $('garage')]) dialog.addEventListener('keydown', e => {
   if (e.key !== 'Tab') return;
-  const buttons = [...$('menu').querySelectorAll('button:not([disabled])')].filter(b => b.offsetParent !== null);
+  const buttons = [...dialog.querySelectorAll('button:not([disabled])')].filter(b => b.offsetParent !== null);
   const first = buttons[0], last = buttons.at(-1);
   if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
   if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
@@ -1774,6 +1860,7 @@ function updateDesiredCamera(pose = vehicle) {
   }
 }
 function render(dt) {
+  if (garage.open) { renderGarage(); return; } // the showroom, in place of the world
   const pose = vehiclePresentation.sample(running ? accumulator / FIXED_DT : 1);
   streamUniforms.uStreamCenter.value.set(pose.x, pose.z);
   for (const chunk of chunks.values()) grass.update(chunk.grassMesh, chunk.cx, chunk.cz, pose.x, pose.z);
@@ -1899,7 +1986,7 @@ function frame(now) {
   processStreaming();
   // Loading completion resets the clock; do not apply this frame’s old delta.
   if (wasLoading && !loading) { render(0); return; }
-  if (!running) { if (now - idleRenderAt < (loading ? 100 : 200)) return; idleRenderAt = now; }
+  if (!running && !garage.open) { if (now - idleRenderAt < (loading ? 100 : 200)) return; idleRenderAt = now; }
   if (running && drivable()) {
     const physicsStarted = performance.now();
     accumulator += dt;
@@ -1979,5 +2066,5 @@ if (testMode) window.__driveTest = { resetMetrics: () => profiler.reset(), snaps
   const natureInstances = {};
   for (const chunk of chunks.values()) if (chunk.group.visible) chunk.group.traverse(o => { if (o.isInstancedMesh && o.userData.natureKind) natureInstances[o.userData.natureKind] = (natureInstances[o.userData.natureKind] || 0) + o.count; });
   const impostorCount = [...farTiles.values()].reduce((n, t) => n + (t.userData.impostors?.meshes ?? []).reduce((m, mesh) => m + (mesh.isInstancedMesh ? mesh.count : 0), 0), 0);
-  return { clouds: { cloudiness: weather.clouds, drift: clouds.drift.toArray(), banks: clouds.count }, time: { hours: clock.hours, clock: clockLabel(clock.hours), day: dayLight.day, night: dayLight.night, sunHeight: dayLight.sun[1], key: sun.intensity, exposure: renderer.toneMappingExposure, headlights: lightsOn }, weather: { kind: weather.target.kind, region: weather.target.region, chance: weather.target.chance, rain: weather.rain, snow: weather.snow, particles: weatherFx.counts, fogColor: '#' + scene.fog.color.getHexString(), sun: sun.intensity }, horizon: { ultraTiles: ultraTiles.size, impostors: impostorCount, impostorsVisible: impostorsEnabled, distantWater: waterSystem.distantCount, fogNear: scene.fog.near, fogFar: scene.fog.far, cameraNear: camera.near }, flight: { mode: vehicle.flightMode, progress: vehicle.flight, flying: vehicle.flying, simpleControls: simpleFlight, airspeed: vehicle.airspeed, altitude: vehicle.y - world.surface(vehicle.x, vehicle.z), propeller: propellerAngle, wingsVisible: car.getObjectByName('WingSeg1_L')?.visible ?? false, wingspan: car.getObjectByName('WingSeg3_L') ? car.getObjectByName('WingSeg3_L').getWorldPosition(new THREE.Vector3()).distanceTo(car.getObjectByName('WingSeg3_R').getWorldPosition(new THREE.Vector3())) : 0, clouds: clouds.count }, quality: { preset: settings.quality, level: levels[qualityLevel].name, pixelRatio: renderer.getPixelRatio(), shadow: sun.shadow.mapSize.x, farShadow: farSun.castShadow ? farSun.shadow.mapSize.x : 0, grassDensity: grass.density }, controls: { sensitivity: settings.sensitivity, tilt: settings.tilt, tiltActive: tiltActive(), pitchAxis: input.pitchAxis ?? null, steer: input.steer ?? null, throttle: throttleInput() }, water: { lakes: waterSystem.count, wakes: waterSystem.wakeCount }, natureAsset: { ready: Boolean(nature), error: natureError, assets: nature?.stats ?? [], instances: natureInstances }, grass: grassStats, metrics: profiler.snapshot(), draws: drawStats.calls, triangles: drawStats.triangles, motionBlur: settings.motionBlur, carMeshes, carDraws, carAsset: { ready: carReady, error: carError, kind: shownAsset?.kind ?? null, name: shownAsset?.kind === 'roadster' ? 'Roadster Rocket' : 'ATLAS Amphibious', plumes: plumes?.visible ?? 0, vapour: vapour.count, wingAngle: shownAsset?.wing?.rotation.x ?? null, animationDuration: transformation?.duration, hullSpan: car.getObjectByName('Hull_R')?.position.x - car.getObjectByName('Hull_L')?.position.x, triangles: carTriangles, wheelPivots: wheelPivots.map(p => p.parent.position.toArray()), wheelSteer: wheelPivots.map(p => p.rotation.y), wheelSpin: wheelSpinners.map(p => p.rotation.x), headlights: headMat.emissiveIntensity, brakes: brakeMat.emissiveIntensity }, chunks: chunks.size, farTiles: farTiles.size, loading, generation, streamError, pending: pending.size, stalePending: [...pending.values()].filter(job => job.generation !== generation).length, queued: jobs.length, carBatching: carBatching.map(({ before, after }) => ({ before, after })), vehicle: { ...vehicle }, renderPose: { ...vehiclePresentation.pose }, debris: debris.count, fallingTrees: treeBreakage?.count ?? 0, sound: audio ? { muted, played: audio.breaks.played, active: audio.breaks.active, effects: audio.vehicle.played, effectTypes: audio.vehicle.playedBy, gear: audio.vehicle.gear, masterGain: audio.master.gain.value } : null, brokenProps: world.brokenProps.size, hiddenProps, accumulator, cameraError: cameraPosition.distanceTo(desiredCamera) + cameraTarget.distanceTo(look), camera: cameraPosition.toArray(), target: cameraTarget.toArray() };
+  return { clouds: { cloudiness: weather.clouds, drift: clouds.drift.toArray(), banks: clouds.count }, time: { hours: clock.hours, clock: clockLabel(clock.hours), day: dayLight.day, night: dayLight.night, sunHeight: dayLight.sun[1], key: sun.intensity, exposure: renderer.toneMappingExposure, headlights: lightsOn }, weather: { kind: weather.target.kind, region: weather.target.region, chance: weather.target.chance, rain: weather.rain, snow: weather.snow, particles: weatherFx.counts, fogColor: '#' + scene.fog.color.getHexString(), sun: sun.intensity }, horizon: { ultraTiles: ultraTiles.size, impostors: impostorCount, impostorsVisible: impostorsEnabled, distantWater: waterSystem.distantCount, fogNear: scene.fog.near, fogFar: scene.fog.far, cameraNear: camera.near }, flight: { mode: vehicle.flightMode, progress: vehicle.flight, flying: vehicle.flying, simpleControls: simpleFlight, airspeed: vehicle.airspeed, altitude: vehicle.y - world.surface(vehicle.x, vehicle.z), propeller: propellerAngle, wingsVisible: car.getObjectByName('WingSeg1_L')?.visible ?? false, wingspan: car.getObjectByName('WingSeg3_L') ? car.getObjectByName('WingSeg3_L').getWorldPosition(new THREE.Vector3()).distanceTo(car.getObjectByName('WingSeg3_R').getWorldPosition(new THREE.Vector3())) : 0, clouds: clouds.count }, quality: { preset: settings.quality, level: levels[qualityLevel].name, pixelRatio: renderer.getPixelRatio(), shadow: sun.shadow.mapSize.x, farShadow: farSun.castShadow ? farSun.shadow.mapSize.x : 0, grassDensity: grass.density }, controls: { sensitivity: settings.sensitivity, tilt: settings.tilt, tiltActive: tiltActive(), pitchAxis: input.pitchAxis ?? null, steer: input.steer ?? null, throttle: throttleInput() }, water: { lakes: waterSystem.count, wakes: waterSystem.wakeCount }, natureAsset: { ready: Boolean(nature), error: natureError, assets: nature?.stats ?? [], instances: natureInstances }, grass: grassStats, metrics: profiler.snapshot(), draws: drawStats.calls, triangles: drawStats.triangles, motionBlur: settings.motionBlur, carMeshes, carDraws, carAsset: { ready: carReady, error: carError, kind: shownAsset?.kind ?? null, name: shownAsset?.kind === 'roadster' ? 'Roadster Rocket' : 'ATLAS Amphibious', plumes: plumes?.visible ?? 0, vapour: vapour.count, wingAngle: shownAsset?.wing?.rotation.x ?? null, animationDuration: transformation?.duration, hullSpan: car.getObjectByName('Hull_R')?.position.x - car.getObjectByName('Hull_L')?.position.x, triangles: carTriangles, wheelPivots: wheelPivots.map(p => p.parent.position.toArray()), wheelSteer: wheelPivots.map(p => p.rotation.y), wheelSpin: wheelSpinners.map(p => p.rotation.x), headlights: headMat.emissiveIntensity, brakes: brakeMat.emissiveIntensity }, chunks: chunks.size, farTiles: farTiles.size, loading, generation, streamError, pending: pending.size, stalePending: [...pending.values()].filter(job => job.generation !== generation).length, queued: jobs.length, carBatching: carBatching.map(({ before, after }) => ({ before, after })), vehicle: { ...vehicle }, renderPose: { ...vehiclePresentation.pose }, debris: debris.count, fallingTrees: treeBreakage?.count ?? 0, sound: audio ? { muted, played: audio.breaks.played, active: audio.breaks.active, effects: audio.vehicle.played, effectTypes: audio.vehicle.playedBy, gear: audio.vehicle.gear, masterGain: audio.master.gain.value } : null, brokenProps: world.brokenProps.size, hiddenProps, accumulator, cameraError: cameraPosition.distanceTo(desiredCamera) + cameraTarget.distanceTo(look), camera: cameraPosition.toArray(), target: cameraTarget.toArray(), garage: { open: garage.open, kind: showroom.kind, preview: showroom.previewing } };
 } };
