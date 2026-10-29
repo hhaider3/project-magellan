@@ -5,9 +5,10 @@ Reuses the editable expedition car, preserving its original source asset.
 Transform_To_Boat, frames 1–121: unlatch, spread the body halves, slide the
 wheels out and stow them flat in the hull wells, deploy planing hulls, extend
 the bow fairing and jets.
-Transform_To_Plane, frames 1–81: telescope the wings out of the body sides,
-extend twin tail booms with fins and stabilizer, and push a folding propeller
-out through the grille. The wheels stay down as landing gear.
+Transform_To_Plane, frames 1–81: telescope tapered wings out of the body sides
+and fold their winglets up, extend twin tail booms that raise fins and slide
+the tailplane's halves together, and push a folding propeller out through the
+grille. The wheels stay down as landing gear.
 Each transformation is its own NLA track, exported as its own glTF clip.
 """
 import bpy, bmesh, math, json
@@ -206,76 +207,155 @@ for o in (left,right): push(o,'Transform_To_Boat')
 
 # ---- Transform_To_Plane: frames 1–81 (1.6 s). Every part is stowed inside the
 # body at frame 1, so the car keeps its exact silhouette until it transforms.
+# Parts are modelled where they sit in flight, then slid back to their stowed
+# places: the clip runs from there back out to here.
 nav_red=material('Nav_Red',(.55,.05,.04),(1,.08,.05),6)
 nav_green=material('Nav_Green',(.05,.45,.15),(.1,1,.35),6)
-def airfoil(x, zc, chord, thick, y):
-    # Leading edge faces forward (+z); a cambered, thin-trailing-edge section.
-    f=[0,.05,.25,.5,.8,1]; d=[0,.7,1,.85,.45,.05]; le=zc+chord*.42
-    upper=[(x,y+thick*di*.6,le-fi*chord) for fi,di in zip(f,d)]
-    lower=[(x,y-thick*di*.4,le-fi*chord) for fi,di in zip(f[1:-1],d[1:-1])][::-1]
-    return upper+lower
-WING=[(.03,.98,1.2,1.2,.11,.10),(.06,.96,1.08,1.04,.09,.085),(.05,.94,.95,.72,.07,.05)]
+nav_white=material('Nav_White',(.8,.8,.76),(1,1,.94),5)
+def thickness(u,t): return 5*t*(.2969*math.sqrt(u)-.126*u-.3516*u*u+.2843*u**3-.1036*u**4)
+def camber(u,m,p=.4): return 0 if not m else m/p/p*(2*p*u-u*u) if u<p else m/(1-p)**2*(1-2*p+2*p*u-u*u)
+def section(t, m=0, n=12, start=0, end=1):
+    # A closed NACA four-digit section, as (u, v) in chords: u back from the
+    # leading edge, v up. Whole, it ends in a sharp trailing edge; cut at
+    # `end` it ends square (the wing ahead of a flap), and started at `start`
+    # it gets a rounded nose (the flap, aileron, rudder or elevator itself).
+    us=[start+(end-start)*(1-math.cos(math.pi*i/n))/2 for i in range(n+1)]
+    top=[(u,camber(u,m)+thickness(u,t)) for u in reversed(us)]
+    bottom=[(u,camber(u,m)-thickness(u,t)) for u in us]
+    ring=top+[(start-thickness(start,t)*.8,camber(start,m))]+bottom if start else top+bottom[1:]
+    return ring[:-1] if end>=1 else ring
+def place(sec, at, chord, forward, up):
+    # A section in the model: `at` is its 40% chord point, `forward` points from
+    # the trailing edge to the leading edge, `up` across the section.
+    at,forward,up=Vector(at),Vector(forward),Vector(up)
+    return [tuple(at+forward*(.4-u)*chord+up*v*chord) for u,v in sec]
+def skin(name, rings, parent, mat, sharp=80):
+    # Like loft, but smooth shaded and unbevelled: an edge stays crisp only
+    # where its faces meet at more than `sharp` degrees (trailing edges, caps).
+    n=len(rings[0]); verts=[v for ring in rings for v in ring]; faces=[]
+    for j in range(len(rings)-1):
+        for k in range(n): faces.append((j*n+k,j*n+(k+1)%n,(j+1)*n+(k+1)%n,(j+1)*n+k))
+    faces+=[tuple(range(n))[::-1],tuple((len(rings)-1)*n+k for k in range(n))]
+    data=bpy.data.meshes.new(name); data.from_pydata([p(v) for v in verts],[],faces); data.update()
+    bm=bmesh.new(); bm.from_mesh(data); bmesh.ops.recalc_face_normals(bm,faces=list(bm.faces))
+    for f in bm.faces: f.smooth=True
+    for e in bm.edges: e.smooth=e.is_manifold and e.calc_face_angle(0)<math.radians(sharp)
+    bm.to_mesh(data); bm.free()
+    o=bpy.data.objects.new(name,data); scene.collection.objects.link(o)
+    return finish(o,name,parent,mat,0)
+def lathe(name, at, axis, profile, parent, mat, sides=20):
+    # A body of revolution: profile is [(distance along axis from at, radius)].
+    at,axis=Vector(at),Vector(axis).normalized(); a=axis.orthogonal().normalized(); b=axis.cross(a)
+    rings=[[tuple(at+axis*d+(a*math.cos(2*math.pi*k/sides)+b*math.sin(2*math.pi*k/sides))*r) for k in range(sides)] for d,r in profile]
+    return skin(name,rings,parent,mat,50)
+def surface(name, stations, parent, mat, t, m=0, hinge=.7, up=(0,1,0), sharp=80):
+    # A tapered flying surface split at `hinge` into its fixed part and its
+    # control surface. stations: [(40% chord point, chord)].
+    fixed,moving=section(t,m,12,0,hinge),section(t,m,8,hinge+.02)
+    skin(name,[place(fixed,at,c,(0,0,1),up) for at,c in stations],parent,mat,sharp)
+    skin(name+' control',[place(moving,at,c,(0,0,1),up) for at,c in stations],parent,mat,sharp)
+
+# The wings telescope out of slots in the doors: three nested, tapering panels
+# with flaps and ailerons, at 4° of dihedral. The wingtips fold up last.
+DIHEDRAL=math.radians(4)
+def wing_at(sign, s):
+    # The 40% chord point s metres out along the wing (the slot is at s = 1).
+    return (sign*(1+(s-1)*math.cos(DIHEDRAL)),1.12+(s-1)*math.sin(DIHEDRAL),-.084-.05*(s-1))
+def wing_axis(sign, d): return (sign*d*math.cos(DIHEDRAL),d*math.sin(DIHEDRAL),0)
+# (inner, outer station; chords there; thickness/chord; slide out of the panel
+# inside it; frames). Stowed, all three lie inside the body.
+WING=[(.98,1.97,1.16,1.03,.13,.97,(4,28)),(1.87,2.86,.97,.83,.12,.89,(14,44)),(2.76,3.70,.78,.56,.11,1.22,(26,58))]
 for sign,label in [(-1,'L'),(1,'R')]:
-    parent=body; segments=[]
-    for k,(x0,x1,c0,c1,t0,t1) in enumerate(WING):
-        seg=group_at(f'WingSeg{k+1}_{label}',(sign*(x0+x1)/2,1.12,-.2),parent)
-        loft(f'Wing panel {k+1} {label}',[airfoil(sign*x0,-.2,c0,t0,1.12),airfoil(sign*x1,-.2,c1,t1,1.12)],seg,'Paint_Copper')
-        if k==2:
-            box('Wingtip stripe '+label,(sign*(x1-.12),1.125,-.2+.42*c1-.5*c1),(.16,t1*.9,c1*.92),seg,'Roof_Ivory',.01)
-            box('Wingtip light '+label,(sign*(x1+.015),1.12,-.2+.42*c1-.12),(.03,.05,.12),seg,'Nav_Red' if sign>0 else 'Nav_Green',0)
-        segments.append(seg); parent=seg
-    s1,s2,s3=segments
-    animate(s1,[(1,(0,0,0),(0,0,0),(1,1,1)),(6,(sign*.05,0,0),(0,0,0),(1,1,1)),(30,(sign*1.0,0,0),(0,0,0),(1,1,1)),(81,(sign*1.0,0,0),(0,0,0),(1,1,1))])
-    animate(s2,[(1,(0,0,0),(0,0,0),(1,1,1)),(14,(0,0,0),(0,0,0),(1,1,1)),(46,(sign*.9,.03,0),(0,0,0),(1,1,1)),(81,(sign*.9,.03,0),(0,0,0),(1,1,1))])
-    animate(s3,[(1,(0,0,0),(0,0,0),(1,1,1)),(28,(0,0,0),(0,0,0),(1,1,1)),(62,(sign*.9,.03,0),(0,0,0),(1,1,1)),(81,(sign*.9,.03,0),(0,0,0),(1,1,1))])
-    for seg in segments: push(seg,'Transform_To_Plane')
+    parent=body; panels=[]
+    for k,(s0,s1,c0,c1,t,slide,frames) in enumerate(WING):
+        panel=group_at(f'WingSeg{k+1}_{label}',wing_at(sign,s0),parent)
+        surface(f'Wing panel {k+1} {label}',[(wing_at(sign,s0),c0),(wing_at(sign,s1),c1)],panel,'Paint_Copper',t,.02)
+        if k<2: # a graphite band where the next panel slides out
+            band=section(t*1.04,.02,12)
+            skin(f'Wing joint band {k+1} {label}',[place(band,wing_at(sign,s),c1*1.04,(0,0,1),(0,1,0)) for s in (s1-.035,s1)],panel,'Graphite')
+        panels.append((panel,slide,frames)); parent=panel
+    # The winglet: hinged on the tip, canted 12° out, swept back.
+    tip=Vector(wing_at(sign,3.70)); cant=math.radians(12)
+    rise,across=Vector((sign*math.sin(cant),math.cos(cant),0)),(sign*math.cos(cant),-math.sin(cant),0)
+    winglet=group_at('WingTip_'+label,tuple(tip),panels[-1][0])
+    lead=tip.z+.4*.56-.03
+    skin('Winglet '+label,[place(section(.1*f),tip+rise*h+Vector((0,0,lead-.69*h-.4*c-tip.z)),c,(0,0,1),across)
+        for h,c,f in ((0,.5,1),(.18,.38,1),(.33,.26,1),(.37,.14,.6))],winglet,'Roof_Ivory')
+    light=tip+rise*.07+Vector((0,0,lead-.12-tip.z))+Vector(across)*.03
+    box('Wingtip light '+label,tuple(light),(.03,.05,.12),winglet,'Nav_Red' if sign>0 else 'Nav_Green',.006)
+    for panel,slide,(start,end) in panels:
+        out=wing_axis(sign,slide)
+        panel.location-=p(out)
+        animate(panel,[(1,(0,0,0),(0,0,0),(1,1,1)),(start,(0,0,0),(0,0,0),(1,1,1)),(end,out,(0,0,0),(1,1,1)),(81,out,(0,0,0),(1,1,1))])
+        push(panel,'Transform_To_Plane')
+    # Stowed flat, the winglet continues the wing out through the slot.
+    flat=(0,0,-sign*(math.pi/2-cant-DIHEDRAL))
+    animate(winglet,[(1,(0,0,0),flat,(1,1,1)),(58,(0,0,0),flat,(1,1,1)),(74,(0,0,0),(0,0,0),(1,1,1)),(81,(0,0,0),(0,0,0),(1,1,1))])
+    push(winglet,'Transform_To_Plane')
     # A graphite slot marks where each wing leaves the body side.
-    box('Wing slot trim '+label,(sign*1.016,1.12,-.2),(.02,.14,1.24),left if sign<0 else right,'Graphite',.004)
+    box('Wing slot trim '+label,(sign*1.016,1.13,-.2),(.02,.19,1.22),left if sign<0 else right,'Graphite',.004)
 
-# Twin tail booms telescope from the rear corners; fins and stabilizer unfold.
-booms={}
+# Twin tail booms telescope back from the body's rear corners, rising 3° so the
+# tail clears the ground as the nose lifts. Out past the spare wheel, the fins
+# rise out of them and the tailplane's halves slide in to meet in the middle:
+# an H tail, every surface joined to a boom.
+RISE=math.radians(3); AFT=Vector((0,math.sin(RISE),-math.cos(RISE)))
+def boom_at(sign, a): return Vector((sign*.9,1.415,-2.0))+AFT*a
 for sign,label in [(-1,'L'),(1,'R')]:
-    b1=group_at('TailBoom1_'+label,(sign*.92,1.38,-1.4),body)
-    beam('Tail boom '+label,(sign*.92,1.38,-.8),(sign*.92,1.38,-2.0),.07,b1,'Brushed_Alloy')
-    b2=group_at('TailBoom2_'+label,(sign*.92,1.38,-1.4),b1)
-    beam('Tail boom tip '+label,(sign*.92,1.38,-.85),(sign*.92,1.38,-1.95),.055,b2,'Brushed_Alloy')
-    fin=group_at('TailFin_'+label,(sign*.92,1.42,-1.75),b2)
-    mesh('Tail fin '+label,[(sign*.9,1.42,-1.45),(sign*.94,1.42,-1.45),(sign*.94,1.42,-2.0),(sign*.9,1.42,-2.0),
-        (sign*.9,2.42,-1.72),(sign*.94,2.42,-1.72),(sign*.94,2.42,-2.08),(sign*.9,2.42,-2.08)],
-        [(0,1,2,3),(4,7,6,5),(0,4,5,1),(1,5,6,2),(2,6,7,3),(3,7,4,0)],fin,'Paint_Copper')
-    box('Fin tip stripe '+label,(sign*.92,2.37,-1.9),(.05,.09,.35),fin,'Roof_Ivory',.008)
-    animate(b1,[(1,(0,0,0),(0,0,0),(1,1,1)),(6,(0,0,0),(0,0,0),(1,1,1)),(36,(0,0,-1.25),(0,0,0),(1,1,1)),(81,(0,0,-1.25),(0,0,0),(1,1,1))])
-    animate(b2,[(1,(0,0,0),(0,0,0),(1,1,1)),(20,(0,0,0),(0,0,0),(1,1,1)),(50,(0,.08,-1.15),(0,0,0),(1,1,1)),(81,(0,.08,-1.15),(0,0,0),(1,1,1))])
-    animate(fin,[(1,(0,0,0),(0,0,0),(1,.04,.3)),(50,(0,0,0),(0,0,0),(1,.04,.3)),(72,(0,0,0),(0,0,0),(1,1,1)),(81,(0,0,0),(0,0,0),(1,1,1))])
-    for o in (b1,b2,fin): push(o,'Transform_To_Plane')
-    ring('Tail boom collar '+label,(sign*.92,1.38,-2.05),.09,body,'Graphite')
-    booms[label]=b2
-stab=group_at('Tail_Stabilizer',(0,1.46,-1.7),booms['L'])
-loft('Horizontal stabilizer',[airfoil(-1.42,-1.72,.48,.05,1.46),airfoil(1.42,-1.72,.48,.05,1.46)],stab,'Paint_Copper')
-animate(stab,[(1,(0,0,0),(0,0,0),(.02,1,1)),(46,(0,0,0),(0,0,0),(.02,1,1)),(66,(0,0,0),(0,0,0),(1,1,1)),(81,(0,0,0),(0,0,0),(1,1,1))])
-push(stab,'Transform_To_Plane')
+    root_at=boom_at(sign,0)
+    # A graphite port on the body corner, which the boom's painted outer sleeve
+    # slides through; the bare inner tube telescopes out of that.
+    lathe('Tail boom port '+label,root_at,AFT,[(-.01,.078),(.012,.078)],body,'Graphite')
+    b1=group_at('TailBoom1_'+label,tuple(root_at),body)
+    lathe('Tail boom '+label,root_at,AFT,[(-.08,.066),(1.22,.066)],b1,'Paint_Copper')
+    lathe('Tail boom joint '+label,root_at,AFT,[(1.16,.077),(1.24,.077)],b1,'Graphite')
+    b2=group_at('TailBoom2_'+label,tuple(boom_at(sign,1.1)),b1)
+    lathe('Tail boom tip '+label,root_at,AFT,[(1.1,.055),(2.3,.055),(2.45,.048),(2.56,.036),(2.63,.022),(2.68,.008)],b2,'Brushed_Alloy')
+    # The fin stands on the boom: swept, tapering, with its rudder.
+    fin=group_at('TailFin_'+label,tuple(boom_at(sign,2.2)),b2)
+    foot,lead=boom_at(sign,2.2).y,boom_at(sign,1.78).z
+    fin_at=lambda h,c: ((sign*.9,foot+h,lead-.4*h-.4*c),c)
+    surface('Tail fin '+label,[fin_at(0,.86),fin_at(.45,.66),fin_at(.84,.46)],fin,'Paint_Copper',.09,hinge=.66,up=(1,0,0))
+    # A low strake runs the fin's leading edge down onto the boom.
+    skin('Fin strake '+label,[place(section(.1),(sign*.9,foot+h,lead+front-.4*c),c,(0,0,1),(1,0,0)) for h,front,c in ((0,.36,.62),(.17,-.06,.24))],fin,'Paint_Copper')
+    skin('Fin cap '+label,[place(section(.09*f),*fin_at(h,c),(0,0,1),(1,0,0)) for h,c,f in ((.84,.46,1),(.89,.4,.85),(.915,.24,.5))],fin,'Roof_Ivory')
+    box('Tail light '+label,(sign*.9,foot+.87,lead-.4*.87-.39),(.03,.04,.05),fin,'Nav_White',.006)
+    # Half the tailplane, from this boom to the centre line, with its elevator.
+    stab=group_at('Tail_Stabilizer_'+label,tuple(boom_at(sign,2.24)),b2)
+    level,front=boom_at(sign,2.24).y,boom_at(sign,1.98).z
+    surface('Tailplane '+label,[((x,level,front-.4*.64),.64) for x in (sign*.9,sign*.006)],stab,'Paint_Copper',.1,hinge=.68)
+    for group,slide in ((b2,1.44),(b1,1.28)): group.location-=p(AFT*slide)
+    animate(b1,[(1,(0,0,0),(0,0,0),(1,1,1)),(4,(0,0,0),(0,0,0),(1,1,1)),(32,AFT*1.28,(0,0,0),(1,1,1)),(81,AFT*1.28,(0,0,0),(1,1,1))])
+    animate(b2,[(1,(0,0,0),(0,0,0),(1,1,1)),(16,(0,0,0),(0,0,0),(1,1,1)),(46,AFT*1.44,(0,0,0),(1,1,1)),(81,AFT*1.44,(0,0,0),(1,1,1))])
+    # Blender scale axes: x across, z up.
+    animate(fin,[(1,(0,0,0),(0,0,0),(1,1,.02)),(44,(0,0,0),(0,0,0),(1,1,.02)),(62,(0,0,0),(0,0,0),(1,1,1)),(81,(0,0,0),(0,0,0),(1,1,1))])
+    animate(stab,[(1,(0,0,0),(0,0,0),(.02,1,1)),(52,(0,0,0),(0,0,0),(.02,1,1)),(70,(0,0,0),(0,0,0),(1,1,1)),(81,(0,0,0),(0,0,0),(1,1,1))])
+    for o in (b1,b2,fin,stab): push(o,'Transform_To_Plane')
 
-# A three-blade tractor propeller pushes out through the grille. Its blades
-# fold back along the shaft when stowed. The game spins 'Propeller' itself.
-hub=group_at('Prop_Hub',(0,.98,1.15),body)
-bpy.ops.mesh.primitive_cone_add(vertices=16,radius1=.15,radius2=.02,depth=.34,location=p((0,.98,1.15+.17)))
-cone=bpy.context.object; cone.rotation_euler=(math.pi/2,0,0); finish(cone,'Propeller spinner',hub,'Brushed_Alloy',0)
-beam('Propeller shaft',(0,.98,1.15),(0,.98,-.25),.045,hub,'Graphite')
-spinner=group_at('Propeller',(0,.98,1.15),hub)
+# A three-blade tractor propeller pushes out through the grille on its shaft.
+# Its twisted blades lie folded forward over the spinner until it is clear of
+# the bumper, then swing out. The game spins 'Propeller' itself.
+HUB=Vector((0,.98,2.62)); PROP_SLIDE=1.45
+hub=group_at('Prop_Hub',tuple(HUB),body)
+lathe('Propeller spinner',HUB,(0,0,1),[(-.07,.16),(0,.162),(.06,.155),(.14,.13),(.21,.095),(.27,.055),(.31,.022),(.325,.004)],hub,'Brushed_Alloy',24)
+lathe('Propeller shaft',HUB,(0,0,1),[(-1.6,.07),(-.18,.07),(-.1,.13),(-.07,.165),(-.05,.165)],hub,'Graphite',24)
+spinner=group_at('Propeller',tuple(HUB),hub)
 for k in range(3):
     theta=k*2*math.pi/3
     mount=bpy.data.objects.new(f'BladeMount_{k+1}',None); scene.collection.objects.link(mount)
-    mount.matrix_world=Matrix.Translation(p((0,.98,1.15)))@Matrix.Rotation(theta,4,'Y'); adopt(mount,spinner)
-    blade=group_at(f'BladeFold_{k+1}',(0,.98,1.15),mount)
-    rx,ry=math.sin(theta),math.cos(theta)
-    verts=[]
-    for rr,cw in ((.06,.07),(.45,.09),(.8,.05)):
-        cx,cy=rx*rr,ry*rr; tx,ty=-ry*cw,rx*cw
-        verts+=[(cx+tx,.98+cy+ty,1.15+.012),(cx-tx,.98+cy-ty,1.15-.012),(cx-tx,.98+cy-ty,1.15+.012),(cx+tx,.98+cy+ty,1.15-.012)]
-    mesh(f'Propeller blade {k+1}',verts,[(0,2,1,3),(8,10,9,11)]+[(j*4+a,j*4+b,(j+1)*4+b,(j+1)*4+a) for j in range(2) for a,b in ((0,2),(2,1),(1,3),(3,0))],blade,'Graphite')
-    animate(blade,[(1,(0,0,0),(-1.4,0,0),(1,1,1)),(54,(0,0,0),(-1.4,0,0),(1,1,1)),(78,(0,0,0),(0,0,0),(1,1,1)),(81,(0,0,0),(0,0,0),(1,1,1))])
+    mount.matrix_world=Matrix.Translation(p(HUB))@Matrix.Rotation(theta,4,'Y'); adopt(mount,spinner)
+    blade=group_at(f'BladeFold_{k+1}',tuple(HUB),mount)
+    # The blade turns toward `along`; pitch tips its leading edge forward.
+    out,along=Vector((math.sin(theta),math.cos(theta),0)),Vector((-math.cos(theta),math.sin(theta),0))
+    def blade_ring(r,c,pitch):
+        pitch=math.radians(pitch); forward=along*math.cos(pitch)+Vector((0,0,1))*math.sin(pitch)
+        return place(section(.12,.04,7),HUB+out*r,c,forward,out.cross(forward))
+    skin(f'Propeller blade {k+1}',[blade_ring(*s) for s in ((.1,.09,50),(.3,.135,36),(.5,.125,26),(.66,.1,20))],blade,'Graphite',120)
+    skin(f'Propeller blade tip {k+1}',[blade_ring(*s) for s in ((.66,.1,20),(.74,.08,17),(.79,.04,15))],blade,'Roof_Ivory',120)
+    animate(blade,[(1,(0,0,0),(1.4,0,0),(1,1,1)),(40,(0,0,0),(1.4,0,0),(1,1,1)),(64,(0,0,0),(0,0,0),(1,1,1)),(81,(0,0,0),(0,0,0),(1,1,1))])
     push(blade,'Transform_To_Plane')
-animate(hub,[(1,(0,0,0),(0,0,0),(1,1,1)),(8,(0,0,0),(0,0,0),(1,1,1)),(36,(0,0,1.6),(0,0,0),(1,1,1)),(81,(0,0,1.6),(0,0,0),(1,1,1))])
+hub.location-=p((0,0,PROP_SLIDE))
+animate(hub,[(1,(0,0,0),(0,0,0),(1,1,1)),(4,(0,0,0),(0,0,0),(1,1,1)),(32,(0,0,PROP_SLIDE),(0,0,0),(1,1,1)),(81,(0,0,PROP_SLIDE),(0,0,0),(1,1,1))])
 push(hub,'Transform_To_Plane')
 
 root['asset']='ATLAS Amphibious / mechanically transforming expedition vehicle'

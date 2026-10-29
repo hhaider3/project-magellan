@@ -1,15 +1,15 @@
 {
   "name": "Roadster Rocket",
-  "revision": 3,
+  "revision": 4,
   "reference": "https://www.tesla.com/roadster",
   "source": "roadster-rocket.blend",
   "asset": "roadster-rocket.glb",
-  "sourceParts": 330,
-  "triangles": 79596,
+  "sourceParts": 301,
+  "triangles": 50132,
   "batching": [
     {
       "group": "Body",
-      "before": 164,
+      "before": 133,
       "after": 10
     },
     {
@@ -34,7 +34,7 @@
     },
     {
       "group": "Rear_Wing",
-      "before": 2,
+      "before": 4,
       "after": 2
     }
   ],

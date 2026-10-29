@@ -4,8 +4,8 @@
   "asset": "atlas-amphibious.glb",
   "duration": 2.4,
   "flightDuration": 1.6,
-  "triangles": 63260,
-  "meshes": 96,
+  "triangles": 65304,
+  "meshes": 108,
   "batching": [
     {
       "group": "Body",
@@ -69,18 +69,18 @@
     },
     {
       "group": "BladeFold_1",
-      "before": 1,
-      "after": 1
+      "before": 2,
+      "after": 2
     },
     {
       "group": "BladeFold_2",
-      "before": 1,
-      "after": 1
+      "before": 2,
+      "after": 2
     },
     {
       "group": "BladeFold_3",
-      "before": 1,
-      "after": 1
+      "before": 2,
+      "after": 2
     },
     {
       "group": "Spare mount",
@@ -94,8 +94,8 @@
     },
     {
       "group": "TailBoom1_L",
-      "before": 1,
-      "after": 1
+      "before": 2,
+      "after": 2
     },
     {
       "group": "TailBoom2_L",
@@ -103,19 +103,19 @@
       "after": 1
     },
     {
-      "group": "Tail_Stabilizer",
-      "before": 1,
+      "group": "Tail_Stabilizer_L",
+      "before": 2,
       "after": 1
     },
     {
       "group": "TailFin_L",
-      "before": 2,
-      "after": 2
+      "before": 5,
+      "after": 3
     },
     {
       "group": "TailBoom1_R",
-      "before": 1,
-      "after": 1
+      "before": 2,
+      "after": 2
     },
     {
       "group": "TailBoom2_R",
@@ -123,39 +123,54 @@
       "after": 1
     },
     {
+      "group": "Tail_Stabilizer_R",
+      "before": 2,
+      "after": 1
+    },
+    {
       "group": "TailFin_R",
+      "before": 5,
+      "after": 3
+    },
+    {
+      "group": "WingSeg1_L",
+      "before": 3,
+      "after": 2
+    },
+    {
+      "group": "WingSeg2_L",
+      "before": 3,
+      "after": 2
+    },
+    {
+      "group": "WingSeg3_L",
+      "before": 2,
+      "after": 1
+    },
+    {
+      "group": "WingTip_L",
       "before": 2,
       "after": 2
     },
     {
-      "group": "WingSeg1_L",
-      "before": 1,
-      "after": 1
-    },
-    {
-      "group": "WingSeg2_L",
-      "before": 1,
-      "after": 1
-    },
-    {
-      "group": "WingSeg3_L",
-      "before": 3,
-      "after": 3
-    },
-    {
       "group": "WingSeg1_R",
-      "before": 1,
-      "after": 1
+      "before": 3,
+      "after": 2
     },
     {
       "group": "WingSeg2_R",
-      "before": 1,
-      "after": 1
+      "before": 3,
+      "after": 2
     },
     {
       "group": "WingSeg3_R",
-      "before": 3,
-      "after": 3
+      "before": 2,
+      "after": 1
+    },
+    {
+      "group": "WingTip_R",
+      "before": 2,
+      "after": 2
     },
     {
       "group": "Spinner_FL",
@@ -202,16 +217,19 @@
     "BladeFold_3",
     "TailBoom1_L",
     "TailBoom2_L",
-    "Tail_Stabilizer",
+    "Tail_Stabilizer_L",
     "TailFin_L",
     "TailBoom1_R",
     "TailBoom2_R",
+    "Tail_Stabilizer_R",
     "TailFin_R",
     "WingSeg1_L",
     "WingSeg2_L",
     "WingSeg3_L",
+    "WingTip_L",
     "WingSeg1_R",
     "WingSeg2_R",
-    "WingSeg3_R"
+    "WingSeg3_R",
+    "WingTip_R"
   ]
 }

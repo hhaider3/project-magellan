@@ -79,7 +79,7 @@ test('the wings, tail and propeller deploy from inside the body and return exact
   rig.update(0); plane.update(0); scene.updateMatrixWorld(true);
   const car = size(), initial = [];
   scene.traverse(o => initial.push({ id: o.uuid, p: o.position.clone(), q: o.quaternion.clone(), s: o.scale.clone() }));
-  for (const part of ['WingSeg3_L', 'WingSeg3_R', 'TailFin_L', 'TailFin_R', 'Tail_Stabilizer', 'Propeller', 'BladeFold_1']) assert.ok(scene.getObjectByName(part));
+  for (const part of ['WingSeg3_L', 'WingSeg3_R', 'WingTip_L', 'WingTip_R', 'TailFin_L', 'TailFin_R', 'Tail_Stabilizer_L', 'Tail_Stabilizer_R', 'Propeller', 'BladeFold_1']) assert.ok(scene.getObjectByName(part));
   const wheel = scene.getObjectByName('WheelFold_FL').position.clone();
   plane.update(1); scene.updateMatrixWorld(true);
   const flying = size();
@@ -88,8 +88,19 @@ test('the wings, tail and propeller deploy from inside the body and return exact
   // The wheels stay down as landing gear; the propeller hub sits ahead of the bumper.
   assert.ok(scene.getObjectByName('WheelFold_FL').position.distanceTo(wheel) < 1e-6);
   assert.ok(scene.getObjectByName('Propeller').getWorldPosition(new Vector3()).z > 2.5);
-  const tip = new Box3().setFromObject(scene.getObjectByName('WingSeg3_L'));
+  // The outer panel lies flat (its winglet, a child, stands up).
+  const own = name => { const box = new Box3(); for (const o of scene.getObjectByName(name).children) if (o.isMesh) box.expandByObject(o); return box; };
+  const tip = own('WingSeg3_L');
   assert.ok(Math.abs(tip.max.y - tip.min.y) < .3, 'wing tip panel lies flat');
+  // An H tail: each fin stands on its boom, and the tailplane's halves reach
+  // from the booms to meet in the middle, overhanging neither.
+  for (const side of ['L', 'R']) {
+    const boom = own('TailBoom2_' + side), fin = new Box3().setFromObject(scene.getObjectByName('TailFin_' + side));
+    const half = new Box3().setFromObject(scene.getObjectByName('Tail_Stabilizer_' + side)), axis = boom.getCenter(new Vector3()).x;
+    assert.ok(fin.min.y > boom.min.y && fin.min.y < boom.max.y, `fin ${side} stands on its boom`);
+    assert.ok(Math.abs(Math.max(Math.abs(half.min.x), Math.abs(half.max.x)) - Math.abs(axis)) < .03, `tailplane ${side} ends at its boom`);
+    assert.ok(Math.min(Math.abs(half.min.x), Math.abs(half.max.x)) < .02, `tailplane ${side} meets the other half`);
+  }
   // The game spins the propeller; the clip must not overwrite its rotation.
   assert.ok(!animations.some(a => a.tracks.some(t => t.name.startsWith('Propeller.'))));
   plane.update(0); let i = 0;

@@ -35,6 +35,10 @@ def export_roadster(root, OUT, source_parts):
             bpy.context.view_layer.objects.active = parts[0]
             bpy.ops.object.join(); joined = bpy.context.object
             transform = joined.matrix_world.copy(); joined.parent = group; joined.matrix_world = transform
+            # Bake the batch into its group's frame. It would otherwise keep its
+            # first part's rotation, and a rotated box round the whole batch
+            # (three.js's quick bounds, which the garage frames by) balloons.
+            bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
             joined.name = group.name+'__'+material_name
         batching.append({'group': group.name, 'before': len(objects), 'after': len(buckets)})
     bpy.ops.object.select_all(action='DESELECT'); root.select_set(True)

@@ -334,12 +334,15 @@ function fly(car, input, world, dt, groundAt) {
 
 // The plane's extremities, in model coordinates (+x left wing, +y up, +z
 // nose; the model origin is at the wheels' contact plane). The wingtips move
-// out as the wings telescope.
+// out (and, with the wings' 4° of dihedral, up) as the wings telescope; the
+// tail is the fin tops and the tailplane's trailing edge.
 const PIVOT = 1; // the renderer rotates the model about (0, 1, 0)
+const DIHEDRAL = .07; // the wing rises 7 cm for each metre out from the body
+const wingAt = x => [x, 1.18 + (Math.abs(x) - 1) * DIHEDRAL, -.2];
 function extremities(car) {
   const span = 1 + 2.75 * smoothstep(0, 1, car.flight);
-  return [{ p: [span, 1.18, -.2], side: 1 }, { p: [-span, 1.18, -.2], side: -1 },
-    { p: [.92, 2.42, -4.3], tail: true }, { p: [-.92, 2.42, -4.3], tail: true }, { p: [0, 1.46, -4.4], tail: true }, { p: [0, .98, 2.9], nose: true }];
+  return [{ p: wingAt(span), side: 1 }, { p: wingAt(-span), side: -1 },
+    { p: [.9, 2.44, -4.3], tail: true }, { p: [-.9, 2.44, -4.3], tail: true }, { p: [0, 1.5, -4.62], tail: true }, { p: [0, .98, 2.95], nose: true }];
 }
 // Lowest clearance of the wings, tail and propeller over ground or water
 // (negative when buried). Exported for tests.
@@ -422,7 +425,7 @@ export function wingStrikes(car, obstacles, world) {
   let strikes = 0;
   for (const side of [1, -1]) { // +1 is the left wing (+x)
     const q = [car.qx, car.qy, car.qz, car.qw];
-    const root = worldPoint(car, q, [side, 1.18, -.2]), tip = worldPoint(car, q, [side * span, 1.18, -.2]);
+    const root = worldPoint(car, q, wingAt(side)), tip = worldPoint(car, q, wingAt(side * span));
     const dx = tip[0] - root[0], dz = tip[2] - root[2], length2 = dx * dx + dz * dz || 1e-9;
     for (const o of obstacles) {
       const reach = (WING_REACH[o.type] ?? 0) * (o.size || 1);

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { createTransformation, thrusterNozzles } from './vehicle-model.mjs?v=garage-1';
+import { createTransformation, thrusterNozzles } from './vehicle-model.mjs?v=tail-1';
 import { createThrusterPlumes } from './thrusters.mjs?v=roadster-1';
 
 // The garage's showroom: a car on a turntable in a dark studio, drawn by the
