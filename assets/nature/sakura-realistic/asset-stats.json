@@ -1,0 +1,12 @@
+{
+  "total_triangles": 9996,
+  "wood_triangles": 4766,
+  "canopy_triangles": 4408,
+  "foliage_cards": 551,
+  "falling_petals": 72,
+  "falling_petal_triangles": 432,
+  "ground_petal_triangles": 390,
+  "animation_seconds": 8,
+  "fps": 30,
+  "source": "Original generated geometry; no existing project tree inspected."
+}

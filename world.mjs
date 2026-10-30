@@ -16,7 +16,9 @@ export const FIXED_DT = 1 / 120;
 export const FEATURE_SPACING = CHUNK * 3;
 export const SPEED_LIMIT = 92; // Downhill cap; level-road cruising reaches ~300 km/h.
 // Scenery models the world picks by place, in the nature library's order.
-export const VARIANT = { tree: { snow: 2, stunted: 3, dead: 4 }, bush: { meadow: 0, desert: 1, juniper: 2 }, outcrop: { granite: 0, sandstone: 1, slab: 2 } };
+// Cherries stand twice a pine's height of trunk and crown, along the shores.
+export const SAKURA_HEIGHT = 10.2;
+export const VARIANT = { tree: { snow: 2, stunted: 3, dead: 4, sakura: 5 }, bush: { meadow: 0, desert: 1, juniper: 2 }, outcrop: { granite: 0, sandstone: 1, slab: 2 } };
 // Each terrain grid square is split along the diagonal whose two corners are
 // nearer in height (a–d or b–c, for corners a (0,0), b (1,0), c (0,1),
 // d (1,1)), so ridges, gullies and cliff rims follow triangle edges instead
@@ -260,6 +262,23 @@ export function createWorld(seed) {
     return smoothstep(.6, 3, hollow(x, z)) * smoothstep(.12, .3, slope) * (1 - smoothstep(.55, .8, slope));
   }
   function woodlandAt(x, z) { return noise(x * .0031 - 13, z * .0031 + 27, seed + 87); }
+  // Which stretches of shore have cherries (they grow only along the water).
+  function blossomAt(x, z) { return noise(x * .0055 + 51, z * .0055 - 8, seed + 141); }
+  // The level of the water a bank overlooks: land a little above a lake's,
+  // sea's or river's surface, within about 20 m of its edge (null elsewhere).
+  function shoreAt(x, z, y) {
+    const lake = lakes.lakeAt(x, z);
+    if (lake) {
+      const out = (lakeRadius(lake, x, z) - 1) * Math.min(lake.rx, lake.rz);
+      if (out > 1 && out < 22 && y - lake.level > .3 && y - lake.level < 5) return lake.level;
+    }
+    const river = rivers.riverAt(x, z);
+    if (river) {
+      const bank = river.d - river.width / 2;
+      if (bank > 1 && bank < 16 && y - river.level > .3 && y - river.level < 5) return river.level;
+    }
+    return null;
+  }
   // Broad, continuous dry regions, never in the mountains; elevation keeps
   // sand off high ground.
   function desertAt(x, z, elevation = height(x, z)) {
@@ -321,6 +340,8 @@ export function createWorld(seed) {
         else if (y < SNOW_LINE - 10 && chance < .5) add({ id, type: 'bush', variant: VARIANT.bush.juniper, x, z, y, size, turn, r: 0, h: .6 * size });
         continue;
       }
+      // Cherries line stretches of lowland shore: lakes, seas and rivers.
+      const shore = desert < .05 && mountain < .2 && y < TREELINE - 90 && blossomAt(x, z) > .5 ? shoreAt(x, z, y) : null, grove = shore !== null;
       if (chance < .1 && mountain > .25) add({ id, type: 'boulder', x, z, y, size: size * 2.3, turn, r: size * 1.5, h: size * 2.6 });
       else if (chance < .22) add({ id, type: 'rock', x, z, y, size, turn, r: 0, h: .65 * size });
       else if (desert > .55) {
@@ -328,14 +349,16 @@ export function createWorld(seed) {
         else if (chance < .76) add({ id, type: 'bush', variant: VARIANT.bush.desert, x, z, y, size, turn, r: 0, h: .9 * size });
         else add({ id, type: 'rock', x, z, y, size: size * .7, turn, r: 0, h: .5 * size });
       }
-      else if (chance < mix(.46, .95, smoothstep(.3, .75, woodland)) * (1 - alpine * 1.6) && mountain < .95) {
+      else if (chance < (grove ? .8 : mix(.46, .95, smoothstep(.3, .75, woodland)) * (1 - alpine * 1.6)) && mountain < .95) {
         // Snow-dusted pines on the cold upper slopes, wind-stunted ones at the
         // treeline, and dead snags where the land dries out.
         const upper = smoothstep(TREELINE - 80, TREELINE - 40, y);
-        const variant = y > TREELINE - 35 ? VARIANT.tree.stunted : pick < upper * .6 ? VARIANT.tree.snow
+        if (grove && list.some(p => p.type === 'tree' && Math.hypot(p.x - x, p.z - z) < 13)) continue; // room for the broad crowns
+        const variant = grove ? VARIANT.tree.sakura : y > TREELINE - 35 ? VARIANT.tree.stunted : pick < upper * .6 ? VARIANT.tree.snow
           : (desert > .12 && pick < .35) || pick < .015 ? VARIANT.tree.dead : undefined;
-        const height = variant === VARIANT.tree.stunted ? 3.4 : variant === VARIANT.tree.dead ? 5.8 : 6.8;
-        add({ id, type: 'tree', variant, x, z, y, size, turn, r: .24 * size, h: height * size });
+        const height = variant === VARIANT.tree.stunted ? 3.4 : variant === VARIANT.tree.dead ? 5.8 : variant === VARIANT.tree.sakura ? SAKURA_HEIGHT : 6.8;
+        // A cherry keeps its water's level and the slope it stands on, where its petals land.
+        add({ id, type: 'tree', variant, x, z, y, size, turn, r: (variant === VARIANT.tree.sakura ? .6 : .24) * size, h: height * size, ...(grove ? { water: shore, gx: g.x, gz: g.z } : {}) });
       } else add({ id, type: 'bush', variant: desert > .3 ? VARIANT.bush.desert : y > TREELINE - 60 ? VARIANT.bush.juniper : undefined, x, z, y, size, turn, r: 0, h: size });
     }
     for (const f of featuresNear(cx * CHUNK + CHUNK / 2, cz * CHUNK + CHUNK / 2, 100)) {
@@ -344,7 +367,7 @@ export function createWorld(seed) {
     }
     return list.filter(p => !brokenProps.has(p.id));
   }
-  return { seed, height, surface, groundSurface, gradient, hollow, footOfSlope, mountainAt, woodlandAt, desertAt, roadAt, roadsNear: roads.roadsNear, prepareRoads: (x, z, r, ms) => rivers.prepare(x, z, r + 3 * ROAD_CELL, ms / 2) && roads.prepare(x, z, r, ms / 2), riversNear: rivers.riversNear, riverAt: rivers.riverAt, roadMap: roads.roadMap, alongRoad: roads.along, junctionAt: roads.junctionAt, roadEnds: roads.endsOf, startHeading: starterRoad ? roads.along(starterRoad, 0).heading : 0, props, featuresNear, rampLift, rampAt, reserved, starterRamp, twistRamp, waterAt, lakeAt: lakes.lakeAt, lakesNear: lakes.near, seasNear: lakes.seasNear, starterLake: lakes.starter, starterSea: lakes.starterSea, brokenProps, breakProp, drainBreakEvents: () => breakEvents.splice(0) };
+  return { seed, height, surface, groundSurface, gradient, hollow, footOfSlope, mountainAt, woodlandAt, blossomAt, shoreAt, desertAt, roadAt, roadsNear: roads.roadsNear, prepareRoads: (x, z, r, ms) => rivers.prepare(x, z, r + 3 * ROAD_CELL, ms / 2) && roads.prepare(x, z, r, ms / 2), riversNear: rivers.riversNear, riverAt: rivers.riverAt, roadMap: roads.roadMap, alongRoad: roads.along, junctionAt: roads.junctionAt, roadEnds: roads.endsOf, startHeading: starterRoad ? roads.along(starterRoad, 0).heading : 0, props, featuresNear, rampLift, rampAt, reserved, starterRamp, twistRamp, waterAt, lakeAt: lakes.lakeAt, lakesNear: lakes.near, seasNear: lakes.seasNear, starterLake: lakes.starter, starterSea: lakes.starterSea, brokenProps, breakProp, drainBreakEvents: () => breakEvents.splice(0) };
 }
 
 export function featureLocal(feature, x, z) {

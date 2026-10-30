@@ -79,6 +79,13 @@
       "parts": 6
     },
     {
+      "name": "Sakura_Blossom",
+      "kind": "tree",
+      "variant": 5,
+      "triangles": 9140,
+      "parts": 6
+    },
+    {
       "name": "Bush_Meadow",
       "kind": "bush",
       "variant": 0,

@@ -1,5 +1,5 @@
 """Original Blender scenery for Endless Drive: pines (alpine, windswept, snow-dusted,
-stunted at the treeline) and a dead tree, two cacti, rocks and boulders, rock
+stunted at the treeline), a dead tree and a flowering cherry (sakura), two cacti, rocks and boulders, rock
 outcrops and a scree field for the mountains and mesas, and three bushes.
 
 Blender --background --factory-startup --python scripts/build-nature.py
@@ -208,10 +208,10 @@ for variant,name in enumerate(('Boulder_Granite','Boulder_Sandstone')):
 
 # --- Mountains, treeline and drylands -------------------------------------
 
-def blob(name,center,radii,seed,color,section=0):
+def blob(name,center,radii,seed,color,section=0,subdivisions=1):
     """A lumpy closed blob (a jittered icosphere): foliage clumps and shrubs."""
     rng=random.Random(seed)
-    bm=bmesh.new(); bmesh.ops.create_icosphere(bm,subdivisions=1,radius=1.0); bm.verts.index_update()
+    bm=bmesh.new(); bmesh.ops.create_icosphere(bm,subdivisions=subdivisions,radius=1.0); bm.verts.index_update()
     verts=[]
     for v in bm.verts:
         j=rng.uniform(.8,1.15)
@@ -305,6 +305,84 @@ for variant,(name,seed,height,tiers,lean,extent,snow,flagging,loc) in enumerate(
         ('Pine_Stunted',940,3.4,4,.55,1.3,.25,.85,(-3.2,0,9.4))),start=2):
     conifer(name,variant,loc,seed,height,tiers,lean,extent,snow,flagging)
 dead_tree('Tree_Dead',4,(-.6,0,9.1),960)
+
+def sakura(name,variant,loc,seed):
+    """A flowering cherry, detailed because it grows only in the odd grove: a
+    gnarled, dark trunk that forks low into spreading limbs, each branching
+    twice more out to the twigs, and pale pink blossom in many clusters along
+    the twigs, lighter on top and deeper pink in the shade beneath, with gaps
+    that show the branches. The trunk is sections 0-1, the limbs 2, and the
+    crown splits into three sectors (3-5), so a hit breaks it apart like the
+    pines."""
+    asset(name,loc,'tree',variant); rng=random.Random(seed)
+    bark=(.07,.047,.045)
+    def bark_color(v,f):
+        # Dark bark with pale horizontal bands of lenticels.
+        shade=(.8+(f%5)*.06)*(1.5 if int(v[1]*6)%3==0 else 1)
+        return tuple(x*shade for x in bark)
+    def sector(x,z): return 3+int(((math.atan2(z,x)+TAU)%TAU)/(TAU/3))%3
+    def heading(a,e): return Vector((math.cos(e)*math.cos(a),math.sin(e),math.cos(e)*math.sin(a)))
+    def grow(start,direction,length,steps,wobble):
+        pts=[Vector(start)]; d=direction.normalized()
+        for s in range(steps):
+            d=(d+Vector((rng.uniform(-wobble,wobble),rng.uniform(-wobble,wobble)*.5,rng.uniform(-wobble,wobble)))).normalized()
+            pts.append(pts[-1]+d*length/steps)
+        return pts
+    def taper(r0,r1,count): return [r0+(r1-r0)*i/(count-1) for i in range(count)]
+    # A short, leaning, slightly twisted trunk on a flared foot.
+    trunk=[Vector(v) for v in ((0,0,0),(.04,.5,.02),(.09,1.0,.06),(.12,1.48,.03),(.17,1.92,.07))]
+    tube('Bark / trunk section 0',[tuple(v) for v in trunk[:3]],[.46,.34,.31],bark_color,0,n=12,ribs=.07)
+    tube('Bark / trunk section 1',[tuple(v) for v in trunk[2:]],[.31,.29,.27],bark_color,1,n=12,ribs=.07)
+    for i in range(6):
+        a=i*TAU/6+.4+rng.uniform(-.2,.2); reach=rng.uniform(.6,.8)
+        tube('Root flare',[(0,.45,0),(.22*math.cos(a),.2,.22*math.sin(a)),(.45*math.cos(a),.06,.45*math.sin(a)),(reach*math.cos(a),.0,reach*math.sin(a))],[.14,.12,.07,.02],bark_color,0,n=6)
+    # Six scaffold limbs spread around the trunk and one climbs through the
+    # middle; three branches on each (two in the middle), two twigs on each
+    # branch: forty twig tips carry the blossom out to an even umbrella.
+    fork=trunk[-1]; twigs=[]; sprays=[]
+    for i in range(7):
+        middle=i==6
+        a=i*TAU/6+rng.uniform(-.2,.2)+.2; e=1.15 if middle else rng.uniform(.62,.85)
+        # Limbs leave the trunk at staggered heights, not from one point.
+        start=fork if middle else trunk[3].lerp(fork,rng.uniform(.1,.9))+heading(a,0)*.12
+        limb=grow(start,heading(a,e),1.6 if middle else rng.uniform(1.9,2.3),3,.16)
+        tube('Spreading limb',[tuple(v) for v in limb],taper(.2 if middle else .19,.09,4),bark_color,2,n=8)
+        for j in ((0,2) if middle else range(3)):
+            b=a+(j-1)*rng.uniform(.5,.7)+(math.pi*j/2 if middle else 0); f=rng.uniform(.5,.75) if middle else rng.uniform(.15,.45)
+            start=limb[-1] if j!=1 else limb[2]
+            branch=grow(start,heading(b,f),rng.uniform(1.1,1.45),2,.2)
+            tube('Branch',[tuple(v) for v in branch],taper(.085,.035,3),bark_color,sector(branch[-1].x,branch[-1].z),n=6)
+            sprays.append(branch[1])
+            for k in (-1,1):
+                c=b+k*rng.uniform(.35,.6)
+                twig=grow(branch[-1],heading(c,rng.uniform(.25,.65)),rng.uniform(.55,.85),1,.1)
+                tube('Twig',[tuple(v) for v in twig],[.03,.01],bark_color,sector(twig[-1].x,twig[-1].z),n=4)
+                twigs.append((twig[-1],twig[0]))
+    deep=(.82,.3,.46); pale=(1,.56,.69); white=(1,.84,.9)
+    def blossom(center,radii,tone,blush):
+        def color(v,f):
+            up=max(0,min(1,(v[1]-center[1])/radii[1]*.5+.5))
+            col=mix(deep,pale,up*.82+.1+(f%4)*.035)
+            if f%6==0: col=mix(col,white,.5) # open flowers catching the light
+            col=mix(col,white,blush*.6)
+            return tuple(min(1,c*tone) for c in col)
+        return color
+    def cluster(label,c,r,flat,sub):
+        radii=(r,r*flat,r)
+        blob(label,tuple(c),radii,seed+cluster.n,blossom(c,radii,rng.uniform(.9,1.05),rng.uniform(0,.3)),sector(c.x,c.z),subdivisions=sub)
+        cluster.n+=1
+    cluster.n=0
+    # Each twig tip carries a big cluster with a smaller one back along the
+    # twig; small sprays hang under the branches to break the lower edge.
+    for tip,base in twigs:
+        cluster('Blossom cluster',tip+Vector((0,.08,0)),rng.uniform(.55,.7),.72,2)
+        back=base-tip; side=Vector((-back.z,0,back.x)).normalized()*rng.choice((-1,1))*rng.uniform(.2,.4)
+        cluster('Blossom cluster',tip+back*rng.uniform(.45,.8)+side+Vector((0,rng.uniform(-.05,.18),0)),rng.uniform(.38,.5),.78,2)
+    for at in sprays:
+        for k in range(2):
+            cluster('Blossom spray',at+Vector((rng.uniform(-.4,.4),-rng.uniform(.15,.4),rng.uniform(-.4,.4))),rng.uniform(.24,.34),.85,1)
+
+sakura('Sakura_Blossom',5,(12.4,0,3.4),1310)
 
 # Bushes: a meadow shrub, dry desert scrub and a low alpine juniper cushion.
 asset('Bush_Meadow',(2.6,0,9.4),'bush',0); rng=random.Random(970)

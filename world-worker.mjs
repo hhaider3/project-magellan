@@ -1,10 +1,10 @@
-import { createWorld, CHUNK, GRID } from './world.mjs?v=pedals-1';
-import { createTerrain, ULTRA_GRID } from './terrain.mjs?v=pedals-1';
-import { buildGrass } from './grass-data.mjs?v=pedals-1';
+import { createWorld, CHUNK, GRID } from './world.mjs?v=sakura-shore-1';
+import { createTerrain, ULTRA_GRID } from './terrain.mjs?v=sakura-shore-1';
+import { buildGrass } from './grass-data.mjs?v=sakura-shore-1';
 import { buildWaterData, buildDistantWater, buildRiverWater } from './water-data.mjs?v=rivers-1';
 import { buildBridges } from './bridge-data.mjs?v=classes-2';
-import { buildRoadside } from './roadside-data.mjs?v=pedals-1';
-import { FAR_SIZE, ULTRA_SIZE } from './streaming-layout.mjs?v=pedals-1';
+import { buildRoadside } from './roadside-data.mjs?v=sakura-shore-1';
+import { FAR_SIZE, ULTRA_SIZE } from './streaming-layout.mjs?v=sakura-shore-1';
 let world, terrain;
 self.onmessage = ({ data: job }) => {
   try {

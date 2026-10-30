@@ -1,38 +1,39 @@
-import { createTerrain } from './terrain.mjs?v=pedals-1';
+import { createTerrain } from './terrain.mjs?v=sakura-shore-1';
 import { createWater } from './water.mjs?v=rivers-1';
-import { FAR_SIZE, FAR_VIEW, NEAR_VIEW, ULTRA_SIZE, ULTRA_VIEW, ULTRA_BLEND_START, ULTRA_BLEND_END, farIndices, farCoverage, ultraIndices, ultraCoverage } from './streaming-layout.mjs?v=pedals-1';
+import { FAR_SIZE, FAR_VIEW, NEAR_VIEW, ULTRA_SIZE, ULTRA_VIEW, ULTRA_BLEND_START, ULTRA_BLEND_END, farIndices, farCoverage, ultraIndices, ultraCoverage } from './streaming-layout.mjs?v=sakura-shore-1';
 import { loadVehicleModel, VEHICLE_NAMES } from './vehicle-model.mjs?v=roadster-5';
 import { createShowroom } from './garage.mjs?v=roadster-5';
 import { VEHICLE_ORDER, VEHICLE_SPECS, PREVIEWS } from './vehicle-specs.mjs?v=garage-1';
 import { createProfiler } from './profiling.mjs?v=timing-1';
-import { createDebris } from './debris.mjs?v=pedals-1';
+import { createDebris } from './debris.mjs?v=sakura-shore-1';
 import { createDust } from './dust.mjs?v=roadster-1';
 import { createThrusterPlumes, createVapour } from './thrusters.mjs?v=roadster-1';
 import { ROADSTER, hoverWorld } from './roadster-motion.mjs?v=steer-1';
 import { createVehiclePresentation } from './vehicle-presentation.mjs?v=roadster-1';
 import { followTarget, followValue } from './camera-motion.mjs?v=grass-1';
-import { createTreeBreakage } from './tree-breakage.mjs?v=nature-1';
-import { loadNatureLibrary } from './nature-models.mjs?v=nature-2';
+import { createTreeBreakage } from './tree-breakage.mjs?v=sakura-fast-1';
+import { loadNatureLibrary } from './nature-models.mjs?v=sakura-push-1';
 import { createBreakAudio } from './break-audio.mjs?v=sound-2';
 import { createVehicleAudio } from './vehicle-audio.mjs?v=pedals-1';
 import { createMusic, volumeGain } from './music.mjs?v=music-1';
 import { installSunShadowFade, separateVehicleShadow } from './shadow-fade.mjs?v=shadow-2';
-import { createGrass } from './grass.mjs?v=pedals-1';
+import { createGrass } from './grass.mjs?v=sakura-shore-1';
 import { createPerfMeter, createGpuTimer } from './perf-meter.mjs?v=perf-2';
 import { QUALITY_PRESETS, qualityLevels, presetLevel, autoStartLevel, createAutoQuality } from './quality.mjs?v=blur-1';
 import { controlAxis, steerAxis } from './controls.mjs?v=slider-1';
 import { readTilt, tiltAxes } from './tilt.mjs?v=tilt-1';
 import { toggleFlight, flightAxes, TAKEOFF_SPEED, STALL_SPEED } from './flight-motion.mjs?v=pedals-1';
-import { createClouds } from './clouds.mjs?v=pedals-1';
-import { weatherAt } from './weather.mjs?v=pedals-1';
+import { createClouds } from './clouds.mjs?v=sakura-shore-1';
+import { weatherAt } from './weather.mjs?v=sakura-shore-1';
 import { createSky } from './sky.mjs?v=pedals-1';
 import { daylight, advanceClock, clockLabel, startHour } from './daylight.mjs?v=day-3';
 import { createWeatherEffects, toneMappedHorizon } from './weather-effects.mjs?v=pedals-1';
+import { createPetals, TREES as PETAL_TREES } from './petals.mjs?v=sakura-shore-1';
 import * as THREE from 'three';
-import { CHUNK, GRID, ROAD_HALF, FIXED_DT, featurePoint, clamp, mix, smoothstep, hash, createWorld, createVehicle, stepVehicle, recoverVehicle, groundAt } from './world.mjs?v=pedals-1';
+import { CHUNK, GRID, ROAD_HALF, FIXED_DT, featurePoint, clamp, mix, smoothstep, hash, createWorld, createVehicle, stepVehicle, recoverVehicle, groundAt, VARIANT, SAKURA_HEIGHT } from './world.mjs?v=sakura-shore-1';
 import { SNOW_LINE } from './landforms.mjs?v=classes-2';
 import { ROAD_MAP } from './roads.mjs?v=pedals-1';
-import { buildLandmark, cloneOwnedGeometry, landmarkStandinSteps, landmarkSwapDistance } from './scenery.mjs?v=pedals-1';
+import { buildLandmark, cloneOwnedGeometry, landmarkStandinSteps, landmarkSwapDistance } from './scenery.mjs?v=sakura-shore-1';
 import { createMotionBlur } from './motion-blur.mjs?v=blur-2';
 
 const $ = id => document.getElementById(id);
@@ -42,7 +43,7 @@ const phone = coarse && Math.min(screen.width, screen.height) < 600;
 const landscape = matchMedia('(orientation: landscape)');
 const upright = () => phone && !landscape.matches;
 const reducedMotion = matchMedia('(prefers-reduced-motion:reduce)').matches;
-const testMode = ['drive', 'ramp', 'twist', 'smash', 'tree-smash', 'browser', 'water', 'boat', 'fly', 'sea'].includes(new URLSearchParams(location.search).get('test'));
+const testMode = ['drive', 'ramp', 'twist', 'smash', 'tree-smash', 'sakura-smash', 'browser', 'water', 'boat', 'fly', 'sea'].includes(new URLSearchParams(location.search).get('test'));
 const profiler = createProfiler(testMode);
 const bootStarted = performance.now();
 if (coarse) document.body.classList.add('touch');
@@ -87,6 +88,19 @@ if (new URLSearchParams(location.search).get('test') === 'sea') {
 if (new URLSearchParams(location.search).get('test') === 'tree-smash') {
   const prop = world.props(-1, -1).find(p => p.type === 'tree');
   if (prop) vehicle = createVehicle(world, prop.x, prop.z - 32, 0, vehicleKind);
+}
+// A real-car impact check: the cherry nearest the start (they grow along the
+// shores), approached from 32 m up its bank, away from the water.
+const sakuraImpactTarget = new URLSearchParams(location.search).get('test') === 'sakura-smash' ? (() => {
+  let best = null;
+  for (let cx = -6; cx <= 6; cx++) for (let cz = -6; cz <= 6; cz++) for (const p of world.props(cx, cz)) {
+    if (p.type === 'tree' && p.variant === VARIANT.tree.sakura && (!best || Math.hypot(p.x, p.z) < Math.hypot(best.x, best.z))) best = p;
+  }
+  return best;
+})() : null;
+if (sakuraImpactTarget) {
+  const { x, z, gx = 0, gz = 0 } = sakuraImpactTarget, up = Math.hypot(gx, gz) || 1;
+  vehicle = createVehicle(world, x + gx / up * 32, z + gz / up * 32, Math.atan2(-gx, -gz), vehicleKind);
 }
 let contextLost = false; // until the browser restores the graphics context
 let running = false, started = false, cameraMode = 0, muted = true, lightsOn = false, lightsChosen = false, bestDistance = 0;
@@ -250,6 +264,19 @@ const clouds = createClouds(scene, seed), cloudBanks = scene.getObjectByName('Cl
 // the fog and dims the sun. ?weather=rain|snow|sandstorm|clear forces one.
 const weatherFx = createWeatherEffects(scene);
 weatherFx.setDensity([.35, .6, .8, 1][qualityLevel]);
+// Petals fall from the cherry trees nearest the camera.
+const petals = createPetals(scene);
+petals.setDensity([.35, .6, .8, 1][qualityLevel]);
+let petalCheck = 0;
+function blossomNearby() {
+  const cx = Math.floor(camera.position.x / CHUNK), cz = Math.floor(camera.position.z / CHUNK), list = [];
+  for (let dx = -2; dx <= 2; dx++) for (let dz = -2; dz <= 2; dz++) for (const p of chunks.get(`${cx + dx},${cz + dz}`)?.props ?? []) {
+    if (p.type !== 'tree' || p.variant !== VARIANT.tree.sakura || world.brokenProps.has(p.id)) continue;
+    const d = Math.hypot(p.x - camera.position.x, p.z - camera.position.z);
+    if (d < 160) list.push({ id: p.id, x: p.x, y: p.y - .08, z: p.z, height: p.size * SAKURA_HEIGHT, gx: p.gx ?? 0, gz: p.gz ?? 0, water: p.water, d });
+  }
+  return list.sort((a, b) => a.d - b.d).slice(0, PETAL_TREES);
+}
 const forcedWeather = ['clear', 'rain', 'snow', 'sandstorm'].includes(new URLSearchParams(location.search).get('weather')) ? new URLSearchParams(location.search).get('weather') : null;
 const SKY = {
   clear: { top: new THREE.Color('#729eaf'), bottom: new THREE.Color('#b9cdd0'), cloud: new THREE.Color('#dde5dd') },
@@ -339,7 +366,7 @@ function updateWeather(dt) {
   hemisphere.intensity = light.hemiIntensity * (1 + .12 * cover) * (1 + .1 * sand);
   surfaceLight.setRGB(...light.surfaceLight).multiplyScalar((1 - .25 * cover) * (1 - .3 * sand));
   waterSystem.setSky(skyTop, skyColor, (1 - .85 * veiled) * Math.min(1, light.keyIntensity / 2.5 + light.night * .3), sunDirection, sun.color, skyPalette.cloudLit, surfaceLight);
-  weatherFx.setLight(surfaceLight); dust.setLight(surfaceLight); vapour.setLight(surfaceLight);
+  weatherFx.setLight(surfaceLight); petals.setLight(surfaceLight); dust.setLight(surfaceLight); vapour.setLight(surfaceLight);
   dayLight = light;
   // Rain and snow drift with a little wind, relative to the moving camera.
   if (step > 0) weather.cameraVelocity.subVectors(camera.position, weather.lastCamera).divideScalar(step);
@@ -350,6 +377,8 @@ function updateWeather(dt) {
   weather.gust.set(Math.sin(weather.clock * .13) * 1.5 + 1.2, 0, Math.cos(weather.clock * .09) * 1.2 + .6).multiplyScalar((1 + snow) * (1 + gale * (8 + 3 * Math.sin(weather.clock * .7) * Math.sin(weather.clock * .23))));
   weatherFx.setSandColor(SAND_GRAIN);
   weatherFx.update({ rainAmount: rain, snowAmount: snow, sandAmount: smoothstep(0, .85, weather.sand) * (1 - smoothstep(140, 420, above)), cameraVelocity: weather.cameraVelocity, gust: weather.gust, pixels: renderer.domElement.height, fov: camera.fov }, step);
+  if ((petalCheck -= step) <= 0 || !started) { petalCheck = .5; petals.setTrees(blossomNearby()); }
+  petals.update({ pixels: renderer.domElement.height, fov: camera.fov }, step);
   return cover;
 }
 
@@ -564,7 +593,8 @@ roadsideMaterial.userData.compile = shader => {
 };
 let nature = null, natureError = null;
 loadNatureLibrary().then(library => {
-  nature = library; standinLooks = natureLooks(library); buildPendingStandins();
+  nature = library; standinLooks = natureLooks(library);
+  standinLooks.blossom = bakeBlossomStandin(library.variants.tree[VARIANT.tree.sakura]); buildPendingStandins();
   treeBreakage = createTreeBreakage(scene, nature.treeSources);
 }).catch(error => {
   natureError = error.message;
@@ -648,7 +678,7 @@ function buildChunk({ cx, cz, ground: groundData, roadMap, roadInfo, river, brid
   const ground = new THREE.Mesh(geometryFromData(groundData), terrainSurface(roadMap, CHUNK, roadInfo));
   ground.geometry.userData.owned = true;
   ground.receiveShadow = true; group.add(ground);
-  function instances(type, geometry, mat, variant) {
+  function instances(type, geometry, mat, variant, countAsProp = true) {
     const list = props.filter(p => p.type === type && (variant === undefined || nature.variantFor(p) === variant)); if (!list.length) return;
     const mesh = new THREE.InstancedMesh(geometry, mat, list.length);
     list.forEach((p, i) => {
@@ -656,10 +686,12 @@ function buildChunk({ cx, cz, ground: groundData, roadMap, roadInfo, river, brid
       if (p.id) { if (!propInstances.has(p.id)) propInstances.set(p.id, []); propInstances.get(p.id).push({ mesh, index: i }); }
     });
     mesh.userData.swap = Float32Array.from(list, swapDistance);
-    mesh.castShadow = true; mesh.receiveShadow = true; mesh.userData.natureKind = variant === undefined ? null : type; group.add(mesh);
+    mesh.castShadow = true; mesh.receiveShadow = true; mesh.userData.natureKind = variant === undefined || !countAsProp ? null : type; group.add(mesh);
   }
   for (const [kind, variants] of Object.entries(nature.variants)) {
-    variants.forEach(({ geometry, material }, variant) => instances(kind, geometry, material, variant));
+    variants.forEach((model, variant) => {
+      (model.parts ?? [model]).forEach(({ geometry, material }, part) => instances(kind, geometry, material, variant, part === 0));
+    });
   }
   if (roadside?.mesh) {
     const geometry = new THREE.BufferGeometry();
@@ -758,6 +790,9 @@ function processBreakage() {
     if (standin) { standin.mesh.getMatrixAt(standin.index, matrix); matrix.scale(scaleVec.set(0, 0, 0)); standin.mesh.setMatrixAt(standin.index, matrix); standin.mesh.instanceMatrix.needsUpdate = true; }
     debris.burst(prop);
     if (prop.type === 'tree') treeBreakage.burst({ ...prop, variant: nature.variantFor(prop) });
+    if (prop.type === 'tree' && prop.variant === VARIANT.tree.sakura) {
+      petals.setTrees(blossomNearby()); petalCheck = .5;
+    }
     if (!muted && audio) { audio.breaks.play(prop.type, Math.hypot(prop.vx, prop.vz), panAt(prop.x, prop.z)); audio.music.dip(prop.type === 'boulder' || prop.type === 'tree' ? .45 : .25); }
   }
 }
@@ -792,6 +827,19 @@ const standinShapes = (() => {
     cactus: merge([new THREE.CylinderGeometry(.13, .15, 1, 7).translate(0, .5, 0),
       new THREE.CylinderGeometry(.06, .06, .3, 5).rotateZ(Math.PI / 2).translate(-.24, .38, 0), new THREE.CylinderGeometry(.09, .09, .42, 6).translate(-.38, .57, 0),
       new THREE.CylinderGeometry(.06, .06, .3, 5).rotateZ(Math.PI / 2).translate(.24, .5, 0), new THREE.CylinderGeometry(.09, .09, .36, 6).translate(.38, .66, 0)]),
+    // The cherry: two crossed cards showing a picture of the real tree, each
+    // face lit as if it faced the sky, so the crown reads as foliage.
+    blossom: (() => {
+      const position = [], uv = [];
+      for (const [ax, az] of [[1, 0], [0, 1]]) for (const quad of [[[0, 0], [1, 0], [1, 1], [0, 0], [1, 1], [0, 1]], [[0, 0], [0, 1], [1, 1], [0, 0], [1, 1], [1, 0]]]) {
+        for (const [u, v] of quad) { position.push((u - .5) * ax, v, (u - .5) * az); uv.push(u, v); }
+      }
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute('position', new THREE.Float32BufferAttribute(position, 3));
+      geometry.setAttribute('normal', new THREE.Float32BufferAttribute(position.map((_, i) => i % 3 === 1 ? 1 : 0), 3));
+      geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+      return geometry;
+    })(),
     rock: merge([new THREE.IcosahedronGeometry(.5, 0).scale(1, 1, 1).translate(0, .5, 0)]),
     boulder: merge([new THREE.IcosahedronGeometry(.5, 1).translate(0, .5, 0)]),
     outcrop: merge([new THREE.IcosahedronGeometry(.5, 1).translate(0, .5, 0)]),
@@ -802,7 +850,8 @@ const standinShapes = (() => {
 // the foliage's), so a stand-in matches the model it replaces.
 function natureLooks(library) {
   const looks = {};
-  for (const type of STANDIN_TYPES) looks[type] = (library.variants[type] ?? []).map(({ geometry }) => {
+  for (const type of STANDIN_TYPES) looks[type] = (library.variants[type] ?? []).map(({ geometry, bounds, standinColor }) => {
+    if (bounds) return { min: bounds.min.clone(), size: bounds.getSize(new THREE.Vector3()), color: standinColor.clone() };
     geometry.computeBoundingBox();
     const box = geometry.boundingBox, colors = geometry.getAttribute('color'), positions = geometry.getAttribute('position'), sum = [0, 0, 0];
     const floor = type === 'tree' ? box.min.y + (box.max.y - box.min.y) * .3 : -Infinity;
@@ -827,19 +876,86 @@ standinMaterial.onBeforeCompile = shader => {
     gl_Position = d > swapAt ? projectionMatrix * mvPosition : vec4(2.0, 2.0, 2.0, 1.0);`);
 };
 standinMaterial.customProgramCacheKey = () => 'standin-v1';
+// Far cherries show the real tree: a picture of it, drawn once at load, on
+// crossed cards. (A round stand-in read as a pink bubble.) The picture keeps
+// the crown's own light and shade: drawn side on under midday light, then
+// divided by what a white, sky-facing card gets under the same light, since
+// the cards themselves are lit as if they faced the sky. Lit at a quarter of
+// the strength, so nothing clips in an ordinary 8-bit picture. It's drawn
+// about as small as the tree looks where the stand-ins take over (260–340 m),
+// so its blossom thins out there just as the real crown's does: only a
+// sixth of the blossom texture is opaque, and from that far its smaller
+// mipmaps fall under the cut-off, leaving dark branches flecked with white.
+const blossomStandinMaterial = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: .94, alphaTest: .5 });
+blossomStandinMaterial.onBeforeCompile = standinMaterial.onBeforeCompile;
+blossomStandinMaterial.customProgramCacheKey = () => 'standin-blossom-v2';
+function bakeBlossomStandin({ parts, bounds }) {
+  const reach = Math.max(-bounds.min.x, bounds.max.x, -bounds.min.z, bounds.max.z), height = bounds.max.y - bounds.min.y, w = 64, h = 48;
+  const target = new THREE.WebGLRenderTarget(w, h), light = [new THREE.HemisphereLight('#cfe3ff', '#5d6a3a', 1.1 / 4), new THREE.DirectionalLight('#fff3dc', 3.2 / 4)];
+  light[1].position.set(-.4, 1, .6);
+  const tree = new THREE.Scene(), side = new THREE.OrthographicCamera(-reach, reach, bounds.max.y, bounds.min.y, .1, reach * 2 + 2);
+  side.position.set(0, 0, reach + 1); tree.add(...light);
+  const card = new THREE.Scene(), above = new THREE.OrthographicCamera(-1, 1, 1, -1, .1, 10);
+  above.position.set(0, 5, 0); above.lookAt(0, 0, 0);
+  card.add(...light.map(l => l.clone()), new THREE.Mesh(new THREE.PlaneGeometry(4, 4).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: .94 })));
+  const clear = renderer.getClearColor(new THREE.Color()), clearAlpha = renderer.getClearAlpha(), was = renderer.getRenderTarget();
+  const lit = new Uint8Array(w * h * 4), white = new Uint8Array(4);
+  renderer.setRenderTarget(target); renderer.setClearColor(0x000000, 0);
+  renderer.clear(); renderer.render(card, above); renderer.readRenderTargetPixels(target, w >> 1, h >> 1, 1, 1, white);
+  // The bark keeps its light and shade. The blossom is drawn as it looks in
+  // sunlight (the white card's light times its own colour), so from afar the
+  // crown's flecks read white, as the real crown's sunlit tops do.
+  const sunlit = new THREE.Color(white[0] / 255, white[1] / 255, white[2] / 255);
+  for (const { geometry, material } of parts) {
+    const options = { map: material.map, alphaTest: material.alphaTest, side: THREE.DoubleSide };
+    tree.add(new THREE.Mesh(geometry, material.alphaTest ? new THREE.MeshBasicMaterial({ ...options, color: sunlit.clone().multiply(material.color) })
+      : new THREE.MeshStandardMaterial({ ...options, color: material.color, roughness: material.roughness })));
+  }
+  renderer.clear(); renderer.render(tree, side); renderer.readRenderTargetPixels(target, 0, 0, w, h, lit);
+  renderer.setRenderTarget(was); renderer.setClearColor(clear, clearAlpha);
+  for (const scene of [tree, card]) scene.traverse(o => { if (o.isMesh) o.material.dispose(); });
+  card.children.at(-1).geometry.dispose(); target.dispose();
+  const pixels = new Uint8Array(w * h * 4);
+  for (let i = 0; i < w * h; i++) {
+    for (let c = 0; c < 3; c++) pixels[i * 4 + c] = Math.min(255, lit[i * 4 + c] / Math.max(1, white[c]) * 255);
+    pixels[i * 4 + 3] = lit[i * 4 + 3] ? 255 : 0;
+  }
+  // Spread the crown's own colours out into the empty pixels around it, so
+  // the smaller mipmaps don't tint its edge with whatever the empty ones held.
+  let filled = Uint8Array.from({ length: w * h }, (_, i) => pixels[i * 4 + 3] ? 1 : 0);
+  for (let pass = 0; pass < 12; pass++) {
+    const next = filled.slice();
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const i = y * w + x; if (filled[i]) continue;
+      let r = 0, g = 0, b = 0, n = 0;
+      for (const j of [x > 0 ? i - 1 : -1, x < w - 1 ? i + 1 : -1, y > 0 ? i - w : -1, y < h - 1 ? i + w : -1]) if (j >= 0 && filled[j]) { r += pixels[j * 4]; g += pixels[j * 4 + 1]; b += pixels[j * 4 + 2]; n++; }
+      if (n) { pixels[i * 4] = r / n; pixels[i * 4 + 1] = g / n; pixels[i * 4 + 2] = b / n; next[i] = 1; }
+    }
+    filled = next;
+  }
+  const picture = new THREE.DataTexture(pixels, w, h);
+  picture.generateMipmaps = true; picture.minFilter = THREE.LinearMipmapLinearFilter; picture.magFilter = THREE.LinearFilter; picture.needsUpdate = true;
+  blossomStandinMaterial.map = picture; blossomStandinMaterial.needsUpdate = true;
+  return { min: new THREE.Vector3(-reach, bounds.min.y, -reach), size: new THREE.Vector3(reach * 2, height, reach * 2), color: new THREE.Color(1, 1, 1) };
+}
 let impostorsEnabled = qualityLevel > 0;
 function buildImpostors(tile, props) {
   if (!standinLooks) { tile.userData.pendingStandins = props; return; } // built once the models load
-  const byType = new Map(STANDIN_TYPES.map(t => [t, []]));
-  props.id.forEach((id, i) => { if (!world.brokenProps.has(id)) byType.get(props.type?.[i] ?? 'tree')?.push(i); });
+  // Cherries get their own crown shape (and draw), in the trees' looks.
+  const byType = new Map([...STANDIN_TYPES, 'blossom'].map(t => [t, []]));
+  props.id.forEach((id, i) => {
+    const type = props.type?.[i] ?? 'tree';
+    if (!world.brokenProps.has(id)) byType.get(type === 'tree' && props.variant?.[i] === VARIANT.tree.sakura ? 'blossom' : type)?.push(i);
+  });
   const meshes = [], ids = new Map();
-  for (const [type, list] of byType) {
+  for (const [shape, list] of byType) {
+    const type = shape === 'blossom' ? 'tree' : shape;
     if (!list.length || !standinLooks[type]?.length) continue;
-    const geometry = standinShapes[type].clone(), groundY = new Float32Array(list.length * 3), swap = new Float32Array(list.length);
-    const mesh = new THREE.InstancedMesh(geometry, standinMaterial, list.length);
+    const geometry = standinShapes[shape].clone(), groundY = new Float32Array(list.length * 3), swap = new Float32Array(list.length);
+    const mesh = new THREE.InstancedMesh(geometry, shape === 'blossom' ? blossomStandinMaterial : standinMaterial, list.length);
     let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity, minY = Infinity, maxY = -Infinity;
     list.forEach((i, k) => {
-      const p = { type, x: props.x[i], z: props.z[i], variant: props.variant?.[i] }, look = standinLooks[type][nature.variantFor(p)], size = props.size[i];
+      const p = { type, x: props.x[i], z: props.z[i], variant: props.variant?.[i] }, look = shape === 'blossom' ? standinLooks.blossom : standinLooks[type][nature.variantFor(p)], size = props.size[i];
       pointVec.set(props.x[i] - tile.position.x, look.min.y * size, props.z[i] - tile.position.z); quaternion.setFromAxisAngle(upAxis, props.turn[i]);
       scaleVec.copy(look.size).multiplyScalar(size); matrix.compose(pointVec, quaternion, scaleVec); mesh.setMatrixAt(k, matrix);
       mesh.setColorAt(k, look.color);
@@ -853,7 +969,7 @@ function buildImpostors(tile, props) {
     // Bounds include the terrain heights the shader adds, so off-screen tiles are culled.
     const box = new THREE.Box3(new THREE.Vector3(minX - 30, minY - 5, minZ - 30), new THREE.Vector3(maxX + 30, maxY + 40, maxZ + 30));
     mesh.boundingSphere = box.getBoundingSphere(new THREE.Sphere()); mesh.boundingBox = box;
-    mesh.visible = impostorsEnabled; mesh.name = `Distant ${type}s`;
+    mesh.visible = impostorsEnabled; mesh.name = `Distant ${shape}s`;
     tile.add(mesh); meshes.push(mesh);
   }
   const entry = tile.userData.impostors ??= { meshes: [], ids: new Map() };
@@ -1079,8 +1195,27 @@ const bridgeWarmup = new THREE.Mesh(new THREE.BufferGeometry(), bridgeMaterial);
 bridgeWarmup.castShadow = bridgeWarmup.receiveShadow = true;
 const roadsideWarmup = new THREE.Mesh(new THREE.BufferGeometry(), roadsideMaterial);
 roadsideWarmup.castShadow = true;
+// Every scenery model's material (and the far cherry's), as one zero-size instance each: a world
+// with no cherry grove near the start would otherwise set up the textured
+// cherry's shaders in the frame the first grove streams in (about 300 ms).
+function natureWarmup() {
+  const group = new THREE.Group(), seen = new Set();
+  for (const variants of Object.values(nature.variants)) for (const model of variants) for (const { geometry, material } of model.parts ?? [model]) {
+    if (seen.has(material)) continue;
+    seen.add(material); softenScenery(material, 'swap');
+    const mesh = new THREE.InstancedMesh(geometry, material, 1);
+    mesh.setMatrixAt(0, new THREE.Matrix4().makeScale(0, 0, 0));
+    mesh.frustumCulled = false; mesh.castShadow = mesh.receiveShadow = true; group.add(mesh);
+  }
+  const standin = new THREE.InstancedMesh(standinShapes.blossom, blossomStandinMaterial, 1);
+  standin.setMatrixAt(0, new THREE.Matrix4().makeScale(0, 0, 0)); standin.setColorAt(0, new THREE.Color(1, 1, 1));
+  standin.frustumCulled = false; group.add(standin);
+  return group;
+}
 function precompileShaders() {
   softenScenery(roadsideMaterial, 'fade');
+  const natureWarm = nature && natureWarmup();
+  if (natureWarm) scene.add(natureWarm);
   renderer.compile(scene, camera);
   for (const warmup of [grass.warmup, waterSystem.riverWarmup, bridgeWarmup, roadsideWarmup]) renderer.compile(warmup, camera, scene);
   motionBlur.compile();
@@ -1093,6 +1228,7 @@ function precompileShaders() {
   if (plumes) for (const group of Object.values(plumes.groups)) for (const mesh of group.plumes) mesh.visible = true;
   motionBlur.render(scene, camera, car, true, sunDirection);
   plumes?.update({}, 1, 0);
+  if (natureWarm) { scene.remove(natureWarm); natureWarm.traverse(o => { if (o.isInstancedMesh) o.dispose(); }); }
   started = wasStarted; resetCamera();
   if (!testMode && !muted) initAudio(false); // (test modes start muted)
 }
@@ -1107,7 +1243,7 @@ function beginWorldLoad(continueDriving = false) {
   for (const tile of ultraTiles.values()) disposeTile(tile); ultraTiles.clear();
   terrain = createTerrain(world);
   waterSystem.clear(); distantAt = { x: Infinity, z: Infinity }; distantReady = false;
-  workers = [0, 1].map(() => new Worker(new URL('./world-worker.mjs?v=pedals-1', import.meta.url), { type: 'module' }));
+  workers = [0, 1].map(() => new Worker(new URL('./world-worker.mjs?v=sakura-shore-1', import.meta.url), { type: 'module' }));
   const failed = message => { streamError = message; running = false; $('loadError').hidden = false; $('startBtn').firstElementChild.textContent = 'Unable to prepare the world'; };
   const received = ({ data }) => {
     if (data.generation !== generation) return;
@@ -1591,13 +1727,16 @@ addEventListener('keydown', e => {
   if (e.code === 'KeyL') { lightsOn = !lightsOn; lightsChosen = true; setHeadlights(lightsOn); toast(lightsOn ? 'Headlights on' : 'Headlights off'); }
 });
 addEventListener('keyup', e => { keyStates.delete(e.code); syncInput(); });
-addEventListener('blur', () => { clearInput(); pause(); });
-// Hidden (another tab, a locked phone): everything stops, music included, and
-// picks up again when the page is back.
-document.addEventListener('visibilitychange', () => {
-  if (document.hidden) { pause(); if (audio) { audio.music.stop(); audio.context.suspend(); } }
+// Away (another tab or another app, a locked phone): everything stops, music
+// included, and picks up again when the page is back in front. Switching
+// apps leaves the page visible, so losing focus counts as away too.
+function setAway(away) {
+  if (away) { pause(); if (audio) { audio.music.stop(); audio.context.suspend(); } }
   else if (audio && !muted && musicWanted) { audio.context.resume(); audio.music.start(); }
-});
+}
+addEventListener('blur', () => { clearInput(); setAway(true); });
+addEventListener('focus', () => { if (!document.hidden) setAway(false); });
+document.addEventListener('visibilitychange', () => setAway(document.hidden || !document.hasFocus()));
 addEventListener('beforeunload', saveRecord);
 for (const el of document.querySelectorAll('[data-control]')) {
   el.addEventListener('pointerdown', e => { e.preventDefault(); if (!running) return; el.setPointerCapture(e.pointerId); if (el.dataset.control === 'jump') vehicle.jumpBuffer = .16; touchStates.set(e.pointerId, el.dataset.control); el.classList.add('active'); syncInput(); });
@@ -1626,7 +1765,7 @@ function applyQuality(index) {
   grass.setQuality(level.grass);
   // Distant stand-ins are skipped on Low (real props fade out instead).
   impostorsEnabled = index > 0; standinUniform.value = impostorsEnabled ? 1 : 0;
-  weatherFx.setDensity([.35, .6, .8, 1][index]);
+  weatherFx.setDensity([.35, .6, .8, 1][index]); petals.setDensity([.35, .6, .8, 1][index]);
   for (const tile of farTiles.values()) for (const mesh of tile.userData.impostors?.meshes ?? []) mesh.visible = impostorsEnabled;
   // Low draws one wave layer with no reflected clouds, sparkle or caustics.
   waterSystem.setDetail(index > 0);
@@ -2181,7 +2320,11 @@ syncSeed(); syncSound(); syncSettings(); syncTime(); beginWorldLoad(); resetCame
 requestAnimationFrame(frame);
 
 profiler.record('initialLoad', performance.now() - bootStarted);
-if (testMode) window.__driveTest = { resetMetrics: () => profiler.reset(), snapshot: () => {
+if (testMode) window.__driveTest = { resetMetrics: () => profiler.reset(), sakuraImpact: () => {
+  if (!sakuraImpactTarget) return null;
+  const refs = chunks.get(`${Math.floor(sakuraImpactTarget.x / CHUNK)},${Math.floor(sakuraImpactTarget.z / CHUNK)}`)?.propInstances.get(sakuraImpactTarget.id) ?? [];
+  return { id: sakuraImpactTarget.id, broken: world.brokenProps.has(sakuraImpactTarget.id), surfaces: refs.length, hidden: refs.length > 0 && refs.every(({ mesh, index }) => { mesh.getMatrixAt(index, matrix); return matrix.elements[0] === 0 && matrix.elements[5] === 0 && matrix.elements[10] === 0; }), emitting: blossomNearby().some(p => p.x === sakuraImpactTarget.x && p.z === sakuraImpactTarget.z) };
+}, snapshot: () => {
   const visibleGrass = [...chunks.values()].filter(c => c.group.visible && c.grassMesh?.visible);
   const tufts = visibleGrass.reduce((n, c) => n + c.grassMesh.geometry.instanceCount, 0);
   const grassStats = { range: grass.range, meshes: visibleGrass.length, tufts, triangles: tufts * grass.trianglesPerTuft };
@@ -2195,5 +2338,5 @@ if (testMode) window.__driveTest = { resetMetrics: () => profiler.reset(), snaps
   const natureInstances = {};
   for (const chunk of chunks.values()) if (chunk.group.visible) chunk.group.traverse(o => { if (o.isInstancedMesh && o.userData.natureKind) natureInstances[o.userData.natureKind] = (natureInstances[o.userData.natureKind] || 0) + o.count; });
   const impostorCount = [...farTiles.values()].reduce((n, t) => n + (t.userData.impostors?.meshes ?? []).reduce((m, mesh) => m + (mesh.isInstancedMesh ? mesh.count : 0), 0), 0);
-  return { clouds: { cloudiness: weather.clouds, drift: clouds.drift.toArray(), banks: clouds.count }, time: { hours: clock.hours, clock: clockLabel(clock.hours), day: dayLight.day, night: dayLight.night, sunHeight: dayLight.sun[1], key: sun.intensity, exposure: renderer.toneMappingExposure, headlights: lightsOn }, weather: { kind: weather.target.kind, region: weather.target.region, chance: weather.target.chance, rain: weather.rain, snow: weather.snow, sand: weather.sand, haze: weather.haze, particles: weatherFx.counts, fogColor: '#' + scene.fog.color.getHexString(), sun: sun.intensity }, horizon: { ultraTiles: ultraTiles.size, impostors: impostorCount, impostorsVisible: impostorsEnabled, distantWater: waterSystem.distantCount, fogNear: scene.fog.near, fogFar: scene.fog.far, cameraNear: camera.near, cameraFar: camera.far, stormCulled: camera.far < CAMERA_FAR }, flight: { mode: vehicle.flightMode, progress: vehicle.flight, flying: vehicle.flying, simpleControls: simpleFlight, airspeed: vehicle.airspeed, altitude: vehicle.y - world.surface(vehicle.x, vehicle.z), propeller: propellerAngle, wingsVisible: car.getObjectByName('WingSeg1_L')?.visible ?? false, wingspan: car.getObjectByName('WingTip_L') ? car.getObjectByName('WingTip_L').getWorldPosition(new THREE.Vector3()).distanceTo(car.getObjectByName('WingTip_R').getWorldPosition(new THREE.Vector3())) : 0, clouds: clouds.count }, quality: { preset: settings.quality, level: levels[qualityLevel].name, pixelRatio: renderer.getPixelRatio(), shadow: sun.shadow.mapSize.x, farShadow: farSun.castShadow ? farSun.shadow.mapSize.x : 0, grassDensity: grass.density }, controls: { sensitivity: settings.sensitivity, tilt: settings.tilt, tiltActive: tiltActive(), pitchAxis: input.pitchAxis ?? null, steer: input.steer ?? null, throttle: throttleInput() }, water: { lakes: waterSystem.count, wakes: waterSystem.wakeCount }, natureAsset: { ready: Boolean(nature), error: natureError, assets: nature?.stats ?? [], instances: natureInstances }, grass: grassStats, metrics: profiler.snapshot(), draws: drawStats.calls, triangles: drawStats.triangles, motionBlur: settings.motionBlur, carMeshes, carDraws, carAsset: { ready: carReady, error: carError, kind: shownAsset?.kind ?? null, name: shownAsset?.kind === 'roadster' ? 'Roadster Rocket' : 'ATLAS Amphibious', plumes: plumes?.visible ?? 0, vapour: vapour.count, wingAngle: shownAsset?.wing?.rotation.x ?? null, animationDuration: transformation?.duration, hullSpan: car.getObjectByName('Hull_R')?.position.x - car.getObjectByName('Hull_L')?.position.x, triangles: carTriangles, wheelPivots: wheelPivots.map(p => p.parent.position.toArray()), wheelSteer: wheelPivots.map(p => p.rotation.y), wheelSpin: wheelSpinners.map(p => p.rotation.x), headlights: headMat.emissiveIntensity, brakes: brakeMat.emissiveIntensity }, chunks: chunks.size, farTiles: farTiles.size, loading, generation, streamError, pending: pending.size, stalePending: [...pending.values()].filter(job => job.generation !== generation).length, queued: jobs.length, carBatching: carBatching.map(({ before, after }) => ({ before, after })), vehicle: { ...vehicle }, renderPose: { ...vehiclePresentation.pose }, debris: debris.count, fallingTrees: treeBreakage?.count ?? 0, sound: audio ? { muted, played: audio.breaks.played, active: audio.breaks.active, effects: audio.vehicle.played, effectTypes: audio.vehicle.playedBy, gear: audio.vehicle.gear, masterGain: audio.master.gain.value, sfxGain: audio.sfx.gain.value, music: { track: audio.music.track?.id ?? null, playing: audio.music.playing, level: audio.music.level, started: audio.music.started, time: audio.music.time } } : null, brokenProps: world.brokenProps.size, hiddenProps, accumulator, cameraError: cameraPosition.distanceTo(desiredCamera) + cameraTarget.distanceTo(look), camera: cameraPosition.toArray(), target: cameraTarget.toArray(), garage: { open: garage.open, kind: showroom.kind, preview: showroom.previewing } };
+  return { clouds: { cloudiness: weather.clouds, drift: clouds.drift.toArray(), banks: clouds.count }, time: { hours: clock.hours, clock: clockLabel(clock.hours), day: dayLight.day, night: dayLight.night, sunHeight: dayLight.sun[1], key: sun.intensity, exposure: renderer.toneMappingExposure, headlights: lightsOn }, weather: { kind: weather.target.kind, region: weather.target.region, chance: weather.target.chance, rain: weather.rain, snow: weather.snow, sand: weather.sand, haze: weather.haze, particles: weatherFx.counts, petals: petals.count, fogColor: '#' + scene.fog.color.getHexString(), sun: sun.intensity }, horizon: { ultraTiles: ultraTiles.size, impostors: impostorCount, impostorsVisible: impostorsEnabled, distantWater: waterSystem.distantCount, fogNear: scene.fog.near, fogFar: scene.fog.far, cameraNear: camera.near, cameraFar: camera.far, stormCulled: camera.far < CAMERA_FAR }, flight: { mode: vehicle.flightMode, progress: vehicle.flight, flying: vehicle.flying, simpleControls: simpleFlight, airspeed: vehicle.airspeed, altitude: vehicle.y - world.surface(vehicle.x, vehicle.z), propeller: propellerAngle, wingsVisible: car.getObjectByName('WingSeg1_L')?.visible ?? false, wingspan: car.getObjectByName('WingTip_L') ? car.getObjectByName('WingTip_L').getWorldPosition(new THREE.Vector3()).distanceTo(car.getObjectByName('WingTip_R').getWorldPosition(new THREE.Vector3())) : 0, clouds: clouds.count }, quality: { preset: settings.quality, level: levels[qualityLevel].name, pixelRatio: renderer.getPixelRatio(), shadow: sun.shadow.mapSize.x, farShadow: farSun.castShadow ? farSun.shadow.mapSize.x : 0, grassDensity: grass.density }, controls: { sensitivity: settings.sensitivity, tilt: settings.tilt, tiltActive: tiltActive(), pitchAxis: input.pitchAxis ?? null, steer: input.steer ?? null, throttle: throttleInput() }, water: { lakes: waterSystem.count, wakes: waterSystem.wakeCount }, natureAsset: { ready: Boolean(nature), error: natureError, assets: nature?.stats ?? [], instances: natureInstances }, grass: grassStats, metrics: profiler.snapshot(), draws: drawStats.calls, triangles: drawStats.triangles, motionBlur: settings.motionBlur, carMeshes, carDraws, carAsset: { ready: carReady, error: carError, kind: shownAsset?.kind ?? null, name: shownAsset?.kind === 'roadster' ? 'Roadster Rocket' : 'ATLAS Amphibious', plumes: plumes?.visible ?? 0, vapour: vapour.count, wingAngle: shownAsset?.wing?.rotation.x ?? null, animationDuration: transformation?.duration, hullSpan: car.getObjectByName('Hull_R')?.position.x - car.getObjectByName('Hull_L')?.position.x, triangles: carTriangles, wheelPivots: wheelPivots.map(p => p.parent.position.toArray()), wheelSteer: wheelPivots.map(p => p.rotation.y), wheelSpin: wheelSpinners.map(p => p.rotation.x), headlights: headMat.emissiveIntensity, brakes: brakeMat.emissiveIntensity }, chunks: chunks.size, farTiles: farTiles.size, loading, generation, streamError, pending: pending.size, stalePending: [...pending.values()].filter(job => job.generation !== generation).length, queued: jobs.length, carBatching: carBatching.map(({ before, after }) => ({ before, after })), vehicle: { ...vehicle }, renderPose: { ...vehiclePresentation.pose }, debris: debris.count, fallingTrees: treeBreakage?.count ?? 0, sound: audio ? { muted, played: audio.breaks.played, active: audio.breaks.active, effects: audio.vehicle.played, effectTypes: audio.vehicle.playedBy, gear: audio.vehicle.gear, masterGain: audio.master.gain.value, sfxGain: audio.sfx.gain.value, music: { track: audio.music.track?.id ?? null, playing: audio.music.playing, level: audio.music.level, started: audio.music.started, time: audio.music.time } } : null, brokenProps: world.brokenProps.size, hiddenProps, accumulator, cameraError: cameraPosition.distanceTo(desiredCamera) + cameraTarget.distanceTo(look), camera: cameraPosition.toArray(), target: cameraTarget.toArray(), garage: { open: garage.open, kind: showroom.kind, preview: showroom.previewing } };
 } };

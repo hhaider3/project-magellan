@@ -1,9 +1,10 @@
 import * as THREE from 'three';
 import { GLTFLoader } from './vendor/loaders/GLTFLoader.js';
+import { assembleSakura, SAKURA_URL } from './sakura-model.mjs?v=sakura-shore-1';
 
-export const NATURE_URL = new URL('./assets/nature/endless-nature.glb?v=nature-2', import.meta.url);
+export const NATURE_URL = new URL('./assets/nature/endless-nature.glb?v=sakura-push-1', import.meta.url);
 const names = {
-  tree: ['Pine_Alpine', 'Pine_Windswept', 'Pine_Snow', 'Pine_Stunted', 'Tree_Dead'],
+  tree: ['Pine_Alpine', 'Pine_Windswept', 'Pine_Snow', 'Pine_Stunted', 'Tree_Dead', 'Sakura_Blossom'],
   cactus: ['Cactus_Saguaro', 'Cactus_Forked'],
   rock: ['Rock_Granite', 'Rock_Shale'],
   boulder: ['Boulder_Granite', 'Boulder_Sandstone'],
@@ -34,12 +35,18 @@ function mergeParts(parts) {
 }
 
 // This pure assembly step is shared by the game, visual preview and asset tests.
-export function assembleNatureLibrary(scene) {
+export function assembleNatureLibrary(scene, treeOverrides = new Map()) {
   scene.updateMatrixWorld(true);
   const variants = {}, treeSources = [], stats = [];
   const material = new THREE.MeshStandardMaterial({ color: '#ffffff', vertexColors: true, roughness: .94 });
   for (const [kind, list] of Object.entries(names)) {
     variants[kind] = list.map((name, variant) => {
+      const replacement = kind === 'tree' ? treeOverrides.get(name) : null;
+      if (replacement) {
+        treeSources.push({ ...replacement.treeSource, variant });
+        stats.push({ name: replacement.name, kind, triangles: replacement.triangles, fragments: replacement.treeSource.fragments.length });
+        return replacement;
+      }
       const root = scene.getObjectByName(name);
       if (!root) throw new Error(`Scenery asset is missing ${name}`);
       const inverse = root.matrixWorld.clone().invert(), parts = [];
@@ -86,5 +93,7 @@ export function assembleNatureLibrary(scene) {
 }
 
 export async function loadNatureLibrary() {
-  return assembleNatureLibrary((await new GLTFLoader().loadAsync(NATURE_URL.href)).scene);
+  const loader = new GLTFLoader();
+  const [nature, sakura] = await Promise.all([loader.loadAsync(NATURE_URL.href), loader.loadAsync(SAKURA_URL.href)]);
+  return assembleNatureLibrary(nature.scene, new Map([['Sakura_Blossom', assembleSakura(sakura.scene)]]));
 }
