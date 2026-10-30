@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from './vendor/loaders/GLTFLoader.js';
-import { assembleSakura, SAKURA_URL } from './sakura-model.mjs?v=sakura-shore-1';
+import { assembleSakura, SAKURA_URL } from './sakura-model.mjs?v=sakura-ponds-1';
 
 export const NATURE_URL = new URL('./assets/nature/endless-nature.glb?v=sakura-push-1', import.meta.url);
 const names = {

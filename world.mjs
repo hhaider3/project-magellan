@@ -264,20 +264,16 @@ export function createWorld(seed) {
   function woodlandAt(x, z) { return noise(x * .0031 - 13, z * .0031 + 27, seed + 87); }
   // Which stretches of shore have cherries (they grow only along the water).
   function blossomAt(x, z) { return noise(x * .0055 + 51, z * .0055 - 8, seed + 141); }
-  // The level of the water a bank overlooks: land a little above a lake's,
-  // sea's or river's surface, within about 20 m of its edge (null elsewhere).
+  // The level of the water a bank overlooks: land a little above a pond's,
+  // lake's or sea's surface, within about 20 m of its edge, and well away
+  // from any river (null elsewhere). Cherries ring the round waters only.
   function shoreAt(x, z, y) {
     const lake = lakes.lakeAt(x, z);
-    if (lake) {
-      const out = (lakeRadius(lake, x, z) - 1) * Math.min(lake.rx, lake.rz);
-      if (out > 1 && out < 22 && y - lake.level > .3 && y - lake.level < 5) return lake.level;
-    }
+    if (!lake) return null;
+    const out = (lakeRadius(lake, x, z) - 1) * Math.min(lake.rx, lake.rz);
+    if (out <= 1 || out >= 22 || y - lake.level <= .3 || y - lake.level >= 5) return null;
     const river = rivers.riverAt(x, z);
-    if (river) {
-      const bank = river.d - river.width / 2;
-      if (bank > 1 && bank < 16 && y - river.level > .3 && y - river.level < 5) return river.level;
-    }
-    return null;
+    return river && river.d < river.width / 2 + 40 ? null : lake.level;
   }
   // Broad, continuous dry regions, never in the mountains; elevation keeps
   // sand off high ground.
@@ -340,7 +336,7 @@ export function createWorld(seed) {
         else if (y < SNOW_LINE - 10 && chance < .5) add({ id, type: 'bush', variant: VARIANT.bush.juniper, x, z, y, size, turn, r: 0, h: .6 * size });
         continue;
       }
-      // Cherries line stretches of lowland shore: lakes, seas and rivers.
+      // Cherries line stretches of lowland shore round ponds, lakes and seas.
       const shore = desert < .05 && mountain < .2 && y < TREELINE - 90 && blossomAt(x, z) > .5 ? shoreAt(x, z, y) : null, grove = shore !== null;
       if (chance < .1 && mountain > .25) add({ id, type: 'boulder', x, z, y, size: size * 2.3, turn, r: size * 1.5, h: size * 2.6 });
       else if (chance < .22) add({ id, type: 'rock', x, z, y, size, turn, r: 0, h: .65 * size });

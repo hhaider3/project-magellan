@@ -6,7 +6,7 @@
 <script type="module">
 import * as THREE from 'three';
 import {createTreeBreakage} from '../tree-breakage.mjs?v=sakura-fast-1';
-import {loadNatureLibrary} from '../nature-models.mjs?v=sakura-push-1';
+import {loadNatureLibrary} from '../nature-models.mjs?v=sakura-ponds-1';
 const scene=new THREE.Scene();scene.background=new THREE.Color('#cbdad1');
 const camera=new THREE.PerspectiveCamera(45,innerWidth/innerHeight,.1,100);camera.position.set(10,8,14);camera.lookAt(0,2,2);
 const renderer=new THREE.WebGLRenderer({antialias:true});renderer.setSize(innerWidth,innerHeight);renderer.setPixelRatio(Math.min(devicePixelRatio,2));document.body.append(renderer.domElement);

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { SAKURA_HEIGHT } from './world.mjs?v=sakura-shore-1';
+import { SAKURA_HEIGHT } from './world.mjs?v=sakura-ponds-1';
 
 export const SAKURA_URL = new URL('./assets/nature/sakura-realistic/sakura-tree.glb?v=sakura-shore-1', import.meta.url);
 const MESH_NAMES = ['Sakura_Trunk_Branches', 'Sakura_Blossom_Canopy'];

@@ -1,39 +1,40 @@
-import { createTerrain } from './terrain.mjs?v=sakura-shore-1';
+import { createTerrain } from './terrain.mjs?v=sakura-ponds-1';
 import { createWater } from './water.mjs?v=rivers-1';
-import { FAR_SIZE, FAR_VIEW, NEAR_VIEW, ULTRA_SIZE, ULTRA_VIEW, ULTRA_BLEND_START, ULTRA_BLEND_END, farIndices, farCoverage, ultraIndices, ultraCoverage } from './streaming-layout.mjs?v=sakura-shore-1';
+import { FAR_SIZE, FAR_VIEW, NEAR_VIEW, ULTRA_SIZE, ULTRA_VIEW, ULTRA_BLEND_START, ULTRA_BLEND_END, farIndices, farCoverage, ultraIndices, ultraCoverage } from './streaming-layout.mjs?v=sakura-ponds-1';
 import { loadVehicleModel, VEHICLE_NAMES } from './vehicle-model.mjs?v=roadster-5';
 import { createShowroom } from './garage.mjs?v=roadster-5';
 import { VEHICLE_ORDER, VEHICLE_SPECS, PREVIEWS } from './vehicle-specs.mjs?v=garage-1';
 import { createProfiler } from './profiling.mjs?v=timing-1';
-import { createDebris } from './debris.mjs?v=sakura-shore-1';
+import { createDebris } from './debris.mjs?v=sakura-ponds-1';
 import { createDust } from './dust.mjs?v=roadster-1';
 import { createThrusterPlumes, createVapour } from './thrusters.mjs?v=roadster-1';
 import { ROADSTER, hoverWorld } from './roadster-motion.mjs?v=steer-1';
 import { createVehiclePresentation } from './vehicle-presentation.mjs?v=roadster-1';
 import { followTarget, followValue } from './camera-motion.mjs?v=grass-1';
 import { createTreeBreakage } from './tree-breakage.mjs?v=sakura-fast-1';
-import { loadNatureLibrary } from './nature-models.mjs?v=sakura-push-1';
+import { loadNatureLibrary } from './nature-models.mjs?v=sakura-ponds-1';
 import { createBreakAudio } from './break-audio.mjs?v=sound-2';
 import { createVehicleAudio } from './vehicle-audio.mjs?v=pedals-1';
 import { createMusic, volumeGain } from './music.mjs?v=music-1';
 import { installSunShadowFade, separateVehicleShadow } from './shadow-fade.mjs?v=shadow-2';
-import { createGrass } from './grass.mjs?v=sakura-shore-1';
+import { createGrass } from './grass.mjs?v=sakura-ponds-1';
 import { createPerfMeter, createGpuTimer } from './perf-meter.mjs?v=perf-2';
 import { QUALITY_PRESETS, qualityLevels, presetLevel, autoStartLevel, createAutoQuality } from './quality.mjs?v=blur-1';
 import { controlAxis, steerAxis } from './controls.mjs?v=slider-1';
 import { readTilt, tiltAxes } from './tilt.mjs?v=tilt-1';
 import { toggleFlight, flightAxes, TAKEOFF_SPEED, STALL_SPEED } from './flight-motion.mjs?v=pedals-1';
-import { createClouds } from './clouds.mjs?v=sakura-shore-1';
-import { weatherAt } from './weather.mjs?v=sakura-shore-1';
+import { createClouds } from './clouds.mjs?v=sakura-ponds-1';
+import { weatherAt } from './weather.mjs?v=sakura-ponds-1';
 import { createSky } from './sky.mjs?v=pedals-1';
 import { daylight, advanceClock, clockLabel, startHour } from './daylight.mjs?v=day-3';
 import { createWeatherEffects, toneMappedHorizon } from './weather-effects.mjs?v=pedals-1';
+import { createLightning, createThunder } from './storm.mjs?v=storm-2';
 import { createPetals, TREES as PETAL_TREES } from './petals.mjs?v=sakura-shore-1';
 import * as THREE from 'three';
-import { CHUNK, GRID, ROAD_HALF, FIXED_DT, featurePoint, clamp, mix, smoothstep, hash, createWorld, createVehicle, stepVehicle, recoverVehicle, groundAt, VARIANT, SAKURA_HEIGHT } from './world.mjs?v=sakura-shore-1';
+import { CHUNK, GRID, ROAD_HALF, FIXED_DT, featurePoint, clamp, mix, smoothstep, hash, createWorld, createVehicle, stepVehicle, recoverVehicle, groundAt, VARIANT, SAKURA_HEIGHT } from './world.mjs?v=sakura-ponds-1';
 import { SNOW_LINE } from './landforms.mjs?v=classes-2';
 import { ROAD_MAP } from './roads.mjs?v=pedals-1';
-import { buildLandmark, cloneOwnedGeometry, landmarkStandinSteps, landmarkSwapDistance } from './scenery.mjs?v=sakura-shore-1';
+import { buildLandmark, cloneOwnedGeometry, landmarkStandinSteps, landmarkSwapDistance } from './scenery.mjs?v=sakura-ponds-1';
 import { createMotionBlur } from './motion-blur.mjs?v=blur-2';
 
 const $ = id => document.getElementById(id);
@@ -264,6 +265,8 @@ const clouds = createClouds(scene, seed), cloudBanks = scene.getObjectByName('Cl
 // the fog and dims the sun. ?weather=rain|snow|sandstorm|clear forces one.
 const weatherFx = createWeatherEffects(scene);
 weatherFx.setDensity([.35, .6, .8, 1][qualityLevel]);
+// Thunderstorms in heavy rain (storm.mjs): lightning, and thunder after it.
+const lightning = createLightning(scene), FLASH = new THREE.Color(.8, .8, 1);
 // Petals fall from the cherry trees nearest the camera.
 const petals = createPetals(scene);
 petals.setDensity([.35, .6, .8, 1][qualityLevel]);
@@ -325,6 +328,11 @@ function updateWeather(dt) {
   weather.clouds += ((weather.target.cloudiness ?? .38) - weather.clouds) * (!started || forcedWeather ? 1 : 1 - Math.exp(-step / 7));
   skyPalette.cloudiness = weather.clouds;
   const rain = smoothstep(0, .85, weather.rain), snow = smoothstep(0, .85, weather.snow), cover = Math.min(1, Math.max(rain, snow) + Math.min(rain, snow) * .5);
+  // Heavy rain brings thunderstorms (snow never does): a strike's thunder
+  // follows it by its distance at the speed of sound.
+  const storm = smoothstep(.72, .92, weather.rain) * (1 - smoothstep(.1, .4, weather.snow));
+  const struck = lightning.update(step, storm, camera, (x, z) => world.surface(x, z), renderer.domElement.height), flash = lightning.flash;
+  if (struck && audio && !muted) audio.thunder.play(struck, panAt(struck.x, struck.z));
   // How thick the sand is around the camera: a storm hugs the ground, so it
   // thins out a few hundred metres up and you can fly out over the top of it.
   const above = camera.position.y - world.surface(camera.position.x, camera.position.z);
@@ -343,12 +351,15 @@ function updateWeather(dt) {
   for (const part of ['top', 'bottom']) duststorm[part].copy(SKY.sand[part]).multiplyScalar(.04 + .96 * light.day).lerp(dayColor.setRGB(...light.horizon), .2 * (light.golden + light.dusk));
   skyColor.setRGB(...light.horizon).lerp(overcast.bottom, cover).lerp(duststorm.bottom, sand);
   skyTop.setRGB(...light.zenith).lerp(overcast.top, cover).lerp(duststorm.top, sand);
+  // A flash lights the whole murk, sky and fog alike, a cold violet-white.
+  skyColor.lerp(FLASH, flash * .55); skyTop.lerp(FLASH, flash * .4);
   skyPalette.zenith.copy(skyTop); skyPalette.horizon.copy(skyColor);
   roadLook.uSkyReflection.value.copy(skyColor).lerp(skyTop, .3);
   // The sand's deck of dust is the horizon's own colour all the way down, so
   // the fully fogged land melts into it with no skyline.
   skyPalette.cloudLit.setRGB(...light.cloudLit).lerp(overcast.cloud, cover).lerp(duststorm.bottom, sand); skyPalette.cloudShade.setRGB(...light.cloudShade).lerp(cloudTint.copy(overcast.cloud).multiplyScalar(.7), cover).lerp(cloudTint.copy(duststorm.bottom).multiplyScalar(.96), sand);
   // The sand hides the sun's disc and the stars as an overcast would.
+  skyPalette.cloudLit.lerp(FLASH, flash * .7);
   const veiled = Math.max(cover, sand * .95);
   sky.update(light, skyPalette, veiled, clock.seconds);
   renderer.toneMappingExposure = light.exposure;
@@ -365,6 +376,8 @@ function updateWeather(dt) {
   hemisphere.color.setRGB(...light.hemiSky).lerp(overcast.top, cover * .5).lerp(duststorm.bottom, sand * .6); hemisphere.groundColor.setRGB(...light.hemiGround);
   hemisphere.intensity = light.hemiIntensity * (1 + .12 * cover) * (1 + .1 * sand);
   surfaceLight.setRGB(...light.surfaceLight).multiplyScalar((1 - .25 * cover) * (1 - .3 * sand));
+  // And the land and the rain in it, from the whole sky at once.
+  hemisphere.color.lerp(FLASH, flash); hemisphere.intensity += flash * 2.2; surfaceLight.lerp(FLASH, flash * .6);
   waterSystem.setSky(skyTop, skyColor, (1 - .85 * veiled) * Math.min(1, light.keyIntensity / 2.5 + light.night * .3), sunDirection, sun.color, skyPalette.cloudLit, surfaceLight);
   weatherFx.setLight(surfaceLight); petals.setLight(surfaceLight); dust.setLight(surfaceLight); vapour.setLight(surfaceLight);
   dayLight = light;
@@ -1226,8 +1239,9 @@ function precompileShaders() {
   const wasStarted = started; started = true;
   updateDesiredCamera(); camera.position.copy(desiredCamera); camera.lookAt(look); camera.updateMatrixWorld();
   if (plumes) for (const group of Object.values(plumes.groups)) for (const mesh of group.plumes) mesh.visible = true;
+  lightning.warm(true);
   motionBlur.render(scene, camera, car, true, sunDirection);
-  plumes?.update({}, 1, 0);
+  plumes?.update({}, 1, 0); lightning.warm(false);
   if (natureWarm) { scene.remove(natureWarm); natureWarm.traverse(o => { if (o.isInstancedMesh) o.dispose(); }); }
   started = wasStarted; resetCamera();
   if (!testMode && !muted) initAudio(false); // (test modes start muted)
@@ -1243,7 +1257,7 @@ function beginWorldLoad(continueDriving = false) {
   for (const tile of ultraTiles.values()) disposeTile(tile); ultraTiles.clear();
   terrain = createTerrain(world);
   waterSystem.clear(); distantAt = { x: Infinity, z: Infinity }; distantReady = false;
-  workers = [0, 1].map(() => new Worker(new URL('./world-worker.mjs?v=sakura-shore-1', import.meta.url), { type: 'module' }));
+  workers = [0, 1].map(() => new Worker(new URL('./world-worker.mjs?v=sakura-ponds-1', import.meta.url), { type: 'module' }));
   const failed = message => { streamError = message; running = false; $('loadError').hidden = false; $('startBtn').firstElementChild.textContent = 'Unable to prepare the world'; };
   const received = ({ data }) => {
     if (data.generation !== generation) return;
@@ -1378,7 +1392,7 @@ function initAudio(start = true) {
     const sounds = createVehicleAudio(context, sfx);
     const music = createMusic(context, master, { base: MUSIC_LEVEL, mood: () => ({ night: dayLight.night, roadster: vehicle.kind === 'roadster' }) });
     music.setVolume(settings.musicVolume); music.setMenu(!running);
-    audio = { context, master, sfx, music, vehicle: sounds, breaks: createBreakAudio(context, sfx, 8, sounds.echo) };
+    audio = { context, master, sfx, music, vehicle: sounds, breaks: createBreakAudio(context, sfx, 8, sounds.echo), thunder: createThunder(context, sfx) };
   } catch {}
 }
 function syncSound() {
@@ -1520,7 +1534,7 @@ function resetCamera() {
 function newWorld() {
   const continueDriving = running || resumeAfterLoad && loading;
   saveRecord(); clearInput(); seed = freshSeed(); world = createWorld(seed); vehicle = createVehicle(world, 0, 0, world.startHeading, vehicleKind);
-  debris.clear(); treeBreakage?.clear(); audio?.breaks.clear(); audio?.vehicle.clear(); vapour.clear();
+  debris.clear(); treeBreakage?.clear(); lightning.clear(); audio?.breaks.clear(); audio?.vehicle.clear(); vapour.clear();
   const url = new URL(location.href); url.searchParams.set('seed', seed); history.replaceState(null, '', url);
   beginWorldLoad(continueDriving); resetCamera(); syncSeed(); updateHUD(); drawMap();
   reportedLanding = 0; reportedBoat = false; reportedFlying = false; clouds.reset(seed); weather.clock = 0; weather.clouds = .38; if (!fixedTime) clock.hours = worldHour(seed); weather.check = 0; weather.rain = weather.snow = weather.sand = weather.haze = 0; $('runDistance').textContent = '0.00'; toast('A new road ahead. World ' + seed);
@@ -2338,5 +2352,5 @@ if (testMode) window.__driveTest = { resetMetrics: () => profiler.reset(), sakur
   const natureInstances = {};
   for (const chunk of chunks.values()) if (chunk.group.visible) chunk.group.traverse(o => { if (o.isInstancedMesh && o.userData.natureKind) natureInstances[o.userData.natureKind] = (natureInstances[o.userData.natureKind] || 0) + o.count; });
   const impostorCount = [...farTiles.values()].reduce((n, t) => n + (t.userData.impostors?.meshes ?? []).reduce((m, mesh) => m + (mesh.isInstancedMesh ? mesh.count : 0), 0), 0);
-  return { clouds: { cloudiness: weather.clouds, drift: clouds.drift.toArray(), banks: clouds.count }, time: { hours: clock.hours, clock: clockLabel(clock.hours), day: dayLight.day, night: dayLight.night, sunHeight: dayLight.sun[1], key: sun.intensity, exposure: renderer.toneMappingExposure, headlights: lightsOn }, weather: { kind: weather.target.kind, region: weather.target.region, chance: weather.target.chance, rain: weather.rain, snow: weather.snow, sand: weather.sand, haze: weather.haze, particles: weatherFx.counts, petals: petals.count, fogColor: '#' + scene.fog.color.getHexString(), sun: sun.intensity }, horizon: { ultraTiles: ultraTiles.size, impostors: impostorCount, impostorsVisible: impostorsEnabled, distantWater: waterSystem.distantCount, fogNear: scene.fog.near, fogFar: scene.fog.far, cameraNear: camera.near, cameraFar: camera.far, stormCulled: camera.far < CAMERA_FAR }, flight: { mode: vehicle.flightMode, progress: vehicle.flight, flying: vehicle.flying, simpleControls: simpleFlight, airspeed: vehicle.airspeed, altitude: vehicle.y - world.surface(vehicle.x, vehicle.z), propeller: propellerAngle, wingsVisible: car.getObjectByName('WingSeg1_L')?.visible ?? false, wingspan: car.getObjectByName('WingTip_L') ? car.getObjectByName('WingTip_L').getWorldPosition(new THREE.Vector3()).distanceTo(car.getObjectByName('WingTip_R').getWorldPosition(new THREE.Vector3())) : 0, clouds: clouds.count }, quality: { preset: settings.quality, level: levels[qualityLevel].name, pixelRatio: renderer.getPixelRatio(), shadow: sun.shadow.mapSize.x, farShadow: farSun.castShadow ? farSun.shadow.mapSize.x : 0, grassDensity: grass.density }, controls: { sensitivity: settings.sensitivity, tilt: settings.tilt, tiltActive: tiltActive(), pitchAxis: input.pitchAxis ?? null, steer: input.steer ?? null, throttle: throttleInput() }, water: { lakes: waterSystem.count, wakes: waterSystem.wakeCount }, natureAsset: { ready: Boolean(nature), error: natureError, assets: nature?.stats ?? [], instances: natureInstances }, grass: grassStats, metrics: profiler.snapshot(), draws: drawStats.calls, triangles: drawStats.triangles, motionBlur: settings.motionBlur, carMeshes, carDraws, carAsset: { ready: carReady, error: carError, kind: shownAsset?.kind ?? null, name: shownAsset?.kind === 'roadster' ? 'Roadster Rocket' : 'ATLAS Amphibious', plumes: plumes?.visible ?? 0, vapour: vapour.count, wingAngle: shownAsset?.wing?.rotation.x ?? null, animationDuration: transformation?.duration, hullSpan: car.getObjectByName('Hull_R')?.position.x - car.getObjectByName('Hull_L')?.position.x, triangles: carTriangles, wheelPivots: wheelPivots.map(p => p.parent.position.toArray()), wheelSteer: wheelPivots.map(p => p.rotation.y), wheelSpin: wheelSpinners.map(p => p.rotation.x), headlights: headMat.emissiveIntensity, brakes: brakeMat.emissiveIntensity }, chunks: chunks.size, farTiles: farTiles.size, loading, generation, streamError, pending: pending.size, stalePending: [...pending.values()].filter(job => job.generation !== generation).length, queued: jobs.length, carBatching: carBatching.map(({ before, after }) => ({ before, after })), vehicle: { ...vehicle }, renderPose: { ...vehiclePresentation.pose }, debris: debris.count, fallingTrees: treeBreakage?.count ?? 0, sound: audio ? { muted, played: audio.breaks.played, active: audio.breaks.active, effects: audio.vehicle.played, effectTypes: audio.vehicle.playedBy, gear: audio.vehicle.gear, masterGain: audio.master.gain.value, sfxGain: audio.sfx.gain.value, music: { track: audio.music.track?.id ?? null, playing: audio.music.playing, level: audio.music.level, started: audio.music.started, time: audio.music.time } } : null, brokenProps: world.brokenProps.size, hiddenProps, accumulator, cameraError: cameraPosition.distanceTo(desiredCamera) + cameraTarget.distanceTo(look), camera: cameraPosition.toArray(), target: cameraTarget.toArray(), garage: { open: garage.open, kind: showroom.kind, preview: showroom.previewing } };
+  return { clouds: { cloudiness: weather.clouds, drift: clouds.drift.toArray(), banks: clouds.count }, time: { hours: clock.hours, clock: clockLabel(clock.hours), day: dayLight.day, night: dayLight.night, sunHeight: dayLight.sun[1], key: sun.intensity, exposure: renderer.toneMappingExposure, headlights: lightsOn }, weather: { kind: weather.target.kind, region: weather.target.region, chance: weather.target.chance, rain: weather.rain, snow: weather.snow, sand: weather.sand, haze: weather.haze, particles: weatherFx.counts, petals: petals.count, strikes: lightning.strikes, flash: lightning.flash, fogColor: '#' + scene.fog.color.getHexString(), sun: sun.intensity }, horizon: { ultraTiles: ultraTiles.size, impostors: impostorCount, impostorsVisible: impostorsEnabled, distantWater: waterSystem.distantCount, fogNear: scene.fog.near, fogFar: scene.fog.far, cameraNear: camera.near, cameraFar: camera.far, stormCulled: camera.far < CAMERA_FAR }, flight: { mode: vehicle.flightMode, progress: vehicle.flight, flying: vehicle.flying, simpleControls: simpleFlight, airspeed: vehicle.airspeed, altitude: vehicle.y - world.surface(vehicle.x, vehicle.z), propeller: propellerAngle, wingsVisible: car.getObjectByName('WingSeg1_L')?.visible ?? false, wingspan: car.getObjectByName('WingTip_L') ? car.getObjectByName('WingTip_L').getWorldPosition(new THREE.Vector3()).distanceTo(car.getObjectByName('WingTip_R').getWorldPosition(new THREE.Vector3())) : 0, clouds: clouds.count }, quality: { preset: settings.quality, level: levels[qualityLevel].name, pixelRatio: renderer.getPixelRatio(), shadow: sun.shadow.mapSize.x, farShadow: farSun.castShadow ? farSun.shadow.mapSize.x : 0, grassDensity: grass.density }, controls: { sensitivity: settings.sensitivity, tilt: settings.tilt, tiltActive: tiltActive(), pitchAxis: input.pitchAxis ?? null, steer: input.steer ?? null, throttle: throttleInput() }, water: { lakes: waterSystem.count, wakes: waterSystem.wakeCount }, natureAsset: { ready: Boolean(nature), error: natureError, assets: nature?.stats ?? [], instances: natureInstances }, grass: grassStats, metrics: profiler.snapshot(), draws: drawStats.calls, triangles: drawStats.triangles, motionBlur: settings.motionBlur, carMeshes, carDraws, carAsset: { ready: carReady, error: carError, kind: shownAsset?.kind ?? null, name: shownAsset?.kind === 'roadster' ? 'Roadster Rocket' : 'ATLAS Amphibious', plumes: plumes?.visible ?? 0, vapour: vapour.count, wingAngle: shownAsset?.wing?.rotation.x ?? null, animationDuration: transformation?.duration, hullSpan: car.getObjectByName('Hull_R')?.position.x - car.getObjectByName('Hull_L')?.position.x, triangles: carTriangles, wheelPivots: wheelPivots.map(p => p.parent.position.toArray()), wheelSteer: wheelPivots.map(p => p.rotation.y), wheelSpin: wheelSpinners.map(p => p.rotation.x), headlights: headMat.emissiveIntensity, brakes: brakeMat.emissiveIntensity }, chunks: chunks.size, farTiles: farTiles.size, loading, generation, streamError, pending: pending.size, stalePending: [...pending.values()].filter(job => job.generation !== generation).length, queued: jobs.length, carBatching: carBatching.map(({ before, after }) => ({ before, after })), vehicle: { ...vehicle }, renderPose: { ...vehiclePresentation.pose }, debris: debris.count, fallingTrees: treeBreakage?.count ?? 0, sound: audio ? { muted, played: audio.breaks.played, active: audio.breaks.active, effects: audio.vehicle.played, effectTypes: audio.vehicle.playedBy, gear: audio.vehicle.gear, masterGain: audio.master.gain.value, sfxGain: audio.sfx.gain.value, music: { track: audio.music.track?.id ?? null, playing: audio.music.playing, level: audio.music.level, started: audio.music.started, time: audio.music.time } } : null, brokenProps: world.brokenProps.size, hiddenProps, accumulator, cameraError: cameraPosition.distanceTo(desiredCamera) + cameraTarget.distanceTo(look), camera: cameraPosition.toArray(), target: cameraTarget.toArray(), garage: { open: garage.open, kind: showroom.kind, preview: showroom.previewing } };
 } };

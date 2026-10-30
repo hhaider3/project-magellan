@@ -4,7 +4,7 @@ Original Blender asset made independently of the earlier tree. The game loads th
 
 - Full standalone asset: **9,996 triangles**, including 72 falling petals and 65 ground petals.
 - Game tree: **9,174 triangles** (4,766 wood + 4,408 blossom canopy), two instanced material passes. The game's shared GPU petal system supplies the falling petals.
-- Game height normalized to **10.2 m** (`SAKURA_HEIGHT` in `world.mjs`, which also sizes its trunk collision and where its petals fall). Editable Blender source retains its native dimensions. In the game the cherries grow only along stretches of lowland shore: lakes, seas and rivers, on banks 0.3–5 m above the water.
+- Game height normalized to **10.2 m** (`SAKURA_HEIGHT` in `world.mjs`, which also sizes its trunk collision and where its petals fall). Editable Blender source retains its native dimensions. In the game the cherries grow only along stretches of lowland shore round ponds, lakes and seas, on banks 0.3–5 m above the water and at least 40 m from any river.
 - One exact **8-second** looping animation in the standalone GLB: 241 keys, the last the same as the first, so three.js eases frame 240 back into frame 1. The Blender scene plays frames 1–240, so its loop doesn't show that pose twice. The game does not run an animation mixer per tree.
 - Textures are packed into the Blender file and GLB. Blossom alpha uses MASK, with double-sided cards.
 
