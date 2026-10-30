@@ -118,7 +118,40 @@ header {
   display:flex;
   gap:10px;
   pointer-events:auto;
+  position:relative;
 }
+
+/* The speaker button opens this: mute, and music and effects volumes. */
+#soundPanel {
+  position:absolute;
+  top:calc(100% + 10px);
+  right:0;
+  width:250px;
+  padding:14px 16px 12px;
+  display:grid;
+  gap:10px;
+  background:rgba(20,36,31,.86);
+  border:1px solid var(--line);
+  border-radius:6px;
+  backdrop-filter:blur(14px);
+  -webkit-backdrop-filter:blur(14px);
+  font-size:11px;
+  color:var(--faint);
+  z-index:20;
+}
+#soundPanel[hidden] { display:none; }
+#soundPanel .sound-head { display:flex; align-items:center; justify-content:space-between; font-size:8px; letter-spacing:.24em; color:var(--cream); }
+#soundPanel label { display:grid; grid-template-columns:52px 1fr 36px; align-items:center; gap:10px; }
+#soundPanel input { width:100%; accent-color:var(--yellow); }
+#soundPanel output { text-align:right; color:var(--cream); font-variant-numeric:tabular-nums; }
+#soundPanel button { background:none; border:1px solid var(--line); border-radius:3px; padding:4px 9px; font-size:9px; letter-spacing:.12em; color:var(--cream); }
+#soundPanel button:hover { border-color:var(--yellow); }
+#soundPanel #muteBtn[aria-pressed="true"] { background:var(--yellow); color:var(--ink); border-color:var(--yellow); }
+#soundPanel .now-playing { display:flex; align-items:center; justify-content:space-between; gap:10px; padding-top:9px; border-top:1px solid var(--line); font-size:9px; letter-spacing:.06em; }
+#soundPanel .now-playing span { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+#soundPanel .now-playing b { font-weight:500; color:var(--cream); }
+#soundPanel.muted label, #soundPanel.muted .now-playing { opacity:.4; }
+body.roadster #soundPanel { background:rgba(14,6,6,.88); }
 
 .icon-button {
   border:1px solid var(--line);

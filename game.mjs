@@ -15,6 +15,7 @@ import { createTreeBreakage } from './tree-breakage.mjs?v=nature-1';
 import { loadNatureLibrary } from './nature-models.mjs?v=nature-2';
 import { createBreakAudio } from './break-audio.mjs?v=sound-2';
 import { createVehicleAudio } from './vehicle-audio.mjs?v=pedals-1';
+import { createMusic, volumeGain } from './music.mjs?v=music-1';
 import { installSunShadowFade, separateVehicleShadow } from './shadow-fade.mjs?v=shadow-2';
 import { createGrass } from './grass.mjs?v=pedals-1';
 import { createPerfMeter, createGpuTimer } from './perf-meter.mjs?v=perf-2';
@@ -94,13 +95,14 @@ if (!testMode) try { muted = localStorage.getItem('endless-drive-muted') === '1'
 const input = {}, keyStates = new Set(), touchStates = new Map();
 // Graphics and touch preferences. Tests use fixed, device-appropriate settings
 // unless ?quality= is given, so slow software rendering never changes a level.
-const settings = { quality: 'auto', sensitivity: 1, autoLevel: null };
+const settings = { quality: 'auto', sensitivity: 1, autoLevel: null, musicVolume: 1, sfxVolume: 1 };
 if (!testMode) try { Object.assign(settings, JSON.parse(localStorage.getItem('endless-drive-settings') || '{}')); } catch {}
 const qualityParam = new URLSearchParams(location.search).get('quality');
 if (QUALITY_PRESETS.includes(qualityParam)) settings.quality = qualityParam;
 else if (testMode) settings.quality = coarse ? 'medium' : 'high';
 if (!QUALITY_PRESETS.includes(settings.quality)) settings.quality = 'auto';
 settings.sensitivity = clamp(Number(settings.sensitivity) || 1, .5, 1.5);
+for (const key of ['musicVolume', 'sfxVolume']) settings[key] = clamp(Number.isFinite(Number(settings[key])) ? Number(settings[key]) : 1, 0, 1);
 settings.tilt = coarse && settings.tilt === true;
 // Motion blur: on by default, off in tests unless ?blur=1. Phones used to
 // default to off, and every save stored that, so a phone's saved "off" counts
@@ -746,7 +748,7 @@ function processBreakage() {
       fallenSigns.set(prop.id, axis);
       const mesh = chunk?.signs.get(prop.id);
       if (mesh) { mesh.quaternion.setFromAxisAngle(axis, SIGN_KICK); fallingSigns.push({ mesh, axis, t: 0 }); }
-      if (!muted && audio) audio.breaks.play('sign', speed, panAt(prop.x, prop.z));
+      if (!muted && audio) { audio.breaks.play('sign', speed, panAt(prop.x, prop.z)); audio.music.dip(.3); }
       continue;
     }
     for (const { mesh, index } of chunk?.propInstances.get(prop.id) || []) {
@@ -756,7 +758,7 @@ function processBreakage() {
     if (standin) { standin.mesh.getMatrixAt(standin.index, matrix); matrix.scale(scaleVec.set(0, 0, 0)); standin.mesh.setMatrixAt(standin.index, matrix); standin.mesh.instanceMatrix.needsUpdate = true; }
     debris.burst(prop);
     if (prop.type === 'tree') treeBreakage.burst({ ...prop, variant: nature.variantFor(prop) });
-    if (!muted && audio) audio.breaks.play(prop.type, Math.hypot(prop.vx, prop.vz), panAt(prop.x, prop.z));
+    if (!muted && audio) { audio.breaks.play(prop.type, Math.hypot(prop.vx, prop.vz), panAt(prop.x, prop.z)); audio.music.dip(prop.type === 'boulder' || prop.type === 'tree' ? .45 : .25); }
   }
 }
 function disposeChunk(chunk) {
@@ -1209,15 +1211,20 @@ function updateSound(throttle, splashes, dt) {
   if (v.impact > decayed + .03 && !v.floating && !splashes.length) {
     const quiet = t - heard.contact; heard.contact = t;
     const worth = v.flightMode ? v.impact > .1 && quiet > 1.2 : !landed && v.impact > .1 && quiet > .5;
-    if (worth) audio.vehicle.thump(v.impact);
+    if (worth) { audio.vehicle.thump(v.impact); audio.music.dip(v.impact * 1.5); }
   }
   heard.impact = v.impact; heard.landings = v.landings;
-  for (const splash of splashes) audio.vehicle.splash(splash.power, panAt(splash.x, splash.z));
+  for (const splash of splashes) { audio.vehicle.splash(splash.power, panAt(splash.x, splash.z)); if (splash.power > .5) audio.music.dip(.3); }
   if ((v.wingStrikes || 0) > heard.wingStrikes && v.lastStrike) audio.vehicle.strike(v.lastStrike.heavy, panAt(v.lastStrike.x, v.lastStrike.z));
   if ((v.wingCrashes || 0) > heard.wingCrashes) audio.vehicle.scrape(.8);
   heard.wingStrikes = v.wingStrikes || 0; heard.wingCrashes = v.wingCrashes || 0;
 }
 let audio = null;
+// The music's level at full volume (the default, as are the effects): about
+// 4 dB under the engine and road at a 100 km/h cruise and 8 dB under at full
+// speed (measured at the output), so it carries the drive without covering
+// the car.
+const MUSIC_LEVEL = .15;
 // Building the sound bank (synthesized engine, effects and breaks) takes
 // 70–250 ms. It is built while the world loads, its context suspended until a
 // click may start it (browsers require one), so pressing Start doesn't freeze.
@@ -1229,20 +1236,66 @@ function initAudio(start = true) {
     master.gain.value = muted ? 0 : 1;
     limiter.threshold.value = -10; limiter.knee.value = 12; limiter.ratio.value = 4;
     master.connect(limiter).connect(context.destination);
-    const sounds = createVehicleAudio(context, master);
-    audio = { context, master, vehicle: sounds, breaks: createBreakAudio(context, master, 8, sounds.echo) };
+    // Two buses into the master (the mute) and its limiter: the effects, and
+    // the music, set to sit under the engine and road at full volume.
+    const sfx = context.createGain(); sfx.gain.value = running ? volumeGain(settings.sfxVolume) : 0; sfx.connect(master);
+    const sounds = createVehicleAudio(context, sfx);
+    const music = createMusic(context, master, { base: MUSIC_LEVEL, mood: () => ({ night: dayLight.night, roadster: vehicle.kind === 'roadster' }) });
+    music.setVolume(settings.musicVolume); music.setMenu(!running);
+    audio = { context, master, sfx, music, vehicle: sounds, breaks: createBreakAudio(context, sfx, 8, sounds.echo) };
   } catch {}
 }
 function syncSound() {
   $('soundBtn').innerHTML = `<svg viewBox="0 0 24 24"><path d="M11 5 6 9H3v6h3l5 4V5Z"/>${muted ? '<path d="m16 9 5 6m0-6-5 6"/>' : '<path d="M15 8a6 6 0 0 1 0 8m3-11a10 10 0 0 1 0 14"/>'}</svg>`;
-  $('soundBtn').setAttribute('aria-label', muted ? 'Unmute sound' : 'Mute sound');
+  $('muteBtn').textContent = muted ? 'Muted' : 'Mute';
+  $('muteBtn').setAttribute('aria-label', muted ? 'Unmute sound' : 'Mute sound'); $('muteBtn').setAttribute('aria-pressed', String(muted));
+  $('soundPanel').classList.toggle('muted', muted);
+  for (const [key, id] of [['musicVolume', 'music'], ['sfxVolume', 'sfx']]) { $(`${id}Volume`).value = Math.round(settings[key] * 100); $(`${id}Value`).textContent = `${Math.round(settings[key] * 100)}%`; }
+  syncTrack();
+}
+function syncTrack() {
+  const track = audio?.music.track;
+  $('trackTitle').textContent = muted ? 'Sound is muted' : settings.musicVolume <= 0 ? 'Music is off' : track ? track.title : 'Music starts with the drive';
+  $('nextTrack').disabled = muted || !track;
 }
 function toggleSound() {
-  muted = !muted; if (!muted) initAudio();
+  muted = !muted; if (!muted) { initAudio(); startMusic(); }
   if (audio) { audio.master.gain.cancelScheduledValues(audio.context.currentTime); audio.master.gain.setValueAtTime(muted ? 0 : 1, audio.context.currentTime); }
+  if (muted) audio?.music.stop(); // no streaming what can't be heard
   try { localStorage.setItem('endless-drive-muted', muted ? '1' : '0'); } catch {} syncSound();
 }
-$('soundBtn').onclick = toggleSound;
+// Music starts with the first tap that may start it (Start, or the sound
+// panel) and plays on from then, in the menu too. Tests stay quiet unless
+// unmuted.
+let musicWanted = false;
+function startMusic() {
+  if (!audio || muted || settings.musicVolume <= 0) return;
+  musicWanted = true; audio.context.resume(); audio.music.start(); setTimeout(syncTrack, 50);
+}
+// The sound panel: opened by the speaker button, closed by it again, a tap
+// outside or Escape. Its sliders change the music and effects buses live.
+function openSoundPanel(open) {
+  $('soundPanel').hidden = !open; $('soundBtn').setAttribute('aria-expanded', String(open));
+  if (open) syncSound();
+}
+$('soundBtn').onclick = () => openSoundPanel($('soundPanel').hidden);
+$('muteBtn').onclick = toggleSound;
+$('nextTrack').onclick = () => { audio?.music.next(); setTimeout(syncTrack, 50); };
+addEventListener('pointerdown', e => { if (!$('soundPanel').hidden && !e.target.closest('.top-actions')) openSoundPanel(false); });
+for (const [key, id] of [['musicVolume', 'music'], ['sfxVolume', 'sfx']]) {
+  const slider = $(`${id}Volume`);
+  slider.addEventListener('input', () => {
+    settings[key] = Number(slider.value) / 100; $(`${id}Value`).textContent = `${slider.value}%`;
+    if (!muted) initAudio();
+    if (audio) {
+      if (key === 'musicVolume') { audio.music.setVolume(settings.musicVolume); if (settings.musicVolume > 0) startMusic(); }
+      else if (running) audio.sfx.gain.setTargetAtTime(volumeGain(settings.sfxVolume), audio.context.currentTime, .05);
+    }
+    syncTrack();
+  });
+  // Let go: save, and hand the keyboard back to the game.
+  slider.addEventListener('change', () => { saveSettings(); slider.blur(); });
+}
 function saveRecord() { bestDistance = Math.max(bestDistance, vehicle.distance); if (!testMode) try { localStorage.setItem('endless-drive-records', JSON.stringify({ distance: bestDistance })); } catch {} }
 let toastTimer;
 function toast(text) { $('toast').textContent = text; $('toast').classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => $('toast').classList.remove('show'), 2600); }
@@ -1271,12 +1324,15 @@ function resume() {
   if (settings.tilt) { requestTilt(); tilt.neutral = null; } // re-centre the climb/dive tilt
   $('menu').classList.add('closed'); $('menu').inert = true; $('menu').setAttribute('aria-hidden', 'true');
   $('pauseBtn').hidden = false; $('switchBtn').hidden = false; document.body.classList.add('driving'); renderer.domElement.focus({ preventScroll: true });
-  if (!muted) initAudio();
+  if (!muted) { initAudio(); startMusic(); }
+  // The effects come back in; the music clears from behind the menu.
+  if (audio) { audio.sfx.gain.setTargetAtTime(volumeGain(settings.sfxVolume), audio.context.currentTime, .05); audio.music.setMenu(false); }
 }
 function pause() {
   if (!running) return;
   running = false; clearInput(); saveRecord(); document.body.classList.remove('driving');
-  if (audio) audio.context.suspend();
+  // Behind the menu the car falls silent and the music plays on, muffled.
+  if (audio) { audio.sfx.gain.setTargetAtTime(0, audio.context.currentTime, .08); audio.music.setMenu(true); }
   $('menu').classList.remove('closed'); $('menu').inert = false; $('menu').removeAttribute('aria-hidden'); $('pauseBtn').hidden = true; $('switchBtn').hidden = true;
   $('menuTitle').innerHTML = 'Room to<br><em>breathe.</em>'; $('menuCopy').innerHTML = 'Your road will still be here.<br>Pick up where you left off.';
   $('startBtn').firstElementChild.textContent = 'Keep exploring'; $('menuStats').hidden = false;
@@ -1493,6 +1549,11 @@ $('copySeed').onclick = async () => {
   try { await navigator.clipboard.writeText(url.href); toast('World link copied. Bring a friend.'); } catch { history.replaceState(null, '', url); toast('Your world link is in the address bar.'); }
 };
 addEventListener('keydown', e => {
+  // The sound panel keeps its own keys (arrows move a slider); Escape closes it.
+  if (!$('soundPanel').hidden) {
+    if (e.code === 'Escape') { e.preventDefault(); openSoundPanel(false); $('soundBtn').focus(); return; }
+    if (e.target.closest?.('#soundPanel') && e.code !== 'KeyM') return;
+  }
   if (garage.open) {
     if (e.code === 'Escape') { e.preventDefault(); closeGarage(); }
     if ((e.code === 'ArrowLeft' || e.code === 'ArrowRight') && !e.repeat) { e.preventDefault(); stepGarage(e.code === 'ArrowRight' ? 1 : -1); }
@@ -1526,7 +1587,12 @@ addEventListener('keydown', e => {
 });
 addEventListener('keyup', e => { keyStates.delete(e.code); syncInput(); });
 addEventListener('blur', () => { clearInput(); pause(); });
-document.addEventListener('visibilitychange', () => { if (document.hidden) pause(); });
+// Hidden (another tab, a locked phone): everything stops, music included, and
+// picks up again when the page is back.
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) { pause(); if (audio) { audio.music.stop(); audio.context.suspend(); } }
+  else if (audio && !muted && musicWanted) { audio.context.resume(); audio.music.start(); }
+});
 addEventListener('beforeunload', saveRecord);
 for (const el of document.querySelectorAll('[data-control]')) {
   el.addEventListener('pointerdown', e => { e.preventDefault(); if (!running) return; el.setPointerCapture(e.pointerId); if (el.dataset.control === 'jump') vehicle.jumpBuffer = .16; touchStates.set(e.pointerId, el.dataset.control); el.classList.add('active'); syncInput(); });
@@ -1779,6 +1845,7 @@ function updateTelemetry() {
 }
 function updateHUD() {
   const hudStarted = performance.now();
+  if (!$('soundPanel').hidden) syncTrack(); // the track can change while it is open
   const flying = vehicle.flying, planeMode = vehicle.flightMode || flying;
   const unfolding = vehicle.flight > 0 && vehicle.flight < 1, taxiing = vehicle.flightMode && vehicle.flight === 1 && !flying;
   const speed = Math.abs(flying ? vehicle.airspeed : vehicle.speed) * 3.6;
@@ -2109,5 +2176,5 @@ if (testMode) window.__driveTest = { resetMetrics: () => profiler.reset(), snaps
   const natureInstances = {};
   for (const chunk of chunks.values()) if (chunk.group.visible) chunk.group.traverse(o => { if (o.isInstancedMesh && o.userData.natureKind) natureInstances[o.userData.natureKind] = (natureInstances[o.userData.natureKind] || 0) + o.count; });
   const impostorCount = [...farTiles.values()].reduce((n, t) => n + (t.userData.impostors?.meshes ?? []).reduce((m, mesh) => m + (mesh.isInstancedMesh ? mesh.count : 0), 0), 0);
-  return { clouds: { cloudiness: weather.clouds, drift: clouds.drift.toArray(), banks: clouds.count }, time: { hours: clock.hours, clock: clockLabel(clock.hours), day: dayLight.day, night: dayLight.night, sunHeight: dayLight.sun[1], key: sun.intensity, exposure: renderer.toneMappingExposure, headlights: lightsOn }, weather: { kind: weather.target.kind, region: weather.target.region, chance: weather.target.chance, rain: weather.rain, snow: weather.snow, sand: weather.sand, haze: weather.haze, particles: weatherFx.counts, fogColor: '#' + scene.fog.color.getHexString(), sun: sun.intensity }, horizon: { ultraTiles: ultraTiles.size, impostors: impostorCount, impostorsVisible: impostorsEnabled, distantWater: waterSystem.distantCount, fogNear: scene.fog.near, fogFar: scene.fog.far, cameraNear: camera.near, cameraFar: camera.far, stormCulled: camera.far < CAMERA_FAR }, flight: { mode: vehicle.flightMode, progress: vehicle.flight, flying: vehicle.flying, simpleControls: simpleFlight, airspeed: vehicle.airspeed, altitude: vehicle.y - world.surface(vehicle.x, vehicle.z), propeller: propellerAngle, wingsVisible: car.getObjectByName('WingSeg1_L')?.visible ?? false, wingspan: car.getObjectByName('WingTip_L') ? car.getObjectByName('WingTip_L').getWorldPosition(new THREE.Vector3()).distanceTo(car.getObjectByName('WingTip_R').getWorldPosition(new THREE.Vector3())) : 0, clouds: clouds.count }, quality: { preset: settings.quality, level: levels[qualityLevel].name, pixelRatio: renderer.getPixelRatio(), shadow: sun.shadow.mapSize.x, farShadow: farSun.castShadow ? farSun.shadow.mapSize.x : 0, grassDensity: grass.density }, controls: { sensitivity: settings.sensitivity, tilt: settings.tilt, tiltActive: tiltActive(), pitchAxis: input.pitchAxis ?? null, steer: input.steer ?? null, throttle: throttleInput() }, water: { lakes: waterSystem.count, wakes: waterSystem.wakeCount }, natureAsset: { ready: Boolean(nature), error: natureError, assets: nature?.stats ?? [], instances: natureInstances }, grass: grassStats, metrics: profiler.snapshot(), draws: drawStats.calls, triangles: drawStats.triangles, motionBlur: settings.motionBlur, carMeshes, carDraws, carAsset: { ready: carReady, error: carError, kind: shownAsset?.kind ?? null, name: shownAsset?.kind === 'roadster' ? 'Roadster Rocket' : 'ATLAS Amphibious', plumes: plumes?.visible ?? 0, vapour: vapour.count, wingAngle: shownAsset?.wing?.rotation.x ?? null, animationDuration: transformation?.duration, hullSpan: car.getObjectByName('Hull_R')?.position.x - car.getObjectByName('Hull_L')?.position.x, triangles: carTriangles, wheelPivots: wheelPivots.map(p => p.parent.position.toArray()), wheelSteer: wheelPivots.map(p => p.rotation.y), wheelSpin: wheelSpinners.map(p => p.rotation.x), headlights: headMat.emissiveIntensity, brakes: brakeMat.emissiveIntensity }, chunks: chunks.size, farTiles: farTiles.size, loading, generation, streamError, pending: pending.size, stalePending: [...pending.values()].filter(job => job.generation !== generation).length, queued: jobs.length, carBatching: carBatching.map(({ before, after }) => ({ before, after })), vehicle: { ...vehicle }, renderPose: { ...vehiclePresentation.pose }, debris: debris.count, fallingTrees: treeBreakage?.count ?? 0, sound: audio ? { muted, played: audio.breaks.played, active: audio.breaks.active, effects: audio.vehicle.played, effectTypes: audio.vehicle.playedBy, gear: audio.vehicle.gear, masterGain: audio.master.gain.value } : null, brokenProps: world.brokenProps.size, hiddenProps, accumulator, cameraError: cameraPosition.distanceTo(desiredCamera) + cameraTarget.distanceTo(look), camera: cameraPosition.toArray(), target: cameraTarget.toArray(), garage: { open: garage.open, kind: showroom.kind, preview: showroom.previewing } };
+  return { clouds: { cloudiness: weather.clouds, drift: clouds.drift.toArray(), banks: clouds.count }, time: { hours: clock.hours, clock: clockLabel(clock.hours), day: dayLight.day, night: dayLight.night, sunHeight: dayLight.sun[1], key: sun.intensity, exposure: renderer.toneMappingExposure, headlights: lightsOn }, weather: { kind: weather.target.kind, region: weather.target.region, chance: weather.target.chance, rain: weather.rain, snow: weather.snow, sand: weather.sand, haze: weather.haze, particles: weatherFx.counts, fogColor: '#' + scene.fog.color.getHexString(), sun: sun.intensity }, horizon: { ultraTiles: ultraTiles.size, impostors: impostorCount, impostorsVisible: impostorsEnabled, distantWater: waterSystem.distantCount, fogNear: scene.fog.near, fogFar: scene.fog.far, cameraNear: camera.near, cameraFar: camera.far, stormCulled: camera.far < CAMERA_FAR }, flight: { mode: vehicle.flightMode, progress: vehicle.flight, flying: vehicle.flying, simpleControls: simpleFlight, airspeed: vehicle.airspeed, altitude: vehicle.y - world.surface(vehicle.x, vehicle.z), propeller: propellerAngle, wingsVisible: car.getObjectByName('WingSeg1_L')?.visible ?? false, wingspan: car.getObjectByName('WingTip_L') ? car.getObjectByName('WingTip_L').getWorldPosition(new THREE.Vector3()).distanceTo(car.getObjectByName('WingTip_R').getWorldPosition(new THREE.Vector3())) : 0, clouds: clouds.count }, quality: { preset: settings.quality, level: levels[qualityLevel].name, pixelRatio: renderer.getPixelRatio(), shadow: sun.shadow.mapSize.x, farShadow: farSun.castShadow ? farSun.shadow.mapSize.x : 0, grassDensity: grass.density }, controls: { sensitivity: settings.sensitivity, tilt: settings.tilt, tiltActive: tiltActive(), pitchAxis: input.pitchAxis ?? null, steer: input.steer ?? null, throttle: throttleInput() }, water: { lakes: waterSystem.count, wakes: waterSystem.wakeCount }, natureAsset: { ready: Boolean(nature), error: natureError, assets: nature?.stats ?? [], instances: natureInstances }, grass: grassStats, metrics: profiler.snapshot(), draws: drawStats.calls, triangles: drawStats.triangles, motionBlur: settings.motionBlur, carMeshes, carDraws, carAsset: { ready: carReady, error: carError, kind: shownAsset?.kind ?? null, name: shownAsset?.kind === 'roadster' ? 'Roadster Rocket' : 'ATLAS Amphibious', plumes: plumes?.visible ?? 0, vapour: vapour.count, wingAngle: shownAsset?.wing?.rotation.x ?? null, animationDuration: transformation?.duration, hullSpan: car.getObjectByName('Hull_R')?.position.x - car.getObjectByName('Hull_L')?.position.x, triangles: carTriangles, wheelPivots: wheelPivots.map(p => p.parent.position.toArray()), wheelSteer: wheelPivots.map(p => p.rotation.y), wheelSpin: wheelSpinners.map(p => p.rotation.x), headlights: headMat.emissiveIntensity, brakes: brakeMat.emissiveIntensity }, chunks: chunks.size, farTiles: farTiles.size, loading, generation, streamError, pending: pending.size, stalePending: [...pending.values()].filter(job => job.generation !== generation).length, queued: jobs.length, carBatching: carBatching.map(({ before, after }) => ({ before, after })), vehicle: { ...vehicle }, renderPose: { ...vehiclePresentation.pose }, debris: debris.count, fallingTrees: treeBreakage?.count ?? 0, sound: audio ? { muted, played: audio.breaks.played, active: audio.breaks.active, effects: audio.vehicle.played, effectTypes: audio.vehicle.playedBy, gear: audio.vehicle.gear, masterGain: audio.master.gain.value, sfxGain: audio.sfx.gain.value, music: { track: audio.music.track?.id ?? null, playing: audio.music.playing, level: audio.music.level, started: audio.music.started, time: audio.music.time } } : null, brokenProps: world.brokenProps.size, hiddenProps, accumulator, cameraError: cameraPosition.distanceTo(desiredCamera) + cameraTarget.distanceTo(look), camera: cameraPosition.toArray(), target: cameraTarget.toArray(), garage: { open: garage.open, kind: showroom.kind, preview: showroom.previewing } };
 } };

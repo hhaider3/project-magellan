@@ -134,6 +134,8 @@ test('worker loading, actual WebGL rendering, and stationary scenery stay stable
 
 test('trees fracture into visible sections, release bounded debris, and breaking audio respects mute', async ({ page }, testInfo) => {
   const errors = await openGame(page, 77, 'tree-smash');
+  // The speaker button opens the sound panel; mute is in it.
+  await page.getByRole('button', { name: 'Sound settings', exact: true }).click();
   await page.getByRole('button', { name: 'Unmute sound', exact: true }).click();
   await page.getByRole('button', { name: 'Start exploring', exact: true }).click();
   await page.keyboard.down('KeyW');
@@ -144,9 +146,13 @@ test('trees fracture into visible sections, release bounded debris, and breaking
   expect(impact.brokenProps).toBeGreaterThan(0);
   expect(impact.debris).toBeGreaterThan(0); expect(impact.debris).toBeLessThanOrEqual(192);
   expect(impact.sound.played).toBeGreaterThan(0); expect(impact.sound.masterGain).toBe(1);
+  // The music started with the unmute, and the effects bus is at full volume while driving.
+  expect(impact.sound.music.started).toBeGreaterThan(0); expect(impact.sound.music.track).toBeTruthy();
+  await expect.poll(async () => (await snapshot(page)).sound.sfxGain, { timeout: 2000 }).toBeCloseTo(1, 2);
   await testInfo.attach('fractured-tree', { body: await page.screenshot(), contentType: 'image/png' });
   await page.waitForTimeout(600);
   await testInfo.attach('tree-separating', { body: await page.screenshot(), contentType: 'image/png' });
+  await page.getByRole('button', { name: 'Sound settings', exact: true }).click();
   await page.getByRole('button', { name: 'Mute sound', exact: true }).click();
   // AudioParam.value updates on the next audio render quantum, not at once.
   await expect.poll(async () => (await snapshot(page)).sound.masterGain, { timeout: 2000 }).toBe(0);

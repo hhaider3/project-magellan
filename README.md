@@ -82,7 +82,7 @@ You need a browser with WebGL and module workers. Everything else is bundled: Th
 | C | Camera: chase, wide or bonnet |
 | V | Switch between the ATLAS and the Roadster where you are (also the ⇄ button at the top right) |
 | L | Headlights |
-| M | Sound on / off |
+| M | Mute / unmute |
 | Esc / P | Pause / resume |
 | N | New world |
 | 1 / 2 / 3 / 4 | Jump to sunrise, noon, sunset or night (also **Time of day** in the menu) |
@@ -115,7 +115,7 @@ On phones and compact windows:
 - **Fullscreen:** in landscape the game goes fullscreen on your next tap, and leaves it when you turn back to portrait. Safari on iPhone doesn't allow fullscreen for web pages, so on iPhone use Share → **Add to Home Screen**: the game then opens fullscreen like an app.
 - **Sensitivity** (50–150%) is in the menu. It changes how quickly small slider, ring or tilt movements turn; full deflection is always full lock.
 
-The game pauses when the window loses focus. If the browser drops the graphics (phones do when you switch apps), the drive pauses there and carries on from the pause menu once they're restored, with no reload. Sound is on from the start (it begins with your first click or tap, as browsers require); press M or the speaker button to mute, and the game remembers. Trip records and settings are saved in your browser.
+The game pauses when the window loses focus. If the browser drops the graphics (phones do when you switch apps), the drive pauses there and carries on from the pause menu once they're restored, with no reload. Sound is on from the start (it begins with your first click or tap, as browsers require); press M to mute, or the speaker button for music and effects volumes, and the game remembers. Trip records and settings are saved in your browser.
 
 ## What's in the world
 
@@ -158,7 +158,7 @@ Cloud cover follows the region too: desert skies are nearly clear, meadows about
 
 **Scenery and destruction.** Pines, shrubs, cacti, rocks, boulders, roadside markers, cabins and lookout towers, all modeled in Blender. The scenery follows the land: snow-dusted pines on the cold upper slopes, small wind-bent pines at the treeline, low junipers and boulders above it, dead snags and dry scrub at the desert's edge, granite crags on steep mountain ground, sandstone ledges on the mesas, and scree on the high slopes. Outcrops are solid and never break. Trees, cacti and small rocks shatter if you hit them above 65 km/h (boulders need 94 km/h); trees split into falling sections, and broken props stay broken for the rest of your visit. Clearances keep scenery off roads and ramp approaches.
 
-**Sound.** All synthesized in the browser, with no audio files: a V8 engine with gears and exhaust pops, boat jets, a propeller, wind, tyre roar and squeal, rain, transformation motors, and impacts, splashes and breaking scenery placed left or right of the camera.
+**Sound.** Four music tracks, chosen to suit the drive and crossfading from one to the next, over effects all synthesized in the browser: a V8 engine with gears and exhaust pops, boat jets, a propeller, wind, tyre roar and squeal, rain, transformation motors, and impacts, splashes and breaking scenery placed left or right of the camera.
 
 ## Settings
 
@@ -221,7 +221,7 @@ Test modes keep their trip records separate from normal play. The `seed=3` world
 | Weather and sky | `daylight.mjs` (the clock, sun and moon paths, light colours), `sky.mjs` (sky dome, sun, moon, stars, clouds), `weather.mjs` (regional odds), `weather-effects.mjs` (rain, snow, fog colour), `clouds.mjs` (cloud banks) |
 | Scenery | `scenery.mjs` (ramps, cabins, lookouts), `bridge-data.mjs` (bridge meshes, built in the worker), `roadside-data.mjs` (guardrails, signs and posts, built in the worker), `nature-models.mjs`, `grass-data.mjs`, `grass.mjs` |
 | Effects | `tree-breakage.mjs`, `debris.mjs`, `dust.mjs`, `thrusters.mjs` (the Roadster's plumes and vapour), `shadow-fade.mjs`, `camera-motion.mjs` |
-| Sound | `vehicle-audio.mjs`, `break-audio.mjs` |
+| Sound | `vehicle-audio.mjs`, `break-audio.mjs`, `music.mjs` |
 | Tools | `quality.mjs` (presets and Auto), `perf-meter.mjs`, `profiling.mjs` |
 | Assets | `assets/vehicles/`, `assets/nature/` (Blender sources and exports), `scripts/` (build, export and profiling scripts) |
 
@@ -425,11 +425,13 @@ The sun casts from three maps:
 
 ### Sound
 
-All synthesized live:
+- **Music.** Four tracks in `assets/music` (Golden Hour Highway, Chrome Highway, Night Drive, Redline), streamed rather than decoded whole, and levelled to the same loudness. Each fades into the next over its closing bars; the next is never the same track, Night Drive mostly after dark and Redline more often in the Roadster. At full volume (the default for both music and effects) the music sits about 4 dB under the engine and road at a cruise, with a slight dip in the low mids so the car cuts through; it dips briefly under crashes, and plays on muffled behind the menu.
+
+The effects are all synthesized live:
 
 - **Engine.** A loop of uneven V8 exhaust pulses runs through a muffler response, with revs that follow six gears.
 - **Roadster.** An electric drive's whine replaces the V8, rising with road speed, with the hiss and roar of cold gas whenever the thrusters fire.
 - **Transforming.** As the ATLAS transforms, the sound crossfades to a muffled boat engine with a water jet, or to a plane engine with a propeller whoosh.
 - **Ambience.** Wind, tyre and weather sounds follow speed, surface and the weather.
 - **One-shots.** Impacts, splashes, scrapes and strikes are panned from the camera, with a short echo. Big hits briefly duck the engine.
-- **Mute.** One toggle (M or the speaker button) mutes everything.
+- **Volume.** The speaker button opens Music and Effects sliders, the track playing (with Next) and Mute; M mutes everything at once.
