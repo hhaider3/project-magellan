@@ -1425,3 +1425,16 @@ body.touch .garage-hint { display:none; }
   #settingsRow { margin-top:8px; gap:4px 14px; }
   .world-row { margin-top:8px; }
 }
+
+/* The speed panel on phones: the trip line never wraps (the panel is a
+   little wider), and on short screens (a phone held sideways with the
+   browser's bars showing) it is set smaller, so it stays clear of the lake
+   marker above it and the Roadster's DRIFT and BOOST below. */
+body.touch #dashboard { width:232px; }
+body.touch .trip { gap:10px; white-space:nowrap; }
+@media(max-height:420px) {
+  body.touch .speed-row strong { font-size:42px; }
+  body.touch .speed-track { margin:4px 0 9px; }
+  body.roadster.touch .gas-row { margin:-3px 0 8px; }
+  body.roadster.touch #dashboard { bottom:130px; }
+}
