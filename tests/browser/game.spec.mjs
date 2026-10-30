@@ -255,7 +255,7 @@ test('the Roadster boosts, skims a lake and hovers on its thrusters, and swaps w
   const initial = await snapshot(page);
   expect(initial.carAsset).toMatchObject({ ready: true, error: null, kind: 'roadster', name: 'Roadster Rocket', plumes: 0 });
   expect(initial.vehicle).toMatchObject({ kind: 'roadster', gas: 1, transform: 0 });
-  await expect(page.locator('#vehicleBtn')).toHaveText('Vehicle: Roadster');
+  await expect(page.locator('#vehicleRoadster')).toHaveAttribute('aria-pressed', 'true');
   await page.getByRole('button', { name: 'Start exploring', exact: true }).click();
   await expect(page.locator('#gasRow')).toBeVisible();
   await expect(page.locator('#flyAction')).toHaveText('hover');
@@ -285,12 +285,12 @@ test('the Roadster boosts, skims a lake and hovers on its thrusters, and swaps w
   // Settings → Vehicle swaps in the ATLAS where it is: a boat, on the lake.
   await expect.poll(async () => (await snapshot(page)).vehicle.grounded, { timeout: 10000 }).toBe(true);
   await page.keyboard.press('Escape');
-  await page.locator('#vehicleBtn').click();
+  await page.getByRole('button', { name: 'ATLAS', exact: true }).click();
   await expect.poll(async () => (await snapshot(page)).carAsset.kind, { timeout: 30000 }).toBe('atlas');
   const atlas = await snapshot(page);
   expect(atlas.vehicle).toMatchObject({ kind: 'atlas', floating: true });
   expect(atlas.vehicle.distance).toBeGreaterThan(50);
-  await expect(page.locator('#vehicleBtn')).toHaveText('Vehicle: ATLAS');
+  await expect(page.locator('#vehicleAtlas')).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('#gasRow')).toBeHidden();
   // V switches back mid-drive, to the Roadster's red telemetry HUD.
   await page.getByRole('button', { name: 'Keep exploring', exact: true }).click();
@@ -398,6 +398,8 @@ test('graphics presets cycle, and the steering slider replaces the arrow buttons
   expect(state.grass.meshes).toBeLessThanOrEqual(4); expect(state.grass.tufts).toBeGreaterThan(0);
   expect(state.grass.triangles).toBeLessThanOrEqual(12000); // Medium: cheap 5-triangle tufts, near the old 9,600 cap
   await testInfo.attach('mobile-grass', { body: await page.screenshot(), contentType: 'image/png' });
+  // Graphics is in the Settings sheet.
+  await page.locator('#settingsBtn').tap();
   await page.locator('#qualityBtn').tap();
   await expect(page.locator('#qualityBtn')).toHaveText('Graphics: High');
   state = await snapshot(page);
@@ -474,8 +476,8 @@ test('tilt steering: turning the phone steers, and the slider steps aside', asyn
   // Chrome asks for motion access too; a phone that allows it grants these.
   await page.context().grantPermissions(['accelerometer', 'gyroscope', 'magnetometer']);
   const errors = await openGame(page, 3);
-  await page.locator('#tiltBtn').tap();
-  await expect(page.locator('#tiltBtn')).toHaveText('Tilt: On');
+  await page.locator('#settingsBtn').tap(); await page.locator('#tiltBtn').tap();
+  await expect(page.locator('#tiltBtn')).toHaveText('Tilt steering: On');
   await page.getByRole('button', { name: 'Start exploring', exact: true }).click();
   await expect(page.locator('#steerSlider')).toBeHidden();
   // Feed the phone's orientation as a real one would: turned like a wheel by
@@ -501,8 +503,8 @@ test('tilt steering: turning the phone steers, and the slider steps aside', asyn
   await expect.poll(async () => (await snapshot(page)).controls.steer).toBeGreaterThan(.5);
   // Turned off, the slider is back and tilt steers nothing.
   await page.evaluate(() => clearInterval(window.__tilt));
-  await page.locator('#pauseBtn').tap(); await page.locator('#tiltBtn').tap();
-  await expect(page.locator('#tiltBtn')).toHaveText('Tilt: Off');
+  await page.locator('#pauseBtn').tap(); await page.locator('#settingsBtn').tap(); await page.locator('#tiltBtn').tap();
+  await expect(page.locator('#tiltBtn')).toHaveText('Tilt steering: Off');
   await page.getByRole('button', { name: 'Keep exploring', exact: true }).click();
   await expect(page.locator('#steerSlider')).toBeVisible();
   expect((await snapshot(page)).controls).toMatchObject({ tilt: false, tiltActive: false });

@@ -85,7 +85,7 @@ You need a browser with WebGL and module workers. Everything else is bundled: Th
 | M | Mute / unmute |
 | Esc / P | Pause / resume |
 | N | New world |
-| 1 / 2 / 3 / 4 | Jump to sunrise, noon, sunset or night (also **Time of day** in the menu) |
+| 1 / 2 / 3 / 4 | Jump to sunrise, noon, sunset or night (also **Time** in the menu) |
 
 In the water the same keys drive the boat: W/S thrust, A/D steer, Shift slows down. You can't jump while floating. The Roadster never floats: over water it skims on its thrusters and drives as it does on land.
 
@@ -110,10 +110,10 @@ On phones and compact windows:
 - **↑ / ↓**: accelerate, and brake then reverse.
 - **Jump** and **Drift** sit side by side just above the slider. **FLY** is just left of the brake; in the air it becomes **LAND**, with **SIMPLE** above it. In the Roadster it's **HOVER** (hold it), with **BOOST** and **FANS** (suction on / off) beside it.
 - **Flight ring:** in the air the steering slider becomes a ring in the same spot. Drag the knob up to climb, down to dive, and sideways to roll (or turn, on simple controls). The ring stays put, the knob stops at its edge and re-centres when you let go, and ↑ / ↓ are the throttle.
-- **Tilt steering** (menu → **Tilt**, off by default): turn the phone like a steering wheel to steer; full lock is about 35° of turn. The slider steps aside, and Jump and Drift stay put. In the air, turning rolls (or turns, on simple controls), and tilting the top toward you climbs and away dives, measured from how you held the phone when the wings came out. The ring still works and takes over while you touch it. iPhones ask once for motion access when you turn it on.
+- **Tilt steering** (menu → **Settings** → **Tilt steering**, off by default): turn the phone like a steering wheel to steer; full lock is about 35° of turn. The slider steps aside, and Jump and Drift stay put. In the air, turning rolls (or turns, on simple controls), and tilting the top toward you climbs and away dives, measured from how you held the phone when the wings came out. The ring still works and takes over while you touch it. iPhones ask once for motion access when you turn it on.
 - **No minimap** on phones, so the controls have room (the HUD still points to the nearest ramp and lake).
 - **Fullscreen:** in landscape the game goes fullscreen on your next tap, and leaves it when you turn back to portrait. Safari on iPhone doesn't allow fullscreen for web pages, so on iPhone use Share → **Add to Home Screen**: the game then opens fullscreen like an app.
-- **Sensitivity** (50–150%) is in the menu. It changes how quickly small slider, ring or tilt movements turn; full deflection is always full lock.
+- **Sensitivity** (50–150%) is in the menu's Settings. It changes how quickly small slider, ring or tilt movements turn; full deflection is always full lock.
 
 The game pauses when the window loses focus. If the browser drops the graphics (phones do when you switch apps), the drive pauses there and carries on from the pause menu once they're restored, with no reload. Sound is on from the start (it begins with your first click or tap, as browsers require); press M to mute, or the speaker button for music and effects volumes, and the game remembers. Trip records and settings are saved in your browser.
 
@@ -160,9 +160,22 @@ Cloud cover follows the region too: desert skies are nearly clear, meadows about
 
 **Sound.** Four music tracks, chosen to suit the drive and crossfading from one to the next, over effects all synthesized in the browser: a V8 engine with gears and exhaust pops, boat jets, a propeller, wind, tyre roar and squeal, rain, transformation motors, and impacts, splashes and breaking scenery placed left or right of the camera.
 
+## The menu
+
+The start and pause menus put the drive first: a title, a line or two and **Start exploring** (**Keep exploring** when paused). Beside or below it is a short setup list for each drive:
+
+- **Vehicle:** an ATLAS / Roadster switch, and **View cars** for the garage.
+- **World:** the seed, **New world** and a copy-link button.
+- **Time:** the clock; each press jumps to sunrise, noon, sunset or night.
+- **This drive** and **Car** (pause menu only): the trip and your best, **Recover car** and the camera.
+
+Tall screens stack the setup under the title, clear of the car. Shorter windows and phones held sideways put the title on the left and the setup at the right edge, with the car between them, so everything fits on one screen without scrolling.
+
+**Settings** at the foot of the list opens a sheet with the options you set once: graphics, motion blur and the FPS meter, plus tilt steering, sensitivity and a guide to the touch controls on phones.
+
 ## Settings
 
-The start and pause menus have these settings:
+The Settings sheet has these settings:
 
 **Graphics** sets render resolution, sun shadows, and grass density and range:
 

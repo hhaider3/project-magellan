@@ -1320,6 +1320,7 @@ function syncInput() {
 const throttleInput = () => controlAxis(input.throttle, input.up, input.down);
 function resume() {
   if ($('startBtn').disabled || upright() || contextLost) return;
+  openSettings(false);
   running = true; started = true; resetTiming(); auto?.reset(performance.now());
   if (settings.tilt) { requestTilt(); tilt.neutral = null; } // re-centre the climb/dive tilt
   $('menu').classList.add('closed'); $('menu').inert = true; $('menu').setAttribute('aria-hidden', 'true');
@@ -1336,7 +1337,7 @@ function pause() {
   $('menu').classList.remove('closed'); $('menu').inert = false; $('menu').removeAttribute('aria-hidden'); $('pauseBtn').hidden = true; $('switchBtn').hidden = true;
   $('menuTitle').innerHTML = 'Room to<br><em>breathe.</em>'; $('menuCopy').innerHTML = 'Your road will still be here.<br>Pick up where you left off.';
   $('startBtn').firstElementChild.textContent = 'Keep exploring'; $('menuStats').hidden = false;
-  $('pauseTools').hidden = false;
+  $('pauseTools').hidden = false; syncTime();
   $('runDistance').textContent = (vehicle.distance / 1000).toFixed(2); $('bestDistance').textContent = (bestDistance / 1000).toFixed(2);
   $('startBtn').focus({ preventScroll: true });
 }
@@ -1413,9 +1414,11 @@ let timePreset = -1;
 function setTimeOfDay(index) {
   timePreset = index; const [name, hours] = TIME_PRESETS[index];
   clock.hours = hours; weather.check = 0;
-  $('timeBtn').textContent = `Time of day: ${name}`;
+  $('timeBtn').textContent = `${name} · ${clockLabel(hours)}`;
   toast(`${name} · ${clockLabel(hours)}`);
 }
+// The menu's time chip shows the clock where the drive stands.
+function syncTime() { $('timeBtn').textContent = clockLabel(clock.hours); }
 $('timeBtn').onclick = () => setTimeOfDay((timePreset + 1) % TIME_PRESETS.length);
 // T switches between full three-axis flight and the simple arcade controls
 // (bank to turn, climb/dive, levels itself when released) for this visit.
@@ -1497,6 +1500,7 @@ function showGarageCar() {
 }
 function openGarage() {
   if (garage.open || running) return;
+  openSettings(false);
   garage.open = true; garage.index = Math.max(0, VEHICLE_ORDER.indexOf(vehicleKind)); garage.last = performance.now();
   $('garage').hidden = false; document.body.classList.add('garage'); $('menu').inert = true;
   showGarageCar(); $('garageBack').focus({ preventScroll: true });
@@ -1560,6 +1564,7 @@ addEventListener('keydown', e => {
     if (e.code === 'KeyM' && !e.repeat) toggleSound();
     return;
   }
+  if (e.code === 'Escape' && !$('settingsSheet').hidden) { e.preventDefault(); openSettings(false); return; }
   if (e.code === 'Escape' || e.code === 'KeyP') { e.preventDefault(); if (!e.repeat && started) running ? pause() : resume(); return; }
   if (keyMap[e.code]) {
     if (running) {
@@ -1628,24 +1633,26 @@ function applyQuality(index) {
   syncSettings();
 }
 const qualityNames = { auto: 'Auto', low: 'Low', medium: 'Medium', high: 'High' };
+// A settings row keeps its label; only its value (the <b>) changes.
+const settingValue = (id, text) => { $(id).querySelector('b').textContent = text; };
 function syncSettings() {
   const level = levels[qualityLevel].name;
-  $('qualityBtn').textContent = `Graphics: ${qualityNames[settings.quality]}${auto ? ` · ${level === 'medium+' ? 'Medium+' : qualityNames[level]}` : ''}`;
+  settingValue('qualityBtn', `${qualityNames[settings.quality]}${auto ? ` · ${level === 'medium+' ? 'Medium+' : qualityNames[level]}` : ''}`);
   $('sensitivity').value = Math.round(settings.sensitivity * 100);
   $('sensitivityValue').textContent = `${Math.round(settings.sensitivity * 100)}%`;
-  $('tiltBtn').textContent = `Tilt: ${settings.tilt ? 'On' : 'Off'}`; $('tiltBtn').setAttribute('aria-pressed', String(settings.tilt));
+  settingValue('tiltBtn', settings.tilt ? 'On' : 'Off'); $('tiltBtn').setAttribute('aria-pressed', String(settings.tilt));
   document.body.classList.toggle('tilt', settings.tilt);
   const roadster = vehicleKind === 'roadster';
   $('touchGuide').textContent = roadster ? `${settings.tilt ? 'Turn the phone like a steering wheel to steer; Jump and Fans sit at the left.' : 'Slide the left control to steer; Jump and Fans sit just above it.'} ↑ accelerates with BOOST above it for a burst of speed, ↓ brakes or reverses with DRIFT above it, and HOVER beside them lifts you off on the thrusters while held.`
     : settings.tilt ? 'Turn the phone like a steering wheel to steer; Jump and Drift sit at the left. ↑ accelerates, ↓ brakes or reverses, and FLY is beside them. In the air, turn to roll and tilt the top toward you to climb, away to dive; the ring works too.'
     : 'Slide the left control to steer; Jump and Drift sit just above it. ↑ accelerates, ↓ brakes or reverses, and FLY is beside them. In the air the slider becomes a ring: drag up to climb, down to dive, sideways to roll.';
-  $('vehicleBtn').textContent = `Vehicle: ${VEHICLE_NAMES[vehicleKind]}`;
+  for (const button of document.querySelectorAll('[data-vehicle]')) button.setAttribute('aria-pressed', String(button.dataset.vehicle === vehicleKind));
   document.body.classList.toggle('roadster', roadster);
   const copy = $('menuVehicleCopy');
   if (copy) copy.innerHTML = roadster ? 'Your Roadster skims lakes on its thrusters.<br>Hold F to hover, E to boost.' : 'Find a lake. Your car becomes a boat.<br>Press F (or FLY) and it takes to the sky.';
   $('menuFly').innerHTML = roadster ? '<kbd>F</kbd> HOVER' : '<kbd>F</kbd> FLY';
-  $('perfBtn').textContent = `FPS meter: ${settings.perfMeter ? 'On' : 'Off'}`; $('perfBtn').setAttribute('aria-pressed', String(Boolean(settings.perfMeter)));
-  $('blurBtn').textContent = `Motion blur: ${!settings.motionBlur ? 'Off' : blurShed ? 'Off (Auto)' : 'On'}`; $('blurBtn').setAttribute('aria-pressed', String(settings.motionBlur && !blurShed));
+  settingValue('perfBtn', settings.perfMeter ? 'On' : 'Off'); $('perfBtn').setAttribute('aria-pressed', String(Boolean(settings.perfMeter)));
+  settingValue('blurBtn', !settings.motionBlur ? 'Off' : blurShed ? 'Off (Auto)' : 'On'); $('blurBtn').setAttribute('aria-pressed', String(settings.motionBlur && !blurShed));
 }
 $('qualityBtn').onclick = () => {
   settings.quality = QUALITY_PRESETS[(QUALITY_PRESETS.indexOf(settings.quality) + 1) % QUALITY_PRESETS.length];
@@ -1656,7 +1663,19 @@ $('perfBtn').onclick = () => {
   settings.perfMeter = !settings.perfMeter; perfMeter.setVisible(settings.perfMeter); saveSettings(); syncSettings();
   toast(settings.perfMeter ? 'FPS meter on' : 'FPS meter off');
 };
-$('vehicleBtn').onclick = switchVehicle;
+// The menu's ATLAS / Roadster switch: picking the other car swaps it in.
+for (const button of document.querySelectorAll('[data-vehicle]')) button.onclick = () => { if (button.dataset.vehicle !== vehicleKind) switchVehicle(); };
+// The settings sheet: opened from the menu, closed by Done, Escape, a tap
+// outside it, starting the drive or opening the garage.
+function openSettings(open) {
+  if ($('settingsSheet').hidden === !open) return;
+  $('settingsSheet').hidden = !open; $('settingsBtn').setAttribute('aria-expanded', String(open)); document.body.classList.toggle('sheet-open', open);
+  if (open) $('settingsSheet').querySelector('button.setting').focus({ preventScroll: true });
+  else if ($('settingsSheet').contains(document.activeElement)) $('settingsBtn').focus({ preventScroll: true });
+}
+$('settingsBtn').onclick = () => openSettings($('settingsSheet').hidden);
+$('settingsClose').onclick = () => openSettings(false);
+addEventListener('pointerdown', e => { if (!$('settingsSheet').hidden && !e.target.closest('#settingsSheet, #settingsBtn')) openSettings(false); });
 // V or the header's ⇄ button switches cars mid-drive.
 $('switchBtn').onclick = () => { if (running) { switchVehicle(); renderer.domElement.focus({ preventScroll: true }); } };
 $('blurBtn').onclick = () => {
@@ -2158,7 +2177,7 @@ renderer.domElement.addEventListener('webglcontextrestored', () => {
   toast('Graphics restored · pick up where you left off');
 });
 
-syncSeed(); syncSound(); syncSettings(); beginWorldLoad(); resetCamera(); updateHUD(); drawMap(); render(0);
+syncSeed(); syncSound(); syncSettings(); syncTime(); beginWorldLoad(); resetCamera(); updateHUD(); drawMap(); render(0);
 requestAnimationFrame(frame);
 
 profiler.record('initialLoad', performance.now() - bootStarted);
