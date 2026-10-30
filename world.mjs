@@ -1,10 +1,10 @@
 // Shared, deterministic world and vehicle simulation. No browser or renderer required.
 import { createLakes, lakeRadius } from './lakes.mjs?v=classes-2';
-import { createRoads, ROAD_HALF, ROAD_REACH, ROAD_CELL } from './roads.mjs?v=sand-1';
+import { createRoads, ROAD_HALF, ROAD_REACH, ROAD_CELL } from './roads.mjs?v=pedals-1';
 import { createRivers } from './rivers.mjs?v=rivers-1';
 import { stepAmphibious } from './amphibious-motion.mjs?v=physics-16';
 import { controlAxis } from './controls.mjs?v=slider-1';
-import { stepFlight, wingStrikes } from './flight-motion.mjs?v=sand-1';
+import { stepFlight, wingStrikes } from './flight-motion.mjs?v=pedals-1';
 import { ROADSTER, SUCTION, hoverWorld, overWater, roadsterAcceleration, roadsterDrag, fireThrusters, roadsterState } from './roadster-motion.mjs?v=steer-1';
 import { clamp, mix, smoothstep, hash, random, noise } from './noise.mjs?v=terrain-1';
 import { createLandforms, TREELINE, SNOW_LINE } from './landforms.mjs?v=classes-2';
@@ -505,9 +505,12 @@ export function stepVehicle(car, input, world, obstacles, dt = FIXED_DT) {
   if (car.grounded) {
     const g = slope, steep = (7 + 10 * smoothstep(.6, 1.3, Math.hypot(g.x, g.z))) * (suction ? SUCTION.slopePull : 1);
     // Hill hold at rest; on gentle ground the engine comfortably exceeds
-    // downhill gravity, and steep faces pull harder.
-    if (throttle || speed > .5) { car.vx -= g.x * steep * dt; car.vz -= g.z * steep * dt; }
-    if (!throttle && Math.hypot(car.vx, car.vz) < .35) { car.vx = 0; car.vz = 0; }
+    // downhill gravity, and steep faces pull harder. The Roadster's boost
+    // drives it like the throttle does (or the hold would swallow each step
+    // of its push from a standstill).
+    const driven = throttle || thrust?.boost;
+    if (driven || speed > .5) { car.vx -= g.x * steep * dt; car.vz -= g.z * steep * dt; }
+    if (!driven && Math.hypot(car.vx, car.vz) < .35) { car.vx = 0; car.vz = 0; }
   }
   const horizontal = Math.hypot(car.vx, car.vz), limit = roadster ? ROADSTER.speedLimit : SPEED_LIMIT;
   if (horizontal > limit) { car.vx *= limit / horizontal; car.vz *= limit / horizontal; }

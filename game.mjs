@@ -1,11 +1,11 @@
-import { createTerrain } from './terrain.mjs?v=sand-1';
+import { createTerrain } from './terrain.mjs?v=pedals-1';
 import { createWater } from './water.mjs?v=rivers-1';
-import { FAR_SIZE, FAR_VIEW, NEAR_VIEW, ULTRA_SIZE, ULTRA_VIEW, ULTRA_BLEND_START, ULTRA_BLEND_END, farIndices, farCoverage, ultraIndices, ultraCoverage } from './streaming-layout.mjs?v=sand-1';
+import { FAR_SIZE, FAR_VIEW, NEAR_VIEW, ULTRA_SIZE, ULTRA_VIEW, ULTRA_BLEND_START, ULTRA_BLEND_END, farIndices, farCoverage, ultraIndices, ultraCoverage } from './streaming-layout.mjs?v=pedals-1';
 import { loadVehicleModel, VEHICLE_NAMES } from './vehicle-model.mjs?v=roadster-5';
 import { createShowroom } from './garage.mjs?v=roadster-5';
 import { VEHICLE_ORDER, VEHICLE_SPECS, PREVIEWS } from './vehicle-specs.mjs?v=garage-1';
 import { createProfiler } from './profiling.mjs?v=timing-1';
-import { createDebris } from './debris.mjs?v=sand-1';
+import { createDebris } from './debris.mjs?v=pedals-1';
 import { createDust } from './dust.mjs?v=roadster-1';
 import { createThrusterPlumes, createVapour } from './thrusters.mjs?v=roadster-1';
 import { ROADSTER, hoverWorld } from './roadster-motion.mjs?v=steer-1';
@@ -14,24 +14,24 @@ import { followTarget, followValue } from './camera-motion.mjs?v=grass-1';
 import { createTreeBreakage } from './tree-breakage.mjs?v=nature-1';
 import { loadNatureLibrary } from './nature-models.mjs?v=nature-2';
 import { createBreakAudio } from './break-audio.mjs?v=sound-2';
-import { createVehicleAudio } from './vehicle-audio.mjs?v=sand-1';
+import { createVehicleAudio } from './vehicle-audio.mjs?v=pedals-1';
 import { installSunShadowFade, separateVehicleShadow } from './shadow-fade.mjs?v=shadow-2';
-import { createGrass } from './grass.mjs?v=sand-1';
+import { createGrass } from './grass.mjs?v=pedals-1';
 import { createPerfMeter, createGpuTimer } from './perf-meter.mjs?v=perf-2';
 import { QUALITY_PRESETS, qualityLevels, presetLevel, autoStartLevel, createAutoQuality } from './quality.mjs?v=blur-1';
 import { controlAxis, steerAxis } from './controls.mjs?v=slider-1';
 import { readTilt, tiltAxes } from './tilt.mjs?v=tilt-1';
-import { toggleFlight, flightAxes, TAKEOFF_SPEED, STALL_SPEED } from './flight-motion.mjs?v=sand-1';
-import { createClouds } from './clouds.mjs?v=sand-1';
-import { weatherAt } from './weather.mjs?v=sand-3';
-import { createSky } from './sky.mjs?v=sand-1';
+import { toggleFlight, flightAxes, TAKEOFF_SPEED, STALL_SPEED } from './flight-motion.mjs?v=pedals-1';
+import { createClouds } from './clouds.mjs?v=pedals-1';
+import { weatherAt } from './weather.mjs?v=pedals-1';
+import { createSky } from './sky.mjs?v=pedals-1';
 import { daylight, advanceClock, clockLabel, startHour } from './daylight.mjs?v=day-3';
-import { createWeatherEffects, toneMappedHorizon } from './weather-effects.mjs?v=sand-1';
+import { createWeatherEffects, toneMappedHorizon } from './weather-effects.mjs?v=pedals-1';
 import * as THREE from 'three';
-import { CHUNK, GRID, ROAD_HALF, FIXED_DT, featurePoint, clamp, mix, smoothstep, hash, createWorld, createVehicle, stepVehicle, recoverVehicle, groundAt } from './world.mjs?v=sand-1';
+import { CHUNK, GRID, ROAD_HALF, FIXED_DT, featurePoint, clamp, mix, smoothstep, hash, createWorld, createVehicle, stepVehicle, recoverVehicle, groundAt } from './world.mjs?v=pedals-1';
 import { SNOW_LINE } from './landforms.mjs?v=classes-2';
-import { ROAD_MAP } from './roads.mjs?v=sand-1';
-import { buildLandmark, cloneOwnedGeometry, landmarkStandinSteps, landmarkSwapDistance } from './scenery.mjs?v=sand-1';
+import { ROAD_MAP } from './roads.mjs?v=pedals-1';
+import { buildLandmark, cloneOwnedGeometry, landmarkStandinSteps, landmarkSwapDistance } from './scenery.mjs?v=pedals-1';
 import { createMotionBlur } from './motion-blur.mjs?v=blur-2';
 
 const $ = id => document.getElementById(id);
@@ -1105,7 +1105,7 @@ function beginWorldLoad(continueDriving = false) {
   for (const tile of ultraTiles.values()) disposeTile(tile); ultraTiles.clear();
   terrain = createTerrain(world);
   waterSystem.clear(); distantAt = { x: Infinity, z: Infinity }; distantReady = false;
-  workers = [0, 1].map(() => new Worker(new URL('./world-worker.mjs?v=sand-1', import.meta.url), { type: 'module' }));
+  workers = [0, 1].map(() => new Worker(new URL('./world-worker.mjs?v=pedals-1', import.meta.url), { type: 'module' }));
   const failed = message => { streamError = message; running = false; $('loadError').hidden = false; $('startBtn').firstElementChild.textContent = 'Unable to prepare the world'; };
   const received = ({ data }) => {
     if (data.generation !== generation) return;
@@ -1570,7 +1570,7 @@ function syncSettings() {
   $('tiltBtn').textContent = `Tilt: ${settings.tilt ? 'On' : 'Off'}`; $('tiltBtn').setAttribute('aria-pressed', String(settings.tilt));
   document.body.classList.toggle('tilt', settings.tilt);
   const roadster = vehicleKind === 'roadster';
-  $('touchGuide').textContent = roadster ? `${settings.tilt ? 'Turn the phone like a steering wheel to steer; Jump and Drift sit at the left.' : 'Slide the left control to steer; Jump and Drift sit just above it.'} ↑ accelerates, ↓ brakes or reverses, and HOVER and BOOST are beside them: hold HOVER to lift off on the thrusters, BOOST for a burst of speed.`
+  $('touchGuide').textContent = roadster ? `${settings.tilt ? 'Turn the phone like a steering wheel to steer; Jump and Fans sit at the left.' : 'Slide the left control to steer; Jump and Fans sit just above it.'} ↑ accelerates with BOOST above it for a burst of speed, ↓ brakes or reverses with DRIFT above it, and HOVER beside them lifts you off on the thrusters while held.`
     : settings.tilt ? 'Turn the phone like a steering wheel to steer; Jump and Drift sit at the left. ↑ accelerates, ↓ brakes or reverses, and FLY is beside them. In the air, turn to roll and tilt the top toward you to climb, away to dive; the ring works too.'
     : 'Slide the left control to steer; Jump and Drift sit just above it. ↑ accelerates, ↓ brakes or reverses, and FLY is beside them. In the air the slider becomes a ring: drag up to climb, down to dive, sideways to roll.';
   $('vehicleBtn').textContent = `Vehicle: ${VEHICLE_NAMES[vehicleKind]}`;

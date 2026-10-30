@@ -163,6 +163,10 @@ svg {
 
 .intro {
   max-width:600px;
+  /* Centred on the screen, but when it is taller than the room (a pause menu
+     on a tablet), it runs on downward, never up under the logo. */
+  align-self:flex-start;
+  margin-block:auto;
 }
 
 .eyebrow {
@@ -196,7 +200,7 @@ h1 em {
   color:var(--yellow);
 }
 
-.intro>p {
+.intro p {
   font-size:15px;
   line-height:1.9;
   letter-spacing:.015em;
@@ -593,6 +597,10 @@ body.driving .in-game {
 #touch .touch-actions button { flex:1; width:auto; height:46px; font-size:9px; letter-spacing:.08em; }
 #touch .touch-right { align-items:flex-end; }
 #touch .touch-flight { display:flex; flex-direction:column; gap:6px; }
+/* Each pedal, with the Roadster's DRIFT (over the brake) or BOOST (over the
+   accelerator) stacked on top. */
+#touch .touch-pedal { display:flex; flex-direction:column; gap:6px; }
+#touch .pedal-top { height:46px; font-size:9px; letter-spacing:.1em; }
 #touch .touch-steer { display:flex; align-items:center; gap:8px; } /* the slider, or the ring with SIMPLE to its right */
 
 body.touch.driving #touch {
@@ -690,7 +698,7 @@ body.touch .menu-controls {
     font-size:70px;
     margin-top:20px;
   }
-  .intro>p {
+  .intro p {
     font-size:13px;
   }
   .eyebrow {
@@ -752,7 +760,7 @@ body.touch .menu-controls {
     font-size:56px;
     margin:13px 0;
   }
-  .intro>p {
+  .intro p {
     margin-bottom:18px;
     font-size:12px;
   }
@@ -1119,9 +1127,11 @@ body.upright #rotateNotice {
 }
 @keyframes rotate-hint { 0%,25% { transform:rotate(0); } 50%,75% { transform:rotate(-90deg); } 100% { transform:rotate(0); } }
 
-/* The Roadster: a thruster gas gauge under the speed, BOOST beside HOVER on
-   touch, and its E key in the hints. All hidden while driving the ATLAS. */
+/* The Roadster: a thruster gas gauge under the speed, on touch FANS beside
+   JUMP and DRIFT and BOOST over the pedals, and its E key in the hints. All
+   hidden while driving the ATLAS (and the ATLAS's own DRIFT for the Roadster). */
 body:not(.roadster) .roadster-only { display:none!important; }
+body.roadster .atlas-only { display:none!important; }
 .gas-row {
   display:flex;
   align-items:center;
@@ -1135,10 +1145,13 @@ body:not(.roadster) .roadster-only { display:none!important; }
 .gas-track i { display:block; height:100%; width:100%; background:#bfe2ec; transition:width .1s; }
 .gas-row.low span { color:var(--yellow); }
 .gas-row.low .gas-track i { background:var(--yellow); }
-#touch .touch-flight .boost-button { color:#bfe2ec; border-color:rgba(191,226,236,.45); }
-#touch .touch-flight .fly-button.active { color:var(--ink); } /* HOVER and BOOST are held */
-#touch .touch-flight .fan-button[aria-pressed="false"] { color:var(--faint); border-style:dashed; } /* fans off */
-body.roadster #touch .touch-flight { flex-direction:row; align-items:flex-end; } /* side by side, clear of the speed */
+#touch .boost-button { color:#bfe2ec; border-color:rgba(191,226,236,.45); }
+#touch .touch-flight .fly-button.active, #touch .boost-button.active { color:var(--ink); } /* HOVER and BOOST are held */
+#touch .fan-button { color:var(--yellow); border-color:rgba(233,201,138,.45); }
+#touch .fan-button[aria-pressed="false"] { color:var(--faint); border-style:dashed; } /* fans off */
+/* The buttons stacked over the pedals stand taller: the speed sits higher. */
+body.roadster.touch #dashboard { bottom:170px; }
+@media(max-height:600px) { body.roadster.touch #dashboard { bottom:136px; } }
 
 /* The Roadster's HUD: red telemetry on black glass, after its own track
    interface. The in-game panels take red lines and accents; the minimap is
@@ -1374,4 +1387,41 @@ body.touch .garage-hint { display:none; }
 @media(prefers-reduced-motion:reduce) {
   #garage, .meter i.on { animation:none; }
   .secondary:hover { transform:none; }
+}
+
+/* The menu on phones held sideways. (Last, so it overrides the menu's own
+   rules above.) */
+/* Short phones held sideways (the iPhone SE and others 380 px tall or less):
+   the title and its lines on the left, Start, the settings and the world
+   beside them, so the whole menu fits on the screen without scrolling. */
+@media(orientation:landscape) and (max-height:380px) {
+  .intro { max-width:none; width:100%; display:flex; align-items:center; gap:clamp(24px,4vw,48px); }
+  .intro-lead { flex:0 1 clamp(215px,30vw,270px); min-width:0; }
+  .intro-panel { flex:1 1 0; min-width:0; max-width:440px; }
+  .menu-actions { flex-wrap:nowrap; }
+  .primary { width:auto; flex:1 1 auto; gap:14px; }
+  h1 { font-size:44px; margin:10px 0 12px; }
+  .intro p { margin-bottom:0; }
+  #menuCopy { font-size:11px; line-height:1.75; }
+  .edition { display:none; } /* the right-hand column takes its place */
+  body.touch #menu { padding-bottom:24px; } /* no keyboard hints along the bottom */
+}
+/* Taller phones held sideways keep the one column, set smaller to fit. */
+@media(orientation:landscape) and (min-height:381px) and (max-height:480px) {
+  #menu { padding-top:70px; }
+  body.touch #menu { padding-bottom:12px; } /* no keyboard hints along the bottom */
+  .eyebrow { font-size:7px; }
+  h1 { font-size:clamp(30px,8.4vh,40px); margin:6px 0 8px; }
+  h1 br { display:none; } /* the title on one line: "Room to breathe." */
+  h1 em::before { content:' '; }
+  .intro p { font-size:11px; line-height:1.6; margin-bottom:10px; }
+  .primary { width:200px; padding:10px 16px; font-size:12px; }
+  .primary>span:last-child { font-size:17px; }
+  .secondary { padding:9px 16px; font-size:12px; }
+  #menuStats { margin-top:8px; }
+  #menuStats b { font-size:12px; }
+  #pauseTools { margin-top:6px; }
+  #pauseTools button, #settingsRow button, #settingsRow label { padding:3px 0; font-size:10px; }
+  #settingsRow { margin-top:8px; gap:4px 14px; }
+  .world-row { margin-top:8px; }
 }
