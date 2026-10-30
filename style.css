@@ -1357,9 +1357,11 @@ button.setting:hover span { color:white; }
 .setting output { min-width:3.2em; text-align:right; font-size:11.5px; color:var(--cream); font-variant-numeric:tabular-nums; }
 #touchGuide { margin:10px 0 0; padding-top:10px; border-top:1px solid rgba(245,241,223,.1); font-size:10.5px; line-height:1.6; color:var(--faint); }
 
-/* Shorter windows: the drive on the left, the setup at the right edge, the
-   car between them; each side shaded so it reads over the scene. */
-@media(orientation:landscape) and (max-height:820px) and (min-width:560px) {
+/* Windows under 900 px tall (a laptop, once the browser's bars take their
+   share): the drive on the left, the setup at the right edge, the car
+   between them; each side shaded so it reads over the scene. Stacked, the
+   pause menu would run into the key hints along the bottom. */
+@media(orientation:landscape) and (max-height:899px) and (min-width:560px) {
   #menu { padding:84px max(28px,6vw) 92px; background:linear-gradient(90deg,rgba(16,37,31,.9),rgba(21,43,36,.5) 34%,rgba(24,46,39,.12) 50%,rgba(21,43,36,.5) 66%,rgba(16,37,31,.9)); }
   #menu .intro { width:100%; max-width:none; display:grid; grid-template-columns:minmax(0,440px) minmax(0,380px); justify-content:space-between; gap:clamp(18px,5vw,72px); align-items:center; }
   #menu h1 { font-size:clamp(44px,8.5vh,76px); margin:16px 0 14px; }
