@@ -321,7 +321,7 @@ export function createRoads({ seed, ground, mountainAt, woodlandAt = () => 0, we
         }
         // An arm still beside another road 45 m out merges with it rather
         // than meeting it: no stop line there.
-        if (t >= 45) arm.main = true;
+        if (t >= 45) { arm.main = true; arm.merge = true; }
         arm.setback = t + (arm.main ? 0 : 1);
       }
       result = { id, x: node.x, z: node.z, arms };

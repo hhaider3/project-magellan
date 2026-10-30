@@ -209,8 +209,13 @@ test('at flying speed the ground never turns the plane into a car: it bounces or
     run(car, { up: true }, 3);
     assert.ok(car.flying && car.y > world.surface(car.x, car.z) + 2, `${label} flies on`);
   }
-  // Upside down, the fins and wings reach the ground first: that ends the flight.
-  const flipped = airborne(), speed = 70;
+  // Upside down over level ground, the fins and wings reach the ground first:
+  // that ends the flight. (Up a rise the roof can meet the slope first, and is
+  // knocked upright like any other skim.)
+  const flipped = airborne(), speed = 70, fx = Math.sin(flipped.heading), fz = Math.cos(flipped.heading);
+  const tilt = () => world.surface(flipped.x + fx * 10, flipped.z + fz * 10) - world.surface(flipped.x - fx * 10, flipped.z - fz * 10);
+  for (let s = 0; s < 3000 && Math.abs(tilt()) > .15; s += 5) { flipped.x += fx * 5; flipped.z += fz * 5; }
+  assert.ok(Math.abs(tilt()) <= .15, 'found level ground');
   Object.assign(flipped, { vx: Math.sin(flipped.heading) * speed, vz: Math.cos(flipped.heading) * speed, vy: -6, airspeed: speed, y: world.surface(flipped.x, flipped.z) + 1.5, climbOut: false });
   [flipped.qx, flipped.qy, flipped.qz, flipped.qw] = attitudeFromEuler(flipped.heading, 0, Math.PI);
   run(flipped, {}, .3);

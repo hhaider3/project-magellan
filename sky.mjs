@@ -29,14 +29,14 @@ export function createSky(scene) {
   const uniforms = {
     uZenith: color(), uHorizon: color(), uSunColor: color(), uCloudLit: color(), uCloudShade: color(),
     uSunDir: vec(), uMoonDir: vec(), uDay: { value: 1 }, uNight: { value: 0 }, uGlow: { value: 0 },
-    uCover: { value: 0 }, uClouds: { value: .38 }, uTime: { value: 0 }, uNoise: { value: noiseTexture() },
+    uCover: { value: 0 }, uClouds: { value: .38 }, uTime: { value: 0 }, uDust: { value: 0 }, uNoise: { value: noiseTexture() },
   };
   const material = new THREE.ShaderMaterial({
     side: THREE.BackSide, depthWrite: false, uniforms,
     vertexShader: 'varying vec3 vDir; void main(){ vDir=position; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }',
     fragmentShader: `varying vec3 vDir;
       uniform vec3 uZenith, uHorizon, uSunColor, uCloudLit, uCloudShade, uSunDir, uMoonDir;
-      uniform float uDay, uNight, uGlow, uCover, uClouds, uTime; uniform sampler2D uNoise;
+      uniform float uDay, uNight, uGlow, uCover, uClouds, uTime, uDust; uniform sampler2D uNoise;
       float fbm(vec2 p){
         float n=texture2D(uNoise,p).r*.5;
         p=mat2(.8,-.6,.6,.8)*p*2.03; n+=texture2D(uNoise,p).r*.25;
@@ -105,6 +105,10 @@ export function createSky(scene) {
         col=mix(col,cloud,density*mix(.88,1.0,deck));
         // Haze where the sky meets the land.
         col=mix(col,uHorizon,(1.0-smoothstep(0.0,.07,abs(y)))*.55);
+        // Thick blowing sand: the sky is the dust itself, the horizon's colour
+        // all the way round and up to well above the land, so fully fogged
+        // hills and mountains leave no silhouette against it.
+        col=mix(col,mix(uHorizon,uZenith,smoothstep(.4,1.0,up)),uDust);
         gl_FragColor=vec4(col,1.0);
         #include <tonemapping_fragment>
         #include <colorspace_fragment>
@@ -124,5 +128,7 @@ export function createSky(scene) {
       uniforms.uGlow.value = Math.min(1, light.golden + light.dusk) * (1 - .7 * cover);
       uniforms.uCover.value = cover; uniforms.uTime.value = seconds; uniforms.uClouds.value = sky.cloudiness ?? .38;
     },
+    // 0–1: how far a sandstorm has turned the whole sky to plain dust.
+    setDust(amount) { uniforms.uDust.value = amount; },
   };
 }

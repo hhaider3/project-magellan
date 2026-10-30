@@ -164,11 +164,16 @@ export function createVehicleAudio(context, output, capacity = 10) {
   noise(.8).connect(lapTone).connect(lapGain).connect(output); lap.connect(lapDepth); lap2.connect(lapDepth); lapDepth.connect(lapGain.gain);
 
   // Weather: a soft, dark rain wash (kept low and rolled off: bright hiss
-  // reads as static) and a low wind moan in snow.
+  // reads as static), a low wind moan in snow, and a sandstorm's howling gale
+  // with a faint rasp of grit over it.
   const rainTone = filter('lowpass', 1400, .5), rainLow = filter('highpass', 250, .5), rainGain = gainNode(0), rainSwell = osc('sine', .21), rainDepth = gainNode(0);
   noise(1.1).connect(rainLow).connect(rainTone).connect(rainGain).connect(output); rainSwell.connect(rainDepth).connect(rainGain.gain);
   const snowTone = filter('lowpass', 320, .7), snowGain = gainNode(0), snowSwell = osc('sine', .13), snowDepth = gainNode(0);
   noise(1.7).connect(snowTone).connect(snowGain).connect(output); snowSwell.connect(snowDepth).connect(snowGain.gain);
+  const galeTone = filter('bandpass', 420, .9), galeGain = gainNode(0), galeSwell = osc('sine', .19), galeDepth = gainNode(0), galeHowl = osc('sine', .07), galeBend = gainNode(0);
+  noise(.65).connect(galeTone).connect(galeGain).connect(output); galeSwell.connect(galeDepth).connect(galeGain.gain); galeHowl.connect(galeBend).connect(galeTone.frequency);
+  const gritTone = filter('bandpass', 2600, .8), gritGain = gainNode(0);
+  noise(1.25).connect(gritTone).connect(gritGain).connect(output);
 
   // The Roadster: an electric drive's whine rising with road speed, in place
   // of the V8, and the rushing hiss and low roar of cold gas from the thrusters.
@@ -254,6 +259,8 @@ export function createVehicleAudio(context, output, capacity = 10) {
     const rainLevel = (s.rain ?? 0) * .022, snowLevel = (s.snow ?? 0) * .02;
     set(rainGain.gain, rainLevel, .5); set(rainDepth.gain, rainLevel * .25, .5);
     set(snowGain.gain, snowLevel, .6); set(snowDepth.gain, snowLevel * .5, .6);
+    const sandLevel = s.sand ?? 0;
+    set(galeGain.gain, sandLevel * .05, .6); set(galeDepth.gain, sandLevel * .022, .6); set(galeBend.gain, sandLevel * 140, .6); set(gritGain.gain, sandLevel * .006, .6);
 
     const moving = lastTransform === null || dt <= 0 ? 0 : (Math.abs(s.transform - lastTransform) + Math.abs(s.flight - lastFlight)) / dt;
     lastTransform = s.transform; lastFlight = s.flight;
@@ -268,7 +275,7 @@ export function createVehicleAudio(context, output, capacity = 10) {
   function clear() {
     for (const voice of [...voices]) voice.stop();
     burble = 0; held = 0; lastTransform = null; gear = 0; lastThump = 0;
-    for (const g of [engineGain, propGain, thrumGain, rainGain, snowGain, windGain, roadGain, dirtGain, squealGain, jetGain, lapGain, motorGain, whineGain, gasGain, gasRoar]) { g.gain.cancelScheduledValues(now()); g.gain.setValueAtTime(0, now()); }
+    for (const g of [engineGain, propGain, thrumGain, rainGain, snowGain, galeGain, gritGain, windGain, roadGain, dirtGain, squealGain, jetGain, lapGain, motorGain, whineGain, gasGain, gasRoar]) { g.gain.cancelScheduledValues(now()); g.gain.setValueAtTime(0, now()); }
   }
   return { update, ...effects, clear, echo, get played() { return played; }, get playedBy() { return { ...playedBy }; }, get active() { return voices.size; }, get gear() { return gear; } };
 }

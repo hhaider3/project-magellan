@@ -56,11 +56,13 @@ test('mountain lakes have closed downhill shores and leave nearby roads dry', ()
       const a = i * Math.PI / 32, unit = { x: lake.x + Math.sin(a) * lake.rx, z: lake.z + Math.cos(a) * lake.rz };
       const shape = 1 / lakeRadius(lake, unit.x, unit.z);
       const x = lake.x + Math.sin(a) * lake.rx * 1.019 * shape, z = lake.z + Math.cos(a) * lake.rz * 1.019 * shape;
-      assert.ok(world.surface(x, z) > lake.level, `closed rim: ${seed} ${lake.id}`);
-      if (lake.sea) continue;
-      // Roads keep out of the water, except on bridges over rivers.
+      // (A slipway cuts down through the bank into the water.)
       const road = world.roadAt(x, z);
-      if (!road.bridge) assert.equal(world.waterAt(road.x, road.z), null, `dry road: ${seed} ${lake.id}`);
+      if (!(road.slipway && road.d < 13)) assert.ok(world.surface(x, z) > lake.level, `closed rim: ${seed} ${lake.id}`);
+      if (lake.sea) continue;
+      // Roads keep out of the water, except on bridges over rivers and the
+      // slipways that run down into lakes.
+      if (!road.bridge && !road.slipway) assert.equal(world.waterAt(road.x, road.z), null, `dry road: ${seed} ${lake.id}`);
     }
   }
 });

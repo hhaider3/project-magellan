@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { weatherAt, regionWeights, precipitationChance, PRECIPITATION, CLOUDINESS, WEATHER_CELL, WEATHER_AREA } from '../weather.mjs';
+import { weatherAt, regionWeights, precipitationChance, sandstormChance, PRECIPITATION, CLOUDINESS, SANDSTORM, WEATHER_CELL, WEATHER_AREA } from '../weather.mjs';
 import { createWorld } from '../world.mjs';
 import { SNOW_LINE } from '../landforms.mjs';
 
@@ -8,7 +8,7 @@ import { SNOW_LINE } from '../landforms.mjs';
 const region = ({ height = 40, desert = 0, woods = 0 }) => ({ seed: 3, height: () => height, desertAt: () => desert, woodlandAt: () => woods });
 const regions = { snow: region({ height: SNOW_LINE + 40 }), desert: region({ desert: 1 }), woods: region({ woods: 1 }), meadow: region({}) };
 function share(world, samples = 6000) {
-  const kinds = { clear: 0, rain: 0, snow: 0 };
+  const kinds = { clear: 0, rain: 0, snow: 0, sandstorm: 0 };
   for (let i = 0; i < samples; i++) kinds[weatherAt(world, (i % 41) * WEATHER_AREA, Math.floor(i / 41) * WEATHER_AREA, i * WEATHER_CELL).kind]++;
   for (const k in kinds) kinds[k] /= samples;
   return kinds;
@@ -19,9 +19,25 @@ test('snowy regions almost always snow, and never rain', () => {
   assert.ok(Math.abs(s.snow - .9) < .02, `snow ${s.snow}`); assert.equal(s.rain, 0);
 });
 
-test('deserts are almost always sunny, rain very rarely and never snow', () => {
+test('deserts are mostly sunny, often have sandstorms, rain very rarely and never snow', () => {
   const s = share(regions.desert);
-  assert.ok(s.clear > .95, `sunny ${s.clear}`); assert.ok(s.rain > 0 && s.rain < .06, `rain ${s.rain}`); assert.equal(s.snow, 0);
+  assert.ok(s.clear > .6, `sunny ${s.clear}`); assert.ok(s.rain > 0 && s.rain < .06, `rain ${s.rain}`); assert.equal(s.snow, 0);
+  assert.ok(Math.abs(s.sandstorm - SANDSTORM) < .02, `sandstorms ${s.sandstorm}`);
+});
+
+test('sandstorms blow only in the desert, hold for a cell and can be forced', () => {
+  for (const name of ['snow', 'woods', 'meadow']) assert.equal(share(regions[name]).sandstorm, 0, name);
+  assert.equal(sandstormChance({ desert: .3 }), 0);
+  const at = t => weatherAt(regions.desert, 500, 700, t);
+  let storms = 0;
+  for (let cell = 0; cell < 200; cell++) {
+    const start = at(cell * WEATHER_CELL + 1), end = at(cell * WEATHER_CELL + WEATHER_CELL - 1);
+    assert.equal(start.kind, end.kind);
+    if (start.kind === 'sandstorm') { storms++; assert.ok(start.strength >= .55 && start.strength <= 1); assert.ok(start.cloudiness < .5, 'no overcast in a sandstorm'); }
+  }
+  assert.ok(storms > 10, `${storms} storms`);
+  const forced = weatherAt(regions.meadow, 0, 0, 0, 'sandstorm');
+  assert.equal(forced.kind, 'sandstorm'); assert.equal(forced.strength, 1);
 });
 
 test('pine woods rain about 40% of the time and are sunny the rest', () => {

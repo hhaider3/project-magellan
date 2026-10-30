@@ -1,5 +1,5 @@
 import * as THREE from './vendor/three.module.js';
-import { GRID, smoothstep, clamp, cellWeights, splitsAlongAD } from './world.mjs?v=tail-1';
+import { GRID, smoothstep, clamp, cellWeights, splitsAlongAD } from './world.mjs?v=sand-1';
 // The horizon tier's grid: fine enough (48 m) to keep the ranges' shape, so
 // mountains barely change as they come nearer.
 export const ULTRA_GRID = 48;

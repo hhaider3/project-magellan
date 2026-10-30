@@ -187,7 +187,8 @@ function rotateNose(car, angle) { setAttitude(car, qMul([car.qx, car.qy, car.qz,
 // (righted if it was rolled past 90°). Below lift-off speed it lands: on the
 // ground as the car, on deep water as the boat, folding its wings as it goes.
 // (A take-off run never comes through here: taxiing has its own physics.)
-function touchdown(car, ground, water) {
+// rise: how steeply the ground climbs along the way it is going (0 on water).
+function touchdown(car, ground, water, rise = 0) {
   if (!car.flightMode) { land(car, ground, water); return; }
   // Settling back while still trying to take off: keep the wings and taxi on.
   if (car.takeoff > 0 && car.airspeed < TAKEOFF_SPEED) { backToTaxi(car, ground, water); return; }
@@ -199,12 +200,16 @@ function touchdown(car, ground, water) {
   if (descent < 4 && car.pushingDown) { backToTaxi(car, ground, water); return; }
   if (car.airspeed >= TAKEOFF_SPEED) {
     const hard = descent > 7;
+    // Skimming rising ground carries the plane up it, rather than leaving it
+    // to strike the slope again every step (each strike scrubs speed).
+    const uphill = Math.max(0, rise), follow = uphill * Math.hypot(car.vx, car.vz);
     car.y = ground + .05;
-    car.vy = hard ? Math.min(descent * .3, 6) : Math.max(car.vy, 0);
+    car.vy = Math.max(hard ? Math.min(descent * .3, 6) : car.vy, follow, 0);
     const scrub = hard ? .82 : .97; car.vx *= scrub; car.vz *= scrub;
-    // Deflected by the ground: never pointing into it, never upside down.
+    // Deflected by the ground: never pointing into it (or into the slope
+    // ahead), never upside down.
     const nose = rotate([car.qx, car.qy, car.qz, car.qw], [0, 0, 1]), mast = rotate([car.qx, car.qy, car.qz, car.qw], [0, 1, 0]);
-    if (nose[1] < 0 || mast[1] < 0) setAttitude(car, attitudeFromEuler(Math.atan2(car.vx, car.vz), -.05, mast[1] < 0 ? 0 : car.roll));
+    if (nose[1] < Math.sin(Math.atan(uphill)) || mast[1] < 0) setAttitude(car, attitudeFromEuler(Math.atan2(car.vx, car.vz), -.05 - Math.atan(uphill), mast[1] < 0 ? 0 : car.roll));
     car.airspeed = Math.hypot(car.vx, car.vy, car.vz); car.climb = Math.asin(clamp(car.vy / (car.airspeed || 1), -1, 1));
     return;
   }
@@ -327,7 +332,10 @@ function fly(car, input, world, dt, groundAt) {
   const ground = deep ? Math.max(g.y, water.level - .52) : g.y;
   car.groundY = g.y; car.waterDepth = water?.depth ?? 0; car.waterLevel = water?.level ?? null;
   car.maxAltitude = Math.max(car.maxAltitude, car.y - g.y);
-  if (car.y <= ground) touchdown(car, ground, deep);
+  if (car.y <= ground) {
+    const slope = deep ? null : world.gradient?.(car.x, car.z), speed = Math.hypot(car.vx, car.vz) || 1;
+    touchdown(car, ground, deep, slope ? (slope.x * car.vx + slope.z * car.vz) / speed : 0);
+  }
   else if (car.flying) scrape(car, world);
   return true;
 }

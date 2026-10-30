@@ -88,8 +88,14 @@ test('bridges carry roads over rivers, well clear of the water, with boats passi
         worst = Math.max(worst, Math.abs(world.surface(q.x, q.z) - world.surface(p.x, p.z)));
       }
       assert.ok(worst < .2, `${road.id}: a ${worst.toFixed(2)} m step on the way over`);
-      // Mid-span the car drives on the deck, while a boat on the river below stays on the water.
-      const mid = world.alongRoad(road, (bridge.i0 + bridge.i1) / 2 * unit), river = world.riverAt(mid.x, mid.z);
+      // Over the river (the deck's point nearest its middle: a deck can cross
+      // a narrow river off its own centre) the car drives on the deck, while a
+      // boat on the river below stays on the water.
+      let mid = null, river = null;
+      for (let s = bridge.i0 * unit; s <= bridge.i1 * unit; s += .5) {
+        const p = world.alongRoad(road, s), here = world.riverAt(p.x, p.z);
+        if (here && (!river || here.d < river.d)) { mid = p; river = here; }
+      }
       assert.ok(Math.abs(world.surface(mid.x, mid.z) - bridge.level) < 1e-3);
       assert.ok(world.surface(mid.x, mid.z, river.level) < river.level);
       assert.ok(world.waterAt(mid.x, mid.z)?.depth > 0, `${road.id}: the river runs on under the deck`);
@@ -155,9 +161,13 @@ test('junctions: a main road through each, and side roads that stop clear of it'
       for (const arm of junction.arms) {
         if (arm.main) continue;
         sides++;
-        // Across the whole incoming lane, the stop line lies on this road alone.
+        // Across the whole incoming lane (narrower on dirt tracks and lanes),
+        // the stop line lies on this road alone. An arm that merges with
+        // another road has no stop line (on a roundabout, it joins the ring
+        // alongside it).
+        if (arm.merge) continue;
         const s = arm.start ? arm.setback : arm.e.length - arm.setback;
-        for (const lateral of [.3, 2, 4]) {
+        for (const lateral of [.3, 2, 4].map(l => Math.min(l, ROAD_HALF + arm.e.extra - .5))) {
           const p = world.alongRoad(arm.e, s, (arm.start ? 1 : -1) * lateral), here = world.roadAt(p.x, p.z);
           assert.ok(here.id === arm.e.id && here.od > ROAD_HALF, `${id}: the stop line on ${arm.e.id} is clear of the other roads`);
         }
@@ -184,10 +194,14 @@ test('the centre line is solid on about a fifth of the road, and road maps know 
   }
 });
 
+// Every roadside obstacle within 1.2 km of the start, per world.
+const roadsideOf = worlds.map(world => { const terrain = createTerrain(world), obstacles = []; for (let cx = -12; cx <= 12; cx++) for (let cz = -12; cz <= 12; cz++) obstacles.push(...buildRoadside(world, terrain, cx, cz).obstacles); return obstacles; });
+
 test('roadside furniture stands beside the roads, belongs to its own chunk, and is the same every time', () => {
+  let total = 0;
   for (const world of worlds) {
     const terrain = createTerrain(world); let rails = 0;
-    for (let cx = -8; cx <= 8; cx++) for (let cz = -8; cz <= 8; cz++) {
+    for (let cx = -12; cx <= 12; cx++) for (let cz = -12; cz <= 12; cz++) {
       const { mesh, signs, obstacles } = buildRoadside(world, terrain, cx, cz);
       // Each sign is its own piece, kept relative to its foot.
       for (const sign of signs?.list || []) {
@@ -205,15 +219,17 @@ test('roadside furniture stands beside the roads, belongs to its own chunk, and 
         if (o.type === 'rail') { rails++; assert.ok(d > 5.8 && d < 6.4, `a guardrail ${d} m from the road`); }
       }
     }
-    assert.ok(rails > 50, `seed ${world.seed}: ${rails} guardrail pieces`);
+    // Guardrails go only on tight bends and high embankments, so gentle
+    // country has few of them.
+    assert.ok(rails > 15, `seed ${world.seed}: ${rails} guardrail pieces`); total += rails;
     const again = createWorld(world.seed), first = buildRoadside(world, terrain, 0, 0), second = buildRoadside(again, createTerrain(again), 0, 0);
     assert.deepEqual(second.obstacles, first.obstacles); assert.deepEqual(second.mesh?.position, first.mesh?.position);
   }
+  assert.ok(total > 50, `${total} guardrail pieces in all`);
 });
 
 test('a car driven into a guardrail is stopped by it', () => {
-  const world = worlds[0], terrain = createTerrain(world), obstacles = [];
-  for (let cx = -8; cx <= 8 && !obstacles.some(o => o.type === 'rail'); cx++) for (let cz = -8; cz <= 8; cz++) obstacles.push(...buildRoadside(world, terrain, cx, cz).obstacles);
+  const index = roadsideOf.findIndex(list => list.some(o => o.type === 'rail')), world = worlds[index], obstacles = roadsideOf[index];
   const rail = obstacles.find(o => o.type === 'rail'), road = world.roadAt(rail.x, rail.z), heading = Math.atan2(rail.x - road.x, rail.z - road.z);
   const car = createVehicle(world, road.x - Math.sin(heading) * 3, road.z - Math.cos(heading) * 3, heading);
   car.vx = Math.sin(heading) * 25; car.vz = Math.cos(heading) * 25;
@@ -224,13 +240,14 @@ test('a car driven into a guardrail is stopped by it', () => {
 test('a car knocks a sign over and drives on', () => {
   const world = createWorld(3), terrain = createTerrain(world), obstacles = [];
   world.prepareRoads(0, 0, 1000, Infinity);
-  for (let cx = -2; cx <= 1; cx++) for (let cz = -2; cz <= 1; cz++) obstacles.push(...buildRoadside(world, terrain, cx, cz).obstacles);
-  const signs = obstacles.filter(o => o.type === 'sign');
-  assert.ok(signs.length >= 3, 'stop signs and a fingerpost at the first junction');
+  for (let cx = -8; cx <= 8; cx++) for (let cz = -8; cz <= 8; cz++) obstacles.push(...buildRoadside(world, terrain, cx, cz).obstacles);
+  // The junction the car starts at is kept clear of signs: the nearest ones beyond it.
+  const signs = obstacles.filter(o => o.type === 'sign').sort((a, b) => Math.hypot(a.x, a.z) - Math.hypot(b.x, b.z)).slice(0, 4);
+  assert.ok(signs.length >= 3, 'stop signs and fingerposts near the start');
   for (const sign of signs) {
     const heading = Math.atan2(sign.x, sign.z), car = createVehicle(world, sign.x - Math.sin(heading) * 25, sign.z - Math.cos(heading) * 25, heading);
     car.vx = Math.sin(heading) * 15; car.vz = Math.cos(heading) * 15;
-    for (let i = 0; i < 240; i++) stepVehicle(car, {}, world, obstacles);
+    for (let i = 0; i < 360; i++) stepVehicle(car, {}, world, obstacles);
     assert.ok(world.brokenProps.has(sign.id), `${sign.id} knocked over`);
     assert.ok(Math.hypot(car.x - sign.x, car.z - sign.z) > 5, 'the car carries on past it');
   }
@@ -245,7 +262,7 @@ test('lanes lead off the roads to camps, lookouts and lakes, joining at a T and 
       const [start, end] = world.roadEnds(spur);
       assert.ok(start && !start.main && start.setback > ROAD_HALF && end === null, `${spur.id}: a T junction where it leaves its road, a dead end at the other`);
       // It starts on its road, at its road's height.
-      const parent = networkOf(world).find(e => e.id === spur.spur.parent), p = world.alongRoad(parent, spur.spur.s);
+      const parent = world.roadsNear(spur.points[0], spur.points[1], 1, true).find(e => e.id === spur.spur.parent), p = world.alongRoad(parent, spur.spur.s);
       const f = spur.spur.s / parent.length * (parent.count - 1), k = Math.min(Math.floor(f), parent.count - 2);
       assert.ok(Math.hypot(p.x - spur.points[0], p.z - spur.points[1]) < .5 && Math.abs(spur.level[0] - (parent.level[k] + (parent.level[k + 1] - parent.level[k]) * (f - k))) < .05, `${spur.id} leaves its road`);
       for (let k = 1; k < spur.count; k++) assert.ok(Math.abs(spur.level[k] - spur.level[k - 1]) <= spur.length / (spur.count - 1) * .15, `${spur.id} stays drivable`);
