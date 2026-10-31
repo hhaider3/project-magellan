@@ -13,7 +13,7 @@ const share = (mood, samples = 4000) => {
 };
 
 test('every track is shipped, levelled and ends after the crossfade begins', async () => {
-  assert.equal(TRACKS.length, 4);
+  assert.equal(TRACKS.length, 5);
   for (const track of TRACKS) {
     const file = await stat(new URL(`../assets/music/${track.id}.m4a`, import.meta.url));
     assert.ok(file.size > 1e6 && file.size < 4e6, `${track.id}: ${file.size} bytes`);
@@ -34,6 +34,16 @@ test('night favours Night Drive, the Roadster Redline, and the day the daytime d
   assert.ok(day['golden-hour-highway'] + day['chrome-highway'] > .6);
   assert.ok(roadster.redline > 2 * day.redline, `roadster ${roadster.redline} vs ${day.redline}`);
   for (const id in day) assert.ok(day[id] > 0, `${id} still plays now and then by day`);
+});
+
+test('synthwave opens with Synth and mostly comes back to it; other drives play it now and then', () => {
+  const random = seeded(), mood = { night: .6, synthwave: true };
+  assert.equal(pickTrack(null, mood, random).id, 'synth');
+  let again = 0;
+  for (let i = 0; i < 4000; i++) if (pickTrack('redline', mood, random).id === 'synth') again++;
+  assert.ok(again / 4000 > .6, `after another track: ${again / 4000}`);
+  const day = share({ night: 0 });
+  assert.ok(day.synth > 0 && day.synth < .15, `day: ${day.synth}`);
 });
 
 test('the volume slider maps to a gain that rises smoothly from silence to full', () => {

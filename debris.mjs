@@ -1,10 +1,17 @@
 import * as THREE from 'three';
-import { random, hash } from './world.mjs?v=sakura-ponds-1';
+import { random, hash } from './world.mjs?v=open-start-1';
 
 // One draw call and a fixed particle pool, even when ploughing through a grove.
 export function createDebris(scene, capacity = 192) {
   const geometry = new THREE.IcosahedronGeometry(1, 0);
   const material = new THREE.MeshStandardMaterial({ roughness: .95 });
+  // Bright pieces glow (synthwave's neon); the everyday colours are all too
+  // dark to. Built with the rest at load, as the pool always has colours.
+  material.onBeforeCompile = shader => {
+    shader.fragmentShader = shader.fragmentShader.replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+      totalEmissiveRadiance += vColor.rgb * smoothstep(.3, .6, max(vColor.r, max(vColor.g, vColor.b))) * 1.6;`);
+  };
+  material.customProgramCacheKey = () => 'debris-glow-1';
   const mesh = new THREE.InstancedMesh(geometry, material, capacity);
   mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage); mesh.frustumCulled = false;
   // Give it instance colours from the start: adding them on the first burst
@@ -12,7 +19,8 @@ export function createDebris(scene, capacity = 192) {
   mesh.setColorAt(0, new THREE.Color('#ffffff'));
   mesh.count = 0; scene.add(mesh);
   const pieces = [], dummy = new THREE.Object3D(), color = new THREE.Color();
-  function burst(prop) {
+  // synthwave: dark violet pieces, one in three neon pink or cyan.
+  function burst(prop, synthwave = false) {
     const rng = random(hash(Math.round(prop.x), Math.round(prop.z), 701) * 4294967296);
     const tree = prop.type === 'tree', cactus = prop.type === 'cactus';
     for (let i = 0; i < (tree ? 6 : 12); i++) {
@@ -22,7 +30,7 @@ export function createDebris(scene, capacity = 192) {
         vx: prop.vx * (.12 + rng() * .15) + (rng() - .5) * 9, vy: 3 + rng() * 7, vz: prop.vz * (.12 + rng() * .15) + (rng() - .5) * 9,
         rx: rng() * 6, rz: rng() * 6, spin: (rng() - .5) * 12, age: 0, size,
         tall: (tree && !leafy || cactus) ? 2.4 : 1,
-        color: cactus ? '#63824b' : leafy ? '#426547' : tree ? '#91724c' : '#92958a' });
+        color: synthwave ? i % 3 ? '#1c0d30' : i % 2 ? '#28e2ff' : '#ff2bd6' : cactus ? '#63824b' : leafy ? '#426547' : tree ? '#91724c' : '#92958a' });
     }
   }
   function update(dt, world) {

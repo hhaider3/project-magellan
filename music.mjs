@@ -1,4 +1,4 @@
-// Background music: four tracks streamed from assets/music (never decoded
+// Background music: five tracks streamed from assets/music (never decoded
 // whole, so a phone holds a few seconds of audio, not minutes), crossfading
 // from one to the next. Two <audio> decks take turns; each feeds the Web Audio
 // graph, so the music shares the game's master volume, mute and limiter.
@@ -12,6 +12,8 @@ export const TRACKS = [
   { id: 'chrome-highway', title: 'Chrome Highway', level: -1.2, end: 173.3, mood: 'day' },
   { id: 'night-drive', title: 'Night Drive', level: -1.9, end: 173.1, mood: 'night' },
   { id: 'redline', title: 'Redline', level: -.4, end: 175.1, mood: 'fast' },
+  // Synthwave's own: it measured -14.0 LUFS, and its last notes fade by 248 s.
+  { id: 'synth', title: 'Synth', level: -2, end: 248, mood: 'synth' },
 ];
 export const CROSSFADE = 4; // seconds
 const dB = value => 10 ** (value / 20);
@@ -21,10 +23,12 @@ const dB = value => 10 ** (value / 20);
 export const volumeGain = volume => Math.max(0, Math.min(1, volume)) ** 2;
 
 // The next track: never the one just played; Night Drive mostly after dark,
-// Redline more often in the Roadster, the daytime drives by day.
-export function pickTrack(previous, { night = 0, roadster = false } = {}, random = Math.random) {
+// Redline more often in the Roadster, the daytime drives by day, and Synth
+// in synthwave: first, and most of the time after (now and then otherwise).
+export function pickTrack(previous, { night = 0, roadster = false, synthwave = false } = {}, random = Math.random) {
+  if (synthwave && !previous) return TRACKS.find(track => track.mood === 'synth');
   const choices = TRACKS.filter(track => track.id !== previous);
-  const weight = track => track.mood === 'night' ? .25 + 4 * night : track.mood === 'fast' ? (roadster ? 2.5 : .8) : 1.2 - .7 * night;
+  const weight = track => track.mood === 'synth' ? (synthwave ? 12 : .4) : track.mood === 'night' ? .25 + 4 * night : track.mood === 'fast' ? (roadster ? 2.5 : .8) : 1.2 - .7 * night;
   let roll = random() * choices.reduce((sum, track) => sum + weight(track), 0);
   for (const track of choices) if ((roll -= weight(track)) <= 0) return track;
   return choices.at(-1);

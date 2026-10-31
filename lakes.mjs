@@ -70,11 +70,12 @@ export function createLakes(seed, baseHeight, roadAt) {
   function pondAtCell(cx, cz) {
     const key = `${cx},${cz}`;
     if (ponds.has(key)) return ponds.get(key);
+    // The first pond (Mirror Lake) lies about 400 m out, clear of the start.
     const starter = cx === 0 && cz === 0;
     // Scattered well across their cells, so from the air they never line up
     // (each still within its own cell's reach, so lookups always find it).
-    const x = starter ? 180 : cx * spacing + 210 + (hash(cx, cz, seed + 1801) - .5) * 320;
-    const z = starter ? 160 : cz * spacing + 210 + (hash(cx, cz, seed + 1802) - .5) * 320;
+    const x = starter ? 380 : cx * spacing + 210 + (hash(cx, cz, seed + 1801) - .5) * 320;
+    const z = starter ? 360 : cz * spacing + 210 + (hash(cx, cz, seed + 1802) - .5) * 320;
     // Seas claim their surroundings: no pond's basin may overlap a sea's,
     // including a sea in the neighbouring cell when the pond sits near its edge.
     const clear = [-320, 320].every(dx => [-320, 320].every(dz => {

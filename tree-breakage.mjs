@@ -60,6 +60,7 @@ export function createTreeBreakage(scene, sources, capacity = 8) {
     // geometry. This preserves branch gaps, silhouette and vertex colors.
     return (authored || splitGeometry(geometry)).map(part => {
       const mesh = new THREE.InstancedMesh(part.geometry, part.material || material, capacity);
+      if (part.depthMaterial) mesh.customDepthMaterial = part.depthMaterial; // its own shadow (sakura-model.mjs)
       mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
       // A shader finishes setting up on its first draw (tens of milliseconds
       // for the textured cherry), so draw each piece once now, as one

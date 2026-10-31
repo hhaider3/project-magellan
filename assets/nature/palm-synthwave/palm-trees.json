@@ -1,0 +1,50 @@
+{
+  "name": "Endless Drive / synthwave palms",
+  "assets": [
+    {
+      "name": "Palm_Tall",
+      "kind": "tree",
+      "variant": 6,
+      "triangles": 820,
+      "parts": 6
+    },
+    {
+      "name": "Palm_Tall_Far",
+      "kind": "standin",
+      "variant": 6,
+      "triangles": 56,
+      "parts": 1
+    },
+    {
+      "name": "Palm_Leaning",
+      "kind": "tree",
+      "variant": 7,
+      "triangles": 770,
+      "parts": 6
+    },
+    {
+      "name": "Palm_Leaning_Far",
+      "kind": "standin",
+      "variant": 7,
+      "triangles": 52,
+      "parts": 1
+    },
+    {
+      "name": "Palm_Young",
+      "kind": "tree",
+      "variant": 8,
+      "triangles": 580,
+      "parts": 6
+    },
+    {
+      "name": "Palm_Young_Far",
+      "kind": "standin",
+      "variant": 8,
+      "triangles": 48,
+      "parts": 1
+    }
+  ],
+  "axes": "X right, Y up, Z forward; each asset root is its ground origin",
+  "materials": "opaque vertex colors, no textures; bright (neon) colours glow in the game",
+  "treeFragments": "six closed sections per palm: the trunk in three, the fronds in three groups"
+}

@@ -133,6 +133,10 @@ export function createPetals(scene) {
       geometry.setDrawRange(0, Math.round(PER_TREE * density) * TREES);
     },
     setDensity(value) { density = value; },
+    // Shown (on) while the game draws its warm-up frame at load: the shader
+    // finishes setting up on its first draw (about 16 ms), which would
+    // otherwise fall in the first frame after Start.
+    warm(on) { points.visible = on || slots.some(slot => slot.weight > 0); },
     setLight(color) { uniforms.uLight.value.copy(color); },
     get count() { return points.visible ? slots.filter(slot => slot.weight > 0).length * Math.round(PER_TREE * density) : 0; },
   };

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { createTransformation, thrusterNozzles } from './vehicle-model.mjs?v=roadster-5';
+import { createTransformation, thrusterNozzles } from './vehicle-model.mjs?v=synth-1';
 import { createThrusterPlumes } from './thrusters.mjs?v=roadster-1';
 
 // The garage's showroom: a car on a turntable in a dark studio, drawn by the
@@ -11,23 +11,32 @@ const FOV = 26, ELEVATION = .2; // camera: vertical degrees, radians above the h
 const FORM_RATE = 1 / 1.4; // a form or thruster preview takes 1.4 s
 const SPIN = .28, IDLE = 2.5; // rad/s of auto-turn, resuming this long after a drag
 
-// Colours as written to the screen (the studio shaders aren't tone mapped).
+// Colours as written to the screen (the studio shaders aren't tone mapped),
+// for the usual dark green studio and for synthwave's: indigo, with a neon
+// grid on the floor.
+const STUDIO = {
+  plain: { horizon: [.165, .215, .2], top: [.055, .085, .078], pool: [.25, .3, .28], grid: [0, 0, 0], ring: '#e9c98a', sky: '#e4efed', ground: '#3b3a2e', rim: '#a8cad6' },
+  synthwave: { horizon: [.2, .05, .32], top: [.045, .012, .12], pool: [.16, .05, .28], grid: [1, .17, .84], ring: '#ff4fb8', sky: '#d2b8ff', ground: '#2a0d4a', rim: '#5ff0ff' },
+};
 const studio = {
   vertexShader: `varying vec3 vWorld; void main(){ vec4 w = modelMatrix * vec4(position, 1.); vWorld = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }`,
 };
+const look = { uHorizon: { value: new THREE.Vector3(...STUDIO.plain.horizon) }, uTop: { value: new THREE.Vector3(...STUDIO.plain.top) }, uPoolColor: { value: new THREE.Vector3(...STUDIO.plain.pool) }, uGrid: { value: new THREE.Vector3() } };
 const backdropMaterial = new THREE.ShaderMaterial({
-  ...studio, side: THREE.BackSide, depthWrite: false,
-  fragmentShader: `varying vec3 vWorld;
+  ...studio, side: THREE.BackSide, depthWrite: false, uniforms: look,
+  fragmentShader: `uniform vec3 uHorizon, uTop; varying vec3 vWorld;
     void main(){ float up = normalize(vWorld).y;
-      vec3 horizon = vec3(.165,.215,.2), top = vec3(.055,.085,.078);
-      gl_FragColor = vec4(mix(horizon, top, smoothstep(0., .55, up)), 1.); }`,
+      gl_FragColor = vec4(mix(uHorizon, uTop, smoothstep(0., .55, up)), 1.); }`,
 });
-// The floor fades from a lit pool under the car into the backdrop's horizon.
+// The floor fades from a lit pool under the car into the backdrop's horizon;
+// a grid of 1.5 m squares (black: none) glows on it near the car.
 const floorMaterial = new THREE.ShaderMaterial({
-  ...studio, uniforms: { uPool: { value: 6 } },
-  fragmentShader: `uniform float uPool; varying vec3 vWorld;
+  ...studio, uniforms: { ...look, uPool: { value: 6 } },
+  fragmentShader: `uniform float uPool; uniform vec3 uHorizon, uPoolColor, uGrid; varying vec3 vWorld;
     void main(){ float d = length(vWorld.xz) / uPool;
-      vec3 c = mix(vec3(.25,.3,.28), vec3(.165,.215,.2), smoothstep(.15, 1.6, d));
+      vec3 c = mix(uPoolColor, uHorizon, smoothstep(.15, 1.6, d));
+      vec2 g = vWorld.xz / 1.5, w = fwidth(g), l = 1. - smoothstep(vec2(0.), w * 1.5, abs(fract(g - .5) - .5));
+      c = mix(c, uGrid, max(l.x, l.y) * (1. - smoothstep(.25, .8, max(w.x, w.y))) * (1. - smoothstep(.5, 2.2, d)) * .8 * step(.01, uGrid.r + uGrid.g + uGrid.b));
       gl_FragColor = vec4(c, 1.); }`,
 });
 
@@ -43,7 +52,9 @@ export function createShowroom() {
   Object.assign(key.shadow.camera, { left: -8, right: 8, top: 8, bottom: -8, near: 1, far: 40 });
   key.shadow.mapSize.setScalar(2048); key.shadow.bias = -.0002; key.shadow.normalBias = .02; key.shadow.radius = 4;
   const rim = new THREE.DirectionalLight('#a8cad6', 1.3); rim.position.set(5, 4, -9);
-  scene.add(backdrop, floor, shadow, ring, new THREE.HemisphereLight('#e4efed', '#3b3a2e', 1.1), key, rim);
+  const fill = new THREE.HemisphereLight('#e4efed', '#3b3a2e', 1.1);
+  scene.add(backdrop, floor, shadow, ring, fill, key, rim);
+  let palette = STUDIO.plain;
   const turntable = new THREE.Group(); scene.add(turntable);
 
   const stands = new Map();
@@ -82,7 +93,7 @@ export function createShowroom() {
     if (!stands.has(asset.kind)) stands.set(asset.kind, makeStand(asset));
     if (stand) turntable.remove(stand.model);
     stand = stands.get(asset.kind); turntable.add(stand.model);
-    ring.material.color.set(asset.kind === 'roadster' ? '#ff3b2f' : '#e9c98a');
+    ring.material.color.set(asset.kind === 'roadster' ? '#ff3b2f' : palette.ring);
     arrive = 1;
     return stand;
   }
@@ -144,8 +155,15 @@ export function createShowroom() {
     camera.lookAt(target); camera.updateProjectionMatrix();
     draw(scene, camera);
   }
+  // Synthwave's studio in place of the usual one (on or off).
+  function setSynthwave(on) {
+    palette = on ? STUDIO.synthwave : STUDIO.plain;
+    look.uHorizon.value.set(...palette.horizon); look.uTop.value.set(...palette.top); look.uPoolColor.value.set(...palette.pool); look.uGrid.value.set(...palette.grid);
+    fill.color.set(palette.sky); fill.groundColor.set(palette.ground); rim.color.set(palette.rim);
+    if (stand?.kind !== 'roadster') ring.material.color.set(palette.ring);
+  }
   return {
-    show, preview, render,
+    show, preview, render, setSynthwave,
     get kind() { return stand?.kind ?? null; },
     get previewing() { return stand?.preview ?? null; },
     // Dragging turns the car; a flick keeps it turning for a moment.

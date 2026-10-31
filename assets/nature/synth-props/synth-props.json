@@ -1,0 +1,44 @@
+{
+  "name": "Endless Drive / synthwave cacti, rocks and boulders",
+  "assets": [
+    {
+      "name": "Cactus_Synth_Saguaro",
+      "kind": "cactus",
+      "variant": 0,
+      "triangles": 378
+    },
+    {
+      "name": "Cactus_Synth_Forked",
+      "kind": "cactus",
+      "variant": 1,
+      "triangles": 504
+    },
+    {
+      "name": "Boulder_Synth_A",
+      "kind": "boulder",
+      "variant": 0,
+      "triangles": 309
+    },
+    {
+      "name": "Boulder_Synth_B",
+      "kind": "boulder",
+      "variant": 1,
+      "triangles": 309
+    },
+    {
+      "name": "Rock_Synth_A",
+      "kind": "rock",
+      "variant": 0,
+      "triangles": 309
+    },
+    {
+      "name": "Rock_Synth_B",
+      "kind": "rock",
+      "variant": 1,
+      "triangles": 309
+    }
+  ],
+  "axes": "X right, Y up, Z forward; each asset root is its ground origin",
+  "materials": "opaque vertex colors, no textures; bright (neon) colours glow in the game",
+  "variants": "each stands in for the everyday variant of its kind with the same number"
+}

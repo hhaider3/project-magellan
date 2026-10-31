@@ -599,6 +599,21 @@ export function createRoads({ seed, ground, mountainAt, woodlandAt = () => 0, we
       if (performance.now() > until) return undefined;
     }
   }
+  const segmentDistance = (x, z, ax, az, bx, bz) => {
+    const dx = bx - ax, dz = bz - az, t = clamp(((x - ax) * dx + (z - az) * dz) / (dx * dx + dz * dz || 1), 0, 1);
+    return Math.hypot(ax + dx * t - x, az + dz * t - z);
+  };
+  // How far the nearest mountain track is (they aren't part of the network):
+  // for keeping sites off them. Infinity with none near.
+  function trackDistance(x, z) {
+    let best = Infinity;
+    for (let i = Math.floor(x / ROAD_CELL) - 1; i <= Math.floor(x / ROAD_CELL) + 1; i++) for (let j = Math.floor(z / ROAD_CELL) - 1; j <= Math.floor(z / ROAD_CELL) + 1; j++) {
+      const e = trackEdge(i, j);
+      if (!e || x < e.box[0] - 60 || x > e.box[2] + 60 || z < e.box[1] - 60 || z > e.box[3] + 60) continue;
+      for (let k = 0; k < e.count - 1; k++) best = Math.min(best, segmentDistance(x, z, e.points[k * 2], e.points[k * 2 + 1], e.points[k * 2 + 2], e.points[k * 2 + 3]) - e.extra);
+    }
+    return best;
+  }
   // Roundabouts: each ring is a closed road of its own, level with its junction.
   function ringsIn(x0, z0, x1, z1) {
     const found = [];
@@ -712,5 +727,5 @@ export function createRoads({ seed, ground, mountainAt, woodlandAt = () => 0, we
     }
     return true;
   }
-  return { roadAt, networkAt: (x, z) => roadAt(x, z, true), roadsNear, nearestRoad, along, roadMap, prepare, nodeAt, edgesFrom, junctionAt, endsOf, setSpurs };
+  return { roadAt, networkAt: (x, z) => roadAt(x, z, true), trackDistance, roadsNear, nearestRoad, along, roadMap, prepare, nodeAt, edgesFrom, junctionAt, endsOf, setSpurs };
 }

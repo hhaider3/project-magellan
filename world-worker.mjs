@@ -1,14 +1,15 @@
-import { createWorld, CHUNK, GRID } from './world.mjs?v=sakura-ponds-1';
-import { createTerrain, ULTRA_GRID } from './terrain.mjs?v=sakura-ponds-1';
-import { buildGrass } from './grass-data.mjs?v=sakura-ponds-1';
-import { buildWaterData, buildDistantWater, buildRiverWater } from './water-data.mjs?v=rivers-1';
+import { createWorld, CHUNK, GRID } from './world.mjs?v=open-start-1';
+import { createTerrain, ULTRA_GRID } from './terrain.mjs?v=open-start-1';
+import { buildGrass } from './grass-data.mjs?v=open-start-1';
+import { buildWaterData, buildDistantWater, buildRiverWater } from './water-data.mjs?v=open-start-1';
 import { buildBridges } from './bridge-data.mjs?v=classes-2';
-import { buildRoadside } from './roadside-data.mjs?v=sakura-ponds-1';
-import { FAR_SIZE, ULTRA_SIZE } from './streaming-layout.mjs?v=sakura-ponds-1';
+import { buildRoadside } from './roadside-data.mjs?v=open-start-1';
+import { FAR_SIZE, ULTRA_SIZE } from './streaming-layout.mjs?v=open-start-1';
 let world, terrain;
 self.onmessage = ({ data: job }) => {
   try {
     if (!world || world.seed !== job.seed) { world = createWorld(job.seed); terrain = createTerrain(world); }
+    world.setSynthwave(Boolean(job.synthwave)); // its palms (world.mjs props)
     const start = performance.now();
     if (job.kind === 'distant-water') {
       const water = buildDistantWater(world, terrain, job.x, job.z), { ranges, ...arrays } = water;

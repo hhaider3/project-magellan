@@ -1,9 +1,9 @@
 import * as THREE from './vendor/three.module.js';
-import { GRID, smoothstep, clamp, cellWeights, splitsAlongAD } from './world.mjs?v=sakura-ponds-1';
+import { GRID, smoothstep, clamp, cellWeights, splitsAlongAD } from './world.mjs?v=open-start-1';
 // The horizon tier's grid: fine enough (48 m) to keep the ranges' shape, so
 // mountains barely change as they come nearer.
 export const ULTRA_GRID = 48;
-import { lakeRadius } from './lakes.mjs?v=classes-2';
+import { lakeRadius } from './lakes.mjs?v=open-start-1';
 import { SNOW_LINE, TREELINE } from './landforms.mjs?v=classes-2';
 import { noise } from './noise.mjs?v=terrain-1';
 export function createTerrain(world) {

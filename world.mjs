@@ -1,10 +1,10 @@
 // Shared, deterministic world and vehicle simulation. No browser or renderer required.
-import { createLakes, lakeRadius } from './lakes.mjs?v=classes-2';
-import { createRoads, ROAD_HALF, ROAD_REACH, ROAD_CELL } from './roads.mjs?v=pedals-1';
+import { createLakes, lakeRadius } from './lakes.mjs?v=open-start-1';
+import { createRoads, ROAD_HALF, ROAD_REACH, ROAD_CELL } from './roads.mjs?v=open-start-1';
 import { createRivers } from './rivers.mjs?v=rivers-1';
-import { stepAmphibious } from './amphibious-motion.mjs?v=physics-16';
+import { stepAmphibious } from './amphibious-motion.mjs?v=open-start-1';
 import { controlAxis } from './controls.mjs?v=slider-1';
-import { stepFlight, wingStrikes } from './flight-motion.mjs?v=pedals-1';
+import { stepFlight, wingStrikes } from './flight-motion.mjs?v=open-start-1';
 import { ROADSTER, SUCTION, hoverWorld, overWater, roadsterAcceleration, roadsterDrag, fireThrusters, roadsterState } from './roadster-motion.mjs?v=steer-1';
 import { clamp, mix, smoothstep, hash, random, noise } from './noise.mjs?v=terrain-1';
 import { createLandforms, TREELINE, SNOW_LINE } from './landforms.mjs?v=classes-2';
@@ -41,29 +41,53 @@ export function createWorld(seed) {
   const riverCost = (x, z) => { const r = rivers.riverAt(x, z); return r && r.d < r.width / 2 + 12 ? 6 : 0; };
   const roads = createRoads({ seed, ground: natural, mountainAt: land.mountainAt, woodlandAt, wet, riverCost, riverAt: rivers.riverAt });
   const roadAt = roads.roadAt;
-  // The first road runs north from the start; the first ramps and the first
-  // lookout stand beside it.
+  // The first road runs north from the start; the first ramps stand beside it.
   const starterRoad = roads.edgesFrom(0, 0).find(e => e.id === '0,0>0,1');
   const besideStart = (s, side) => starterRoad ? roads.along(starterRoad, s, side) : { x: side, z: s, heading: 0 };
   // 0 away from the mountains, 1 in a range (see landforms.mjs).
   const mountainAt = land.mountainAt;
-  const featureCache = new Map();
+  const featureCache = new Map(), spurSpecs = new Map();
   const brokenProps = new Set(), breakEvents = [];
   function breakProp(prop, vx, vz) {
     if (brokenProps.has(prop.id)) return;
     brokenProps.add(prop.id); breakEvents.push({ ...prop, vx, vz });
   }
-  // The first ramp's run-up (and the ramp) keeps clear of every road and its
-  // shoulders: a highway's embankment across it would throw the car before
-  // the lip. Failing a clear spot near 68 m, it stays at 68 m.
-  const runUpClear = spot => {
-    for (let along = -40; along <= 34; along += 3) { const p = featurePoint(spot, 0, along); if (roads.networkAt(p.x, p.z).d < 12) return false; }
-    return true;
-  };
-  const jumpSpots = [68, 56, 80, 44, 92, 104].flatMap(s => [-1, 1].map(side => besideStart(s, side * (19 + (starterRoad?.extra || 0)))));
-  const startJump = jumpSpots.find(runUpClear) || besideStart(68, -19), startTower = besideStart(145, 37), startRoll = besideStart(225, 24);
+  // How far a point is from the nearest road of any kind other than a site's
+  // own lane (the network, the mountain tracks and the slipways into lakes),
+  // and -1 in the water: camps, lookouts and ramps keep clear of them all.
+  function clearance(x, z) {
+    if (wet(x, z)) return -1;
+    let d = Math.min(roads.networkAt(x, z).d, roads.trackDistance(x, z));
+    for (const lake of lakes.near(x, z, 700)) {
+      // A slipway leaves its road square and bends toward the water, never
+      // far from the straight line between its ends.
+      const spur = !lake.sea && lakeSpur(lake);
+      if (!spur) continue;
+      const ax = spur.from.x, az = spur.from.z, dx = spur.to.x - ax, dz = spur.to.z - az, t = clamp(((x - ax) * dx + (z - az) * dz) / (dx * dx + dz * dz || 1), 0, 1);
+      d = Math.min(d, Math.hypot(ax + dx * t - x, az + dz * t - z) - 6);
+    }
+    return d;
+  }
+  // The start is open ground: the first jump stands about 150 m up the first
+  // road and the first roll about 450 m, and no other camp, lookout or ramp
+  // stands within OPEN_START of it. Each first ramp and its run-up keep 12 m
+  // clear of every road (a highway's embankment across a run-up would throw
+  // the car before the lip) and out of the water: the first clear spot near
+  // its distance, either side of the road, or failing that the clearest.
+  const OPEN_START = 320;
+  function starterSpot(at, offset, run) {
+    let best = null, bestClear = -Infinity;
+    for (let k = 0; k <= 16; k++) for (const side of [-1, 1]) {
+      const spot = besideStart(at + (k % 2 ? 1 : -1) * Math.ceil(k / 2) * 12, side * (offset + (starterRoad?.extra || 0)));
+      let clear = Infinity;
+      for (let along = -40; along <= run && clear >= 12; along += 3) { const p = featurePoint(spot, 0, along); clear = Math.min(clear, clearance(p.x, p.z)); }
+      if (clear >= 12) return spot;
+      if (clear > bestClear) { best = spot; bestClear = clear; }
+    }
+    return best;
+  }
+  const startJump = starterSpot(150, 19, 34), startRoll = starterSpot(450, 24, 44);
   const starterRamp = { id: 'first-jump', type: 'ramp', x: startJump.x, z: startJump.z, heading: startJump.heading, width: 10, length: 24, rise: 5.2, back: 10 };
-  const starterTower = { id: 'first-lookout', type: 'lookout', x: startTower.x, z: startTower.z, heading: startTower.heading + .15 };
   const twistRamp = { id: 'first-roll', type: 'ramp', x: startRoll.x, z: startRoll.z, heading: startRoll.heading, width: 12, length: 30, rise: 8, back: 14, twist: -1 };
   function featureAtCell(cx, cz) {
     const key = `${cx},${cz}`;
@@ -80,11 +104,14 @@ export function createWorld(seed) {
     if (roads.networkAt(x, z).d < 30) { x = road ? road.x + Math.cos(road.heading) * 60 * side : x; z = road ? road.z - Math.sin(road.heading) * 60 * side : z; }
     x = clamp(x, cx * FEATURE_SPACING + 40, (cx + 1) * FEATURE_SPACING - 40);
     z = clamp(z, cz * FEATURE_SPACING + 40, (cz + 1) * FEATURE_SPACING - 40);
-    // Ramps, camps and lookouts need fairly level ground: none on a mountain
-    // side, a mesa edge or a dune field's steep faces.
+    // Ramps, camps and lookouts need fairly level ground (none on a mountain
+    // side, a mesa edge or a dune field's steep faces), clear of every road
+    // and the water, and none at the open start.
     let lo = Infinity, hi = -Infinity;
     for (const [dx, dz] of [[0, 0], [28, 0], [-28, 0], [0, 28], [0, -28]]) { const h = land.sample(x + dx, z + dz).height; lo = Math.min(lo, h); hi = Math.max(hi, h); }
-    const type = hi - lo > 9 || wild || roads.networkAt(x, z).d < 25 ? 'none' : !road ? (kind < .6 ? 'camp' : 'lookout') : kind < .58 ? 'ramp' : kind < .82 ? 'camp' : 'lookout';
+    // (Nor within 180 m of a first ramp, where its lane could cross the run-up.)
+    const firstRamps = Math.min(Math.hypot(x - starterRamp.x, z - starterRamp.z), Math.hypot(x - twistRamp.x, z - twistRamp.z));
+    const type = hi - lo > 9 || wild || Math.hypot(x, z) < OPEN_START || firstRamps < 180 || clearance(x, z) < 25 ? 'none' : !road ? (kind < .6 ? 'camp' : 'lookout') : kind < .58 ? 'ramp' : kind < .82 ? 'camp' : 'lookout';
     const heading = (road ? road.heading : rng() * Math.PI * 2) + (rng() - .5) * .6;
     const feature = { id: `site:${cx},${cz}`, type, x, z, heading, width: 9 + rng() * 3, length: 22 + rng() * 8, rise: 4.5 + rng() * 3, back: 12 };
     if (type === 'ramp' && hash(cx, cz, seed + 804) < .4) {
@@ -98,7 +125,6 @@ export function createWorld(seed) {
   }
   // Spur roads (roads.mjs): a short drive from the road to each camp and
   // lookout beside one, and in places a slipway down into a lake.
-  const spurSpecs = new Map();
   function siteSpur(f) {
     if (spurSpecs.has(f.id)) return spurSpecs.get(f.id);
     let spec = null;
@@ -129,12 +155,11 @@ export function createWorld(seed) {
     for (let cx = Math.floor((x0 - 100) / FEATURE_SPACING); cx <= Math.floor((x1 + 100) / FEATURE_SPACING); cx++) {
       for (let cz = Math.floor((z0 - 100) / FEATURE_SPACING); cz <= Math.floor((z1 + 100) / FEATURE_SPACING); cz++) list.push(siteSpur(featureAtCell(cx, cz)));
     }
-    if (starterTower.x > x0 - 100 && starterTower.x < x1 + 100 && starterTower.z > z0 - 100 && starterTower.z < z1 + 100) list.push(siteSpur(starterTower));
     for (const lake of lakes.near((x0 + x1) / 2, (z0 + z1) / 2, Math.hypot(x1 - x0, z1 - z0) / 2 + 450)) if (!lake.sea) list.push(lakeSpur(lake));
     return list.filter(Boolean);
   });
   function featuresNear(x, z, radius = 190) {
-    const result = [starterRamp, starterTower, twistRamp];
+    const result = [starterRamp, twistRamp];
     for (let cx = Math.floor((x - radius) / FEATURE_SPACING); cx <= Math.floor((x + radius) / FEATURE_SPACING); cx++) {
       for (let cz = Math.floor((z - radius) / FEATURE_SPACING); cz <= Math.floor((z + radius) / FEATURE_SPACING); cz++) result.push(featureAtCell(cx, cz));
     }
@@ -296,6 +321,31 @@ export function createWorld(seed) {
     }
     return true;
   }
+  // Synthwave (setSynthwave) grows palms where the pines would be
+  // (nature-models.mjs): fewer of them, sparsest on open land, and evenly
+  // along the paved roads, a pair every PALM_SPACING metres.
+  let synthwave = false;
+  const PALM_SPACING = 48, PALM_SETBACK = 4.5; // m; the setback is past the asphalt
+  function roadPalms(cx, cz) {
+    const list = [];
+    for (const e of roads.roadsNear(cx * CHUNK + CHUNK / 2, cz * CHUNK + CHUNK / 2, CHUNK, true)) {
+      if (e.kind !== 'highway' && e.kind !== 'road') continue;
+      const offset = ROAD_HALF + e.extra + PALM_SETBACK;
+      for (let j = 0, s = 12; s < e.length; j++, s += PALM_SPACING) for (const side of [-1, 1]) {
+        const { x, z } = roads.along(e, s, side * offset);
+        if (Math.floor(x / CHUNK) !== cx || Math.floor(z / CHUNK) !== cz || Math.hypot(x, z) < 24) continue;
+        // Not where another road comes near (junctions, side roads, the
+        // inside of a tight bend), on a bridge or its approach, in water,
+        // on a ramp's run-up or by a camp, or on a steep bank.
+        const road = roadAt(x, z), g = gradient(x, z);
+        if (road.d < ROAD_HALF + PALM_SETBACK - 1.5 || road.bridge || road.approach || waterAt(x, z) || reserved(x, z) || Math.hypot(g.x, g.z) > .7) continue;
+        const roll = hash(Math.round(x * 4), Math.round(z * 4), seed + 131), size = 1 + roll * .15;
+        // All the tall palm, turned every which way.
+        list.push({ id: `palm:${e.id}:${j}:${side}`, type: 'tree', variant: 0, x, z, y: surface(x, z), size, turn: roll * 97 % (Math.PI * 2), r: .24 * size, h: 6.8 * size });
+      }
+    }
+    return list;
+  }
   function props(cx, cz) {
     const rng = random((hash(cx, cz, seed + 101) * 4294967296) >>> 0), list = [];
     const add = p => { if (seated(p)) list.push(p); };
@@ -352,18 +402,23 @@ export function createWorld(seed) {
         if (grove && list.some(p => p.type === 'tree' && Math.hypot(p.x - x, p.z - z) < 13)) continue; // room for the broad crowns
         const variant = grove ? VARIANT.tree.sakura : y > TREELINE - 35 ? VARIANT.tree.stunted : pick < upper * .6 ? VARIANT.tree.snow
           : (desert > .12 && pick < .35) || pick < .015 ? VARIANT.tree.dead : undefined;
+        // Synthwave's palms in the pines' places: a fifth of them on open
+        // land, three quarters in the woods. An empty spot keeps its room,
+        // so nothing else moves into it.
+        const empty = synthwave && variant !== VARIANT.tree.sakura && variant !== VARIANT.tree.dead && hash(Math.round(x * 4), Math.round(z * 4), seed + 121) > mix(.2, .75, smoothstep(.3, .75, woodland));
         const height = variant === VARIANT.tree.stunted ? 3.4 : variant === VARIANT.tree.dead ? 5.8 : variant === VARIANT.tree.sakura ? SAKURA_HEIGHT : 6.8;
         // A cherry keeps its water's level and the slope it stands on, where its petals land.
-        add({ id, type: 'tree', variant, x, z, y, size, turn, r: (variant === VARIANT.tree.sakura ? .6 : .24) * size, h: height * size, ...(grove ? { water: shore, gx: g.x, gz: g.z } : {}) });
+        add({ id, type: 'tree', variant, x, z, y, size, turn, r: (variant === VARIANT.tree.sakura ? .6 : .24) * size, h: height * size, ...(grove ? { water: shore, gx: g.x, gz: g.z } : {}), ...(empty ? { empty } : {}) });
       } else add({ id, type: 'bush', variant: desert > .3 ? VARIANT.bush.desert : y > TREELINE - 60 ? VARIANT.bush.juniper : undefined, x, z, y, size, turn, r: 0, h: size });
     }
+    if (synthwave) list.push(...roadPalms(cx, cz));
     for (const f of featuresNear(cx * CHUNK + CHUNK / 2, cz * CHUNK + CHUNK / 2, 100)) {
       if (Math.floor(f.x / CHUNK) !== cx || Math.floor(f.z / CHUNK) !== cz || f.type === 'ramp') continue;
       list.push({ ...f, y: surface(f.x, f.z), size: 1, turn: f.heading, r: f.type === 'camp' ? 3.6 : 2.1, h: f.type === 'camp' ? 5 : 11 });
     }
-    return list.filter(p => !brokenProps.has(p.id));
+    return list.filter(p => !p.empty && !brokenProps.has(p.id));
   }
-  return { seed, height, surface, groundSurface, gradient, hollow, footOfSlope, mountainAt, woodlandAt, blossomAt, shoreAt, desertAt, roadAt, roadsNear: roads.roadsNear, prepareRoads: (x, z, r, ms) => rivers.prepare(x, z, r + 3 * ROAD_CELL, ms / 2) && roads.prepare(x, z, r, ms / 2), riversNear: rivers.riversNear, riverAt: rivers.riverAt, roadMap: roads.roadMap, alongRoad: roads.along, junctionAt: roads.junctionAt, roadEnds: roads.endsOf, startHeading: starterRoad ? roads.along(starterRoad, 0).heading : 0, props, featuresNear, rampLift, rampAt, reserved, starterRamp, twistRamp, waterAt, lakeAt: lakes.lakeAt, lakesNear: lakes.near, seasNear: lakes.seasNear, starterLake: lakes.starter, starterSea: lakes.starterSea, brokenProps, breakProp, drainBreakEvents: () => breakEvents.splice(0) };
+  return { seed, height, surface, groundSurface, gradient, hollow, footOfSlope, mountainAt, woodlandAt, blossomAt, shoreAt, desertAt, roadAt, roadsNear: roads.roadsNear, prepareRoads: (x, z, r, ms) => rivers.prepare(x, z, r + 3 * ROAD_CELL, ms / 2) && roads.prepare(x, z, r, ms / 2), riversNear: rivers.riversNear, riverAt: rivers.riverAt, roadMap: roads.roadMap, alongRoad: roads.along, junctionAt: roads.junctionAt, roadEnds: roads.endsOf, startHeading: starterRoad ? roads.along(starterRoad, 0).heading : 0, props, featuresNear, rampLift, rampAt, reserved, starterRamp, twistRamp, waterAt, lakeAt: lakes.lakeAt, lakesNear: lakes.near, seasNear: lakes.seasNear, starterLake: lakes.starter, starterSea: lakes.starterSea, brokenProps, breakProp, drainBreakEvents: () => breakEvents.splice(0), setSynthwave: on => { synthwave = on; } };
 }
 
 export function featureLocal(feature, x, z) {

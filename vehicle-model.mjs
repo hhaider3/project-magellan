@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from './vendor/loaders/GLTFLoader.js';
 import { RoomEnvironment } from './vendor/environments/RoomEnvironment.js';
+import { SYNTHWAVE } from './synthwave.mjs?v=synth-1';
 
 export const VEHICLE_URLS = {
   atlas: new URL('./assets/vehicles/atlas-amphibious.glb?v=tail-1', import.meta.url),
@@ -45,9 +46,29 @@ export function thrusterNozzles(model) {
   return nozzles;
 }
 
-// A soft studio room's reflections for the paint and glass.
-function bakeReflections(renderer) {
-  const pmrem = new THREE.PMREMGenerator(renderer), room = new RoomEnvironment();
+// Synthwave's sky for the paint and glass to reflect, alike all round:
+// indigo overhead to hot pink at the horizon, and the dark land below
+// glowing magenta toward it, as its far grid does.
+function synthwaveRoom() {
+  const room = new THREE.Scene(), color = name => ({ value: new THREE.Color(SYNTHWAVE[name]) });
+  const material = new THREE.ShaderMaterial({
+    side: THREE.BackSide, depthWrite: false,
+    uniforms: { uHorizon: color('horizon'), uLow: color('low'), uMid: color('mid'), uHigh: color('high'), uZenith: color('zenith'), uFloor: color('floor'), uGrid: color('gridLow') },
+    vertexShader: 'varying vec3 vDir; void main(){ vDir=position; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }',
+    fragmentShader: `uniform vec3 uHorizon, uLow, uMid, uHigh, uZenith, uFloor, uGrid; varying vec3 vDir;
+      void main(){ float y=normalize(vDir).y, up=max(y,0.0);
+        vec3 sky=mix(mix(mix(mix(uHorizon,uLow,smoothstep(0.0,.12,up)),uMid,smoothstep(.08,.34,up)),uHigh,smoothstep(.26,.6,up)),uZenith,smoothstep(.5,1.0,up));
+        vec3 land=mix(uGrid*.35,uFloor*.15,smoothstep(0.0,-.2,y));
+        gl_FragColor=vec4(y>0.0?sky:land,1.0); }`,
+  });
+  room.add(new THREE.Mesh(new THREE.SphereGeometry(10, 48, 24), material));
+  room.dispose = () => { material.dispose(); room.children[0].geometry.dispose(); };
+  return room;
+}
+// What the paint and glass reflect: a soft studio room ('studio'), or the
+// synthwave sky ('synthwave').
+function bakeReflections(renderer, look) {
+  const pmrem = new THREE.PMREMGenerator(renderer), room = look === 'synthwave' ? synthwaveRoom() : new RoomEnvironment();
   const reflections = pmrem.fromScene(room, .04);
   room.dispose(); pmrem.dispose();
   return reflections;
@@ -56,8 +77,8 @@ function bakeReflections(renderer) {
 // Blender owns the geometry, materials, wheel origins and static draw batching.
 // The simulation continues to own the pose and collision dimensions in metres.
 // kind: 'atlas' (with its boat and plane clips and propeller) or 'roadster'
-// (with thruster nozzles instead).
-export async function loadVehicleModel(renderer, kind = 'atlas') {
+// (with thruster nozzles instead); look: what it reflects (see bakeReflections).
+export async function loadVehicleModel(renderer, kind = 'atlas', look = 'studio') {
   const gltf = await new GLTFLoader().loadAsync(VEHICLE_URLS[kind].href);
   const model = gltf.scene;
   const required = name => {
@@ -80,7 +101,7 @@ export async function loadVehicleModel(renderer, kind = 'atlas') {
   const wing = atlas ? null : required('Rear_Wing');
   const materials = new Map();
   let triangles = 0, meshes = 0;
-  let reflections = bakeReflections(renderer);
+  let reflections = bakeReflections(renderer, look);
   model.traverse(node => {
     if (!node.isMesh) return;
     meshes++;
@@ -95,9 +116,12 @@ export async function loadVehicleModel(renderer, kind = 'atlas') {
   const headMat = materials.get('Headlamp'), brakeMat = materials.get('Brake_Lamp');
   if (!headMat || !brakeMat) throw new Error('Vehicle asset is missing its working lamp materials');
   // After a lost graphics context the baked reflections are gone (a render
-  // target's pixels don't survive): bake them again.
-  function relight() {
-    reflections.dispose(); reflections = bakeReflections(renderer);
+  // target's pixels don't survive): bake them again. With a look, reflect
+  // that instead (if it isn't already).
+  function relight(next = null) {
+    if (next === look) return;
+    look = next ?? look;
+    reflections.dispose(); reflections = bakeReflections(renderer, look);
     for (const material of materials.values()) { material.envMap = reflections.texture; material.needsUpdate = true; }
   }
   return { kind, model, clips: gltf.animations, body, relight, wheelPivots, wheelSpinners, headMat, brakeMat, meshes, triangles, transformation, flight, propeller, nozzles, wing,

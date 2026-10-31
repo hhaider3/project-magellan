@@ -15,7 +15,7 @@ test('lake terrain and water regenerate deterministically after cache eviction',
   const lakes = createLakes(3, () => 10, () => ({ d: 150 }));
   const original = structuredClone(lakes.starter);
   for (let i = 0; i < 150; i++) lakes.near(i * 840, i * 840, 0);
-  assert.deepEqual(lakes.lakeAt(180, 160), original);
+  assert.deepEqual(lakes.lakeAt(original.x, original.z), original);
   assert.deepEqual(world.starterLake, createWorld(3).starterLake);
   for (let cx = 0; cx < 4; cx++) for (let cz = 0; cz < 4; cz++) {
     for (const prop of world.props(cx, cz)) assert.equal(world.waterAt(prop.x, prop.z), null);

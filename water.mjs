@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { waterWave, lakeExtent } from './lakes.mjs?v=classes-2';
+import { waterWave, lakeExtent } from './lakes.mjs?v=open-start-1';
 
 // A small tileable wave texture, generated once (no download): R/G hold the
 // surface slope from a sum of periodic waves, B a soft noise used to break up
@@ -325,6 +325,9 @@ export function createWater(scene, fog = { uFogNear: { value: 350 }, uFogFar: { 
     if (clouds) u.uCloudTone.value.copy(clouds);
   }
   const setDetail = on => { detail.value = on ? 1 : 0; causticCheck = 0; if (!on) caustic.value.z = 0; };
-  return { sync, install, update, clear, installDistant, setDetail, setSky, riverMesh, riverWarmup: new THREE.Mesh(new THREE.BufferGeometry(), riverMaterial), drainSplashes: () => splashes.splice(0), causticUniforms: { uTime: time, uCausticLake: caustic }, get distantCount() { return distantCount; }, wants: id => wanted.has(id), get ready() { return patches.size === wanted.size; },
+  // The water's own colour, shallows and depths; with none, its usual turquoise.
+  const baseShallow = material.uniforms.uShallow.value.clone(), baseDeep = material.uniforms.uDeep.value.clone();
+  function setColors(shallow = baseShallow, deep = baseDeep) { material.uniforms.uShallow.value.copy(shallow); material.uniforms.uDeep.value.copy(deep); }
+  return { sync, install, update, clear, installDistant, setDetail, setSky, setColors, riverMesh, riverWarmup: new THREE.Mesh(new THREE.BufferGeometry(), riverMaterial), drainSplashes: () => splashes.splice(0), causticUniforms: { uTime: time, uCausticLake: caustic }, get distantCount() { return distantCount; }, wants: id => wanted.has(id), get ready() { return patches.size === wanted.size; },
     get count() { return patches.size; }, get wakeCount() { return ripples.length; } };
 }

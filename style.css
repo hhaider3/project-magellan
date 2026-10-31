@@ -1405,3 +1405,122 @@ button.setting:hover span { color:white; }
   .setting { min-height:34px; }
   #touchGuide { font-size:9.5px; }
 }
+
+/* Synthwave (?theme=synthwave): the menus take the neon sunset's colours.
+   Indigo glass, hot pink lines and accents, cyan labels and values, and the
+   title's last line in the sun's gradient and cut by its stripes. Start, the
+   car in use and View cars are hot pink lettered in the sun's yellow. The
+   header follows while the menu is up; the HUD keeps its own colours. */
+body.synthwave #menu, body.synthwave #garage, body.synthwave:not(.driving) header {
+  --cream:#fdf0ff;
+  --faint:rgba(242,214,255,.68);
+  --line:rgba(255,79,184,.36);
+  --yellow:#ff4fb8;
+  --ink:#1a0633;
+  --hot:#d4126f;
+  --sun:#ffe85a;
+  --neon:#5ff0ff;
+}
+body.synthwave .vignette { background:linear-gradient(180deg,rgba(24,4,52,.3),transparent 25%,transparent 65%,rgba(16,3,36,.6)); }
+body.synthwave #menu { background:linear-gradient(90deg,rgba(14,3,34,.9),rgba(34,7,62,.6) 38%,rgba(34,7,62,0) 70%); }
+body.synthwave #menu .eyebrow, body.synthwave #garage .eyebrow { color:var(--neon); }
+body.synthwave .eyebrow>span { box-shadow:0 0 8px var(--yellow); }
+body.synthwave #menu h1 { color:#fff; text-shadow:0 0 22px rgba(95,240,255,.45); }
+body.synthwave #menu h1 em {
+  display:inline-block;
+  padding-right:.06em;
+  background:linear-gradient(180deg,#ffe85a 12%,#ff9038 52%,#ff2a8c 86%);
+  -webkit-background-clip:text;
+  background-clip:text;
+  color:transparent;
+  text-shadow:none;
+  -webkit-mask-image:linear-gradient(180deg,#000 55%,transparent 55% 57.5%,#000 57.5% 66%,transparent 66% 69.5%,#000 69.5% 77%,transparent 77% 82%,#000 82%);
+  mask-image:linear-gradient(180deg,#000 55%,transparent 55% 57.5%,#000 57.5% 66%,transparent 66% 69.5%,#000 69.5% 77%,transparent 77% 82%,#000 82%);
+}
+body.synthwave .primary, body.synthwave #garage .primary { background:var(--hot); color:var(--sun); box-shadow:0 0 26px rgba(255,42,140,.45); }
+body.synthwave .primary:hover, body.synthwave #garage .primary:hover { background:var(--hot); filter:brightness(1.15); box-shadow:0 0 36px rgba(255,42,140,.7); }
+body.synthwave .primary:disabled { box-shadow:none; }
+body.synthwave #menu .chip, body.synthwave .segmented, body.synthwave:not(.driving) .icon-button, body.synthwave .garage-nav button { background:rgba(32,8,62,.42); border-color:rgba(95,240,255,.3); }
+body.synthwave #menu .chip:hover, body.synthwave:not(.driving) .icon-button:hover, body.synthwave .garage-nav button:hover { border-color:var(--yellow); box-shadow:0 0 12px rgba(255,79,184,.45); }
+body.synthwave .segmented button[aria-pressed="true"], body.synthwave #menu .chip.gold { border-color:transparent; background:var(--hot); color:var(--sun); }
+body.synthwave #menu .chip.gold:hover { background:var(--hot); filter:brightness(1.15); }
+body.synthwave .setup-row, body.synthwave .setup-more, body.synthwave .setting, body.synthwave #touchGuide { border-color:rgba(255,79,184,.16); }
+body.synthwave .setup-label, body.synthwave .menu-controls { color:rgba(95,240,255,.72); }
+body.synthwave #menu kbd { border-color:rgba(95,240,255,.38); }
+body.synthwave .setup-more svg { color:var(--neon); }
+body.synthwave #settingsSheet { background:rgba(20,5,44,.92); box-shadow:0 20px 60px rgba(10,0,30,.5),0 0 30px rgba(255,79,184,.12); }
+body.synthwave .setting b { color:var(--neon); }
+body.synthwave .setting input { accent-color:var(--yellow); }
+body.synthwave:not(.driving) #soundPanel { background:rgba(20,5,44,.9); }
+body.synthwave:not(.driving) .brand>svg { stroke:var(--yellow); filter:drop-shadow(0 0 6px rgba(255,79,184,.7)); }
+body.synthwave .garage-panel { background:linear-gradient(90deg,rgba(14,3,34,.88),rgba(14,3,34,.62) 78%,rgba(14,3,34,0)); }
+body.synthwave #garage .feature { background:rgba(32,8,62,.3); }
+@media(orientation:landscape) and (max-height:899px) and (min-width:560px) {
+  body.synthwave #menu { background:linear-gradient(90deg,rgba(14,3,34,.9),rgba(34,7,62,.5) 34%,rgba(34,7,62,.12) 50%,rgba(34,7,62,.5) 66%,rgba(14,3,34,.9)); }
+}
+@media(orientation:landscape) and (max-height:480px) {
+  body.synthwave #menu { background:linear-gradient(90deg,rgba(14,3,34,.92),rgba(34,7,62,.62) 36%,rgba(34,7,62,.3) 50%,rgba(34,7,62,.62) 64%,rgba(14,3,34,.92)); }
+}
+@media(max-width:600px) and (min-height:601px) {
+  body.synthwave .garage-panel { background:rgba(14,3,34,.88); }
+}
+
+/* Synth mode / Normal mode: beside Start, it switches the look and drives.
+   In the everyday menu it promises the neon sunset (a striped sun, hot pink
+   edge); in synthwave's it offers the day back (a plain sun, gold edge). */
+.menu-actions { display:flex; flex-wrap:wrap; gap:10px; max-width:440px; }
+#menu .menu-actions .primary { width:auto; flex:1 1 190px; }
+.mode-switch {
+  flex:0 0 auto;
+  display:inline-flex;
+  align-items:center;
+  gap:9px;
+  padding:0 18px;
+  border:1px solid rgba(255,79,184,.6);
+  border-radius:3px;
+  background:rgba(26,8,44,.55);
+  backdrop-filter:blur(10px);
+  -webkit-backdrop-filter:blur(10px);
+  color:#ffd9f3;
+  font-size:13px;
+  font-weight:700;
+  white-space:nowrap;
+  transition:border-color .2s,box-shadow .2s,transform .2s;
+}
+.mode-switch svg { width:20px; height:20px; color:#ff6fc8; }
+.mode-switch:hover { border-color:#ff4fb8; box-shadow:0 0 18px rgba(255,79,184,.45); transform:translateY(-2px); }
+.mode-switch .day-icon, body.synthwave .mode-switch .synth-icon { display:none; }
+body.synthwave .mode-switch .day-icon { display:block; }
+body.synthwave .mode-switch { border-color:rgba(233,201,138,.55); background:rgba(19,43,36,.6); color:#f5f1df; }
+body.synthwave .mode-switch svg { color:#e9c98a; }
+body.synthwave .mode-switch:hover { border-color:#e9c98a; box-shadow:0 0 18px rgba(233,201,138,.35); }
+/* Phones held sideways: just its sun, beside Start (it keeps its name for
+   screen readers and its tooltip). */
+@media(orientation:landscape) and (max-height:480px) {
+  .mode-switch { padding:0 12px; }
+  .mode-switch span { display:none; }
+}
+
+/* Large screens with a mouse: Graphics, Motion blur and the FPS meter are
+   rows of the setup list itself (placeSettings in game.mjs), each value a
+   chip as the rows above have; the Settings row steps aside. */
+body.settings-inline #settingsBtn { display:none; }
+body.settings-inline .setup-label { flex-basis:92px; }
+.setup .setting { justify-content:flex-start; gap:14px; min-height:44px; padding:5px 0; }
+.setup .setting span { flex:0 0 92px; font-size:8px; font-weight:600; letter-spacing:.22em; text-transform:uppercase; color:var(--faint); transition:color .2s; }
+.setup .setting b {
+  display:inline-flex;
+  align-items:center;
+  height:32px;
+  padding:0 13px;
+  border:1px solid var(--line);
+  border-radius:999px;
+  background:rgba(27,51,46,.28);
+  backdrop-filter:blur(10px);
+  -webkit-backdrop-filter:blur(10px);
+  transition:border-color .2s;
+}
+.setup button.setting:hover b { border-color:var(--yellow); }
+body.synthwave .setup .setting b { background:rgba(32,8,62,.42); border-color:rgba(95,240,255,.3); }
+body.synthwave .setup button.setting:hover b { border-color:var(--yellow); box-shadow:0 0 12px rgba(255,79,184,.45); }
+.setup button.setting:not(.toggle) b::after { margin-left:4px; }

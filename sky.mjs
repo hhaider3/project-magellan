@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { SYNTHWAVE, SUN_RADIUS } from './synthwave.mjs?v=synth-1';
 
 // The sky dome: a gradient from the horizon to the zenith that follows the time
 // of day, a warm glow hugging the horizon around the sun at sunrise and
@@ -30,6 +31,7 @@ export function createSky(scene) {
     uZenith: color(), uHorizon: color(), uSunColor: color(), uCloudLit: color(), uCloudShade: color(),
     uSunDir: vec(), uMoonDir: vec(), uDay: { value: 1 }, uNight: { value: 0 }, uGlow: { value: 0 },
     uCover: { value: 0 }, uClouds: { value: .38 }, uTime: { value: 0 }, uDust: { value: 0 }, uNoise: { value: noiseTexture() },
+    uSynth: { value: 0 }, uMeteorFrom: vec(), uMeteorDir: vec(), uMeteor: { value: new THREE.Vector3() }, ...Object.fromEntries(['horizon', 'low', 'mid', 'high', 'zenith', 'glow', 'sunTop', 'sunMid', 'sunLow'].map(name => [`uSw_${name}`, { value: new THREE.Color(SYNTHWAVE[name]) }])),
   };
   const material = new THREE.ShaderMaterial({
     side: THREE.BackSide, depthWrite: false, uniforms,
@@ -45,8 +47,77 @@ export function createSky(scene) {
         return n/.9375;
       }
       float starHash(vec3 c){return fract(sin(dot(c,vec3(12.9898,78.233,37.719)))*43758.5453);}
+      // Synthwave (synthwave.mjs): indigo overhead to hot pink at the
+      // horizon, glowing orange under a huge striped sun, with stars and the
+      // odd shooting star. Its colours are the ones shown, not tone mapped.
+      uniform float uSynth; uniform vec3 uSw_horizon, uSw_low, uSw_mid, uSw_high, uSw_zenith, uSw_glow, uSw_sunTop, uSw_sunMid, uSw_sunLow;
+      // A shooting star: where its path starts, the way it runs (both on the
+      // sky), and how far its head has gone, its tail's length (radians) and
+      // its brightness (0: none).
+      uniform vec3 uMeteorFrom, uMeteorDir, uMeteor;
+      // Two layers of stars: faint, dense ones and a scatter of bright ones,
+      // some tinted pink or cyan. Each star sits at a random spot in a cell
+      // the sky passes through the middle of, measured in pixels so it draws
+      // at least a pixel across and never flickers as the view turns.
+      vec3 synthStars(vec3 ray, float px){
+        vec3 stars=vec3(0.0);
+        for(int i=0;i<2;i++){
+          float scale=i==0?120.0:55.0;
+          vec3 cell=floor(ray*scale); float h=starHash(cell);
+          if(h<(i==0?.92:.96)||abs(length(cell+.5)-scale)>.3) continue;
+          vec3 at=normalize(cell+.5+(vec3(starHash(cell+3.1),starHash(cell+7.7),starHash(cell+13.3))-.5)*.5);
+          float d=length(ray-at)/px, size=i==0?.75:1.15, k=fract(h*97.0);
+          float glow=exp(-d*d/(size*size))+(i==0?0.0:exp(-d*.55)*.12);
+          vec3 tint=i==0||k<.6?vec3(1.0,.94,1.0):k<.8?vec3(1.0,.62,.9):vec3(.62,.92,1.0);
+          stars+=tint*glow*(i==0?.45+.55*k:1.1+.5*k)*(.7+.3*sin(uTime*(1.5+k*2.0)+h*80.0));
+        }
+        return stars;
+      }
+      vec3 synthSky(vec3 ray){
+        float y=ray.y, up=max(y,0.0);
+        vec3 col=mix(uSw_horizon,uSw_low,smoothstep(0.0,.12,up));
+        col=mix(col,uSw_mid,smoothstep(.08,.34,up));
+        col=mix(col,uSw_high,smoothstep(.26,.6,up));
+        col=mix(col,uSw_zenith,smoothstep(.5,1.0,up));
+        float toward=max(dot(normalize(ray.xz+vec2(1e-5)),normalize(uSunDir.xz+vec2(1e-5))),0.0);
+        col+=uSw_glow*exp(-up*10.0)*(.2+.8*pow(toward,5.0))*.8;
+        // Faint ruled lines across the sky, as on the cover art.
+        float ly=up*90.0, lw=fwidth(ly);
+        col*=1.0-.14*(1.0-smoothstep(.08-lw,.08+lw,abs(fract(ly)-.5)*2.0))*smoothstep(.03,.12,up)*(1.0-smoothstep(.6,.9,up));
+        // Stars fade out into the glow just above the horizon.
+        float px=length(fwidth(ray));
+        col+=synthStars(ray,px)*smoothstep(.01,.15,up);
+        // The shooting star: a streak along a great circle, thinning and
+        // fading from its bright head back along its tail.
+        if(uMeteor.z>0.0){
+          float behind=uMeteor.x-atan(dot(ray,uMeteorDir),dot(ray,uMeteorFrom)), off=dot(ray,cross(uMeteorFrom,uMeteorDir))/px;
+          float tail=clamp(1.0-behind/uMeteor.y,0.0,1.0)*step(0.0,behind);
+          vec3 head=uMeteorFrom*cos(uMeteor.x)+uMeteorDir*sin(uMeteor.x);
+          float glow=exp(-length(ray-head)/px*.45);
+          col+=vec3(1.0,.93,1.0)*(exp(-off*off/(.35+1.1*tail))*tail*tail*1.6+glow*1.3)*uMeteor.z*smoothstep(.0,.05,up);
+        }
+        // The sun: yellow at the top through orange to pink, its lower part cut
+        // by stripes that widen toward the bottom and slide slowly down.
+        vec3 sd=uSunDir, sUp=normalize(vec3(0.0,1.0,0.0)-sd*sd.y), sRight=cross(sUp,sd);
+        vec2 q=vec2(dot(ray,sRight),dot(ray,sUp))/${SUN_RADIUS.toFixed(3)};
+        float r=length(q), facing=step(0.0,dot(ray,sd)), aa=fwidth(r)*1.2;
+        float disc=(1.0-smoothstep(1.0-aa,1.0+aa,r))*facing;
+        float s=q.y*8.0+uTime*.3, sw=fwidth(s)*2.0, gap=mix(.0,.7,smoothstep(.5,-.45,q.y));
+        disc*=smoothstep(.0,sw,abs(fract(s)-.5)*2.0-gap+sw*.5)+(1.0-smoothstep(.0,.03,gap));
+        vec3 sun=mix(uSw_sunLow,uSw_sunMid,smoothstep(-.85,.1,q.y));
+        sun=mix(sun,uSw_sunTop,smoothstep(.1,.85,q.y));
+        col+=uSw_sunLow*exp(-max(r-1.0,0.0)*3.2)*.3*facing;
+        col=mix(col,sun,clamp(disc,0.0,1.0)*smoothstep(-.003,.003,y));
+        // Below the horizon (seen only past the far land): the fog's pink.
+        return mix(col,uSw_horizon,smoothstep(0.0,-.01,y));
+      }
       void main(){
         vec3 ray=normalize(vDir); float y=ray.y, up=max(y,0.0);
+        if(uSynth>.5){
+          gl_FragColor=vec4(synthSky(ray),1.0);
+          #include <colorspace_fragment>
+          return;
+        }
         vec3 col=mix(uHorizon,uZenith,pow(up,.55));
         col=mix(col,uHorizon*.75,smoothstep(0.0,-.25,y)); // below the horizon
         float cs=max(dot(ray,uSunDir),0.0);
@@ -114,6 +185,37 @@ export function createSky(scene) {
         #include <colorspace_fragment>
       }`,
   });
+  // Shooting stars, in the synthwave sky: every 4–12 seconds one streaks
+  // down toward the horizon somewhere in view (the chase camera sees about
+  // 18° up), in about half a second to a second, clear of the sun.
+  // forward: the camera's direction.
+  const meteor = { wait: 2, age: 0, life: 0, length: 0, bright: 0 }, across = new THREE.Vector3(), upward = new THREE.Vector3();
+  function shootingStars(dt, forward) {
+    const from = uniforms.uMeteorFrom.value, way = uniforms.uMeteorDir.value, state = uniforms.uMeteor.value;
+    state.z = 0;
+    if (!uniforms.uSynth.value) return;
+    if (!meteor.life) {
+      if ((meteor.wait -= dt) > 0) return;
+      // Up to 40° either side of the view and 7–17° up, at least 26° round from the sun.
+      const sun = uniforms.uSunDir.value, sunAzimuth = Math.atan2(sun.x, sun.z);
+      let azimuth = Math.atan2(forward.x, forward.z) + (Math.random() * 2 - 1) * .7;
+      let fromSun = Math.atan2(Math.sin(azimuth - sunAzimuth), Math.cos(azimuth - sunAzimuth));
+      if (Math.abs(fromSun) < .45) { fromSun = Math.sign(fromSun || 1) * (.45 + Math.random() * .25); azimuth = sunAzimuth + fromSun; }
+      const elevation = .12 + Math.random() * .18;
+      from.set(Math.sin(azimuth) * Math.cos(elevation), Math.sin(elevation), Math.cos(azimuth) * Math.cos(elevation));
+      // Falling 15–50° below level, sideways (away from the sun when near it).
+      across.set(0, 1, 0).cross(from).normalize(); upward.set(0, 1, 0).addScaledVector(from, -from.y).normalize();
+      const fall = .26 + Math.random() * .6, side = Math.abs(fromSun) < .75 ? Math.sign(fromSun) : Math.random() < .5 ? -1 : 1;
+      way.copy(across).multiplyScalar(side * Math.cos(fall)).addScaledVector(upward, -Math.sin(fall)).normalize();
+      Object.assign(meteor, { age: 0, life: .5 + Math.random() * .6, length: .14 + Math.random() * .18, bright: .7 + Math.random() * .6 });
+    }
+    const t = (meteor.age += dt) / meteor.life;
+    if (t >= 1) { meteor.life = 0; meteor.wait = 4 + Math.random() * 8; return; }
+    // The head runs on, easing a little; its tail streams out behind it, and
+    // the whole streak flares up at once and fades over its second half.
+    const head = meteor.length * (1 - (1 - t) ** 1.4), fade = Math.min(1, t * 10) * Math.min(1, (1 - t) * 2.2);
+    state.set(head, Math.max(1e-4, Math.min(head, meteor.length * .5)), meteor.bright * fade);
+  }
   const mesh = new THREE.Mesh(new THREE.SphereGeometry(6000, 32, 20), material);
   mesh.name = 'Sky'; mesh.frustumCulled = false; scene.add(mesh);
   return {
@@ -130,5 +232,8 @@ export function createSky(scene) {
     },
     // 0–1: how far a sandstorm has turned the whole sky to plain dust.
     setDust(amount) { uniforms.uDust.value = amount; },
+    // The synthwave sky in place of the real one (the sun's direction still comes from update).
+    setSynthwave(on) { uniforms.uSynth.value = on ? 1 : 0; },
+    shootingStars,
   };
 }
