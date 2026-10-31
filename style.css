@@ -1472,18 +1472,24 @@ body.synthwave #garage .feature { background:rgba(32,8,62,.3); }
    the day back (a plain sun, gold edge). Start keeps the width of its
    longest label (a hidden copy of the loading one sets it), so it neither
    resizes nor cuts its text short as the world loads; the mode button takes
-   the rest of the row. */
-.menu-actions { display:flex; flex-wrap:wrap; gap:10px; max-width:440px; }
+   the rest of the row, always beside it and as tall: where the row is
+   narrow, its label breaks onto two lines ("Normal" over "mode"), and
+   narrower still its sun moves above them. */
+.menu-actions { display:flex; gap:10px; max-width:440px; }
 #menu .menu-actions .primary { width:auto; max-width:none; flex:0 0 auto; gap:14px; white-space:nowrap; font-variant-numeric:tabular-nums; }
 #menu .menu-actions .primary>span:first-child { display:inline-flex; flex-direction:column; text-align:left; }
 #menu .menu-actions .primary>span:first-child::after { content:'Preparing the world · 88%'; height:0; overflow:hidden; visibility:hidden; }
 .mode-switch {
   flex:1 1 auto;
   display:inline-flex;
+  flex-wrap:wrap;
   align-items:center;
+  align-content:center;
   justify-content:center;
-  gap:9px;
-  padding:0 18px;
+  gap:4px 9px;
+  padding:6px 14px;
+  text-align:center;
+  line-height:1.2;
   border:1px solid rgba(255,79,184,.6);
   border-radius:3px;
   background:rgba(26,8,44,.55);
@@ -1492,10 +1498,9 @@ body.synthwave #garage .feature { background:rgba(32,8,62,.3); }
   color:#ffd9f3;
   font-size:13px;
   font-weight:700;
-  white-space:nowrap;
   transition:border-color .2s,box-shadow .2s,transform .2s;
 }
-.mode-switch svg { width:20px; height:20px; color:#ff6fc8; }
+.mode-switch svg { flex:none; width:20px; height:20px; color:#ff6fc8; }
 .mode-switch:hover { border-color:#ff4fb8; box-shadow:0 0 18px rgba(255,79,184,.45); transform:translateY(-2px); }
 .mode-switch .day-icon, body.synthwave .mode-switch .synth-icon { display:none; }
 body.synthwave .mode-switch .day-icon { display:block; }
@@ -1508,7 +1513,7 @@ body.synthwave .mode-switch:hover { border-color:#e9c98a; box-shadow:0 0 18px rg
    loses "the world". */
 @media(orientation:landscape) and (max-height:480px) {
   #menu .menu-actions .primary { gap:10px; padding:12px 14px; }
-  .mode-switch { gap:6px; padding:0 10px; font-size:12px; }
+  .mode-switch { gap:3px 6px; padding:5px 10px; font-size:12px; }
   .mode-switch svg { width:18px; height:18px; }
 }
 @media(orientation:landscape) and (max-height:480px) and (max-width:700px) {
