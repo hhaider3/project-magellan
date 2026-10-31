@@ -325,7 +325,7 @@ function setSynthwave(on) {
   $('themeLabel').textContent = on ? 'Normal mode' : 'Synth mode';
   $('themeBtn').setAttribute('aria-label', on ? 'Play in normal mode' : 'Play in synth mode');
   $('themeBtn').title = on ? 'Back to the everyday world: day and night, weather, pines' : 'Drive through an endless neon sunset';
-  showroom.setSynthwave(on);
+  showroom.setSynthwave(on); syncTime();
   // The cars' paint and glass reflect its sky in place of the studio room.
   for (const loading of vehicleAssets.values()) loading.then(asset => asset.relight(on ? 'synthwave' : 'studio')).catch(() => {});
   if (regrow) beginWorldLoad(running);
@@ -1253,7 +1253,8 @@ function processStreaming() {
   if (loading) {
     const total = (view * 2 + 1) ** 2 + (FAR_VIEW * 2 + 1) ** 2 + (ULTRA_VIEW * 2 + 1) ** 2;
     const count = [...chunks.values()].filter(chunk => chunk.group.visible).length + farTiles.size + ultraTiles.size;
-    $('startBtn').firstElementChild.textContent = carError ? 'Unable to load the car' : !nature ? 'Preparing scenery' : worldReady() && !carReady ? 'Preparing your car' : `Preparing the world · ${Math.min(99, Math.floor(count / total * 100))}%`;
+    // (The narrowest phones show "Preparing · 74%", beside the mode button.)
+    $('startBtn').firstElementChild.innerHTML = carError ? 'Unable to load the car' : !nature ? 'Preparing scenery' : worldReady() && !carReady ? 'Preparing your car' : `<span>Preparing<span class="long"> the world</span> · ${Math.min(99, Math.floor(count / total * 100))}%</span>`;
     // (and the roads around the start are worked out, so none is built mid-drive)
     if (worldReady() && carReady && roadsReady) {
       loading = false; $('startBtn').disabled = false; $('startBtn').firstElementChild.textContent = started ? 'Keep exploring' : 'Start exploring';
@@ -1612,13 +1613,12 @@ function newWorld() {
 }
 function syncSeed() { $('seedTxt').textContent = String(seed).padStart(6, '0'); }
 $('startBtn').onclick = resume; $('pauseBtn').onclick = pause; $('newWorld').onclick = newWorld;
-// Synth mode / Normal mode, beside Start: switch the look (remembered), then
-// drive on as soon as the land around the car is rebuilt for it.
+// Synth mode / Normal mode, beside Start: switch the look (remembered). The
+// land around the car is rebuilt for it, and Start waits for you.
 $('themeBtn').onclick = () => {
   const on = !synthwave.on;
   settings.theme = on ? 'synthwave' : 'normal'; saveSettings();
   setSynthwave(on);
-  if (loading) resumeAfterLoad = true; else resume();
   if (audio?.music.playing) { audio.music.next(); setTimeout(syncTrack, 50); }
   toast(on ? 'Synth mode · an endless neon sunset' : 'Normal mode · day and night, weather and the wild');
 };
@@ -1643,13 +1643,16 @@ for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) $('flyB
 const TIME_PRESETS = [['Sunrise', 6.2], ['Noon', 12], ['Sunset', 17.8], ['Night', 22]];
 let timePreset = -1;
 function setTimeOfDay(index) {
+  // Synthwave's sun never moves: whatever the clock says, it's a good time.
+  if (synthwave.on) { toast("It's a good time · the sun stays put in synth mode"); return; }
   timePreset = index; const [name, hours] = TIME_PRESETS[index];
   clock.hours = hours; weather.check = 0;
   $('timeBtn').textContent = `${name} · ${clockLabel(hours)}`;
   toast(`${name} · ${clockLabel(hours)}`);
 }
-// The menu's time chip shows the clock where the drive stands.
-function syncTime() { $('timeBtn').textContent = clockLabel(clock.hours); }
+// The menu's time chip shows the clock where the drive stands (in synth
+// mode, where the sun stays put, that it's a good time).
+function syncTime() { $('timeBtn').textContent = synthwave.on ? "It's a good time" : clockLabel(clock.hours); }
 $('timeBtn').onclick = () => setTimeOfDay((timePreset + 1) % TIME_PRESETS.length);
 // T switches between full three-axis flight and the simple arcade controls
 // (bank to turn, climb/dive, levels itself when released) for this visit.

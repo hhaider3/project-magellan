@@ -1279,6 +1279,7 @@ body.touch .trip { gap:10px; white-space:nowrap; }
 #menu .chip.icon { width:32px; padding:0; }
 #menu .chip svg { width:14px; height:14px; }
 #timeBtn::after { content:'›'; margin-left:2px; color:var(--faint); }
+body.synthwave #timeBtn::after { content:none; }
 .seed { margin-right:4px; font-size:12px; font-weight:600; letter-spacing:.08em; font-variant-numeric:tabular-nums; color:var(--cream); }
 /* ATLAS / Roadster: a two-way switch; the car in use is lit. */
 .segmented {
@@ -1465,15 +1466,22 @@ body.synthwave #garage .feature { background:rgba(32,8,62,.3); }
   body.synthwave .garage-panel { background:rgba(14,3,34,.88); }
 }
 
-/* Synth mode / Normal mode: beside Start, it switches the look and drives.
-   In the everyday menu it promises the neon sunset (a striped sun, hot pink
-   edge); in synthwave's it offers the day back (a plain sun, gold edge). */
+/* Synth mode / Normal mode: beside Start, it switches the look (and the
+   world is rebuilt for it, ready to start). In the everyday menu it promises
+   the neon sunset (a striped sun, hot pink edge); in synthwave's it offers
+   the day back (a plain sun, gold edge). Start keeps the width of its
+   longest label (a hidden copy of the loading one sets it), so it neither
+   resizes nor cuts its text short as the world loads; the mode button takes
+   the rest of the row. */
 .menu-actions { display:flex; flex-wrap:wrap; gap:10px; max-width:440px; }
-#menu .menu-actions .primary { width:auto; flex:1 1 190px; }
+#menu .menu-actions .primary { width:auto; max-width:none; flex:0 0 auto; gap:14px; white-space:nowrap; font-variant-numeric:tabular-nums; }
+#menu .menu-actions .primary>span:first-child { display:inline-flex; flex-direction:column; text-align:left; }
+#menu .menu-actions .primary>span:first-child::after { content:'Preparing the world · 88%'; height:0; overflow:hidden; visibility:hidden; }
 .mode-switch {
-  flex:0 0 auto;
+  flex:1 1 auto;
   display:inline-flex;
   align-items:center;
+  justify-content:center;
   gap:9px;
   padding:0 18px;
   border:1px solid rgba(255,79,184,.6);
@@ -1494,11 +1502,19 @@ body.synthwave .mode-switch .day-icon { display:block; }
 body.synthwave .mode-switch { border-color:rgba(233,201,138,.55); background:rgba(19,43,36,.6); color:#f5f1df; }
 body.synthwave .mode-switch svg { color:#e9c98a; }
 body.synthwave .mode-switch:hover { border-color:#e9c98a; box-shadow:0 0 18px rgba(233,201,138,.35); }
-/* Phones held sideways: just its sun, beside Start (it keeps its name for
-   screen readers and its tooltip). */
+/* Phones held sideways: both tighter, so even Start's loading label fits
+   beside the mode button; on the narrowest, the mode button is just its sun
+   (it keeps its name for screen readers and its tooltip) and the label
+   loses "the world". */
 @media(orientation:landscape) and (max-height:480px) {
-  .mode-switch { padding:0 12px; }
-  .mode-switch span { display:none; }
+  #menu .menu-actions .primary { gap:10px; padding:12px 14px; }
+  .mode-switch { gap:6px; padding:0 10px; font-size:12px; }
+  .mode-switch svg { width:18px; height:18px; }
+}
+@media(orientation:landscape) and (max-height:480px) and (max-width:700px) {
+  .mode-switch { flex:0 0 auto; }
+  .mode-switch span, #startBtn .long { display:none; }
+  #menu .menu-actions .primary>span:first-child::after { content:'Preparing · 88%'; }
 }
 
 /* Large screens with a mouse: Graphics, Motion blur and the FPS meter are

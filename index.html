@@ -14,7 +14,7 @@
   <meta name="description" content="Take the long way. An endless driving escape through a new procedural wilderness on every visit.">
   <title>Endless Drive — Take the long way</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' rx='10' fill='%23253d39'/%3E%3Cpath d='m10 29 8-19h4l8 19M14 23h12' fill='none' stroke='%23f3dfba' stroke-width='3'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="style.css?v=modes-1">
+  <link rel="stylesheet" href="style.css?v=modes-2">
   <script type="importmap">{"imports":{"three":"/vendor/three.module.js"}}</script>
 </head>
 <body>
@@ -101,7 +101,7 @@
   <div id="toast" role="status" aria-live="polite"></div>
   <div id="rotateNotice" role="alert"><svg viewBox="0 0 48 48" aria-hidden="true"><rect x="16" y="6" width="16" height="30" rx="3"/><path d="M22 31h4M10 40a16 16 0 0 0 28 0m0 0-4 1m4-1 1 4"/></svg><strong>Turn your phone sideways</strong><span>Endless Drive plays in landscape.</span></div>
   <div id="touch" aria-label="Touch driving controls"><div class="touch-left"><div class="touch-actions"><button data-control="jump" aria-label="Jump">JUMP</button><button data-control="brake" class="atlas-only" aria-label="Drift">DRIFT</button><button id="fanBtn" class="fan-button roadster-only" aria-label="Suction fans" aria-pressed="true">FANS</button></div><div class="touch-steer"><div id="steerSlider" class="steer-slider" role="slider" aria-label="Steering: slide left or right" aria-valuemin="-100" aria-valuemax="100" aria-valuenow="0"><b aria-hidden="true">←</b><i></i><b aria-hidden="true">→</b></div><div id="flightRing" class="flight-ring" role="slider" aria-label="Flight control: drag up to climb, down to dive, left or right to roll" aria-valuemin="-100" aria-valuemax="100" aria-valuenow="0"><b aria-hidden="true">▲</b><b aria-hidden="true">▼</b><i></i></div><button id="simpleBtn" class="simple-button" aria-label="Simple flight controls" aria-pressed="false">SIMPLE</button></div></div><div class="touch-right"><div class="touch-flight"><button id="flyBtn" class="fly-button" aria-label="Fly">FLY</button></div><div class="touch-pedal"><button data-control="brake" class="pedal-top roadster-only" aria-label="Drift">DRIFT</button><button data-control="down" aria-label="Brake or reverse">↓</button></div><div class="touch-pedal"><button data-control="boost" class="pedal-top boost-button roadster-only" aria-label="Boost">BOOST</button><button data-control="up" aria-label="Accelerate">↑</button></div></div></div>
-  <script type="module" src="game.mjs?v=open-start-1"></script>
+  <script type="module" src="game.mjs?v=mode-wait-1"></script>
   <script>window.addEventListener('error',()=>{if(document.querySelector('#startBtn').disabled)document.querySelector('#loadError').hidden=false;});</script>
 </body>
 </html>
