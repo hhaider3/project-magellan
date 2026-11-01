@@ -11,6 +11,8 @@ export function buildWaterData(world, lake, terrain = null) {
   const nx = Math.ceil(hx * 2 / step) + 1, nz = Math.ceil(hz * 2 / step) + 1;
   const count = (nx + 1) * (nz + 1);
   const position = new Float32Array(count * 3), bedDepth = new Float32Array(count), lakeUV = new Float32Array(count * 2), groundY = new Float32Array(count * 2);
+  // 1 where the lake is frozen over (the Frostlands' lakes), for the shader.
+  const ice = new Float32Array(count).fill(world.frozen?.(lake) ? 1 : 0);
   const indices = [];
   for (let iz = 0; iz <= nz; iz++) for (let ix = 0; ix <= nx; ix++) {
     const i = iz * (nx + 1) + ix, x = x0 + ix * step, z = z0 + iz * step;
@@ -27,7 +29,7 @@ export function buildWaterData(world, lake, terrain = null) {
     if (Math.max(bedDepth[a], bedDepth[b], bedDepth[c], bedDepth[d]) <= 0) continue;
     indices.push(a, c, b, b, c, d);
   }
-  return { position, bedDepth, lakeUV, groundY, index: new Uint16Array(indices) };
+  return { position, bedDepth, lakeUV, groundY, ice, index: new Uint16Array(indices) };
 }
 
 // Every lake and sea out to the far horizon, built in the worker: concentric
@@ -38,11 +40,11 @@ export const DISTANT_WATER_RADIUS = 4600;
 export function buildDistantWater(world, terrain, x, z) {
   const RIM = 40, RINGS = [.35, .65, .85, .97];
   const lakes = world.lakesNear(x, z, DISTANT_WATER_RADIUS);
-  const position = [], bedDepth = [], lakeUV = [], groundY = [], index = [], ranges = [];
+  const position = [], bedDepth = [], lakeUV = [], groundY = [], ice = [], index = [], ranges = [];
   for (const lake of lakes) {
-    const base = position.length / 3, start = index.length;
+    const base = position.length / 3, start = index.length, frozen = world.frozen?.(lake) ? 1 : 0;
     const vertex = (px, pz, u, v) => {
-      position.push(px, lake.level + .012, pz);
+      position.push(px, lake.level + .012, pz); ice.push(frozen);
       bedDepth.push(Math.max(.3, lake.level - world.groundSurface(px, pz))); lakeUV.push(u, v);
       groundY.push(terrain.coarseSample(px, pz).height, terrain.ultraSample(px, pz).height);
     };
@@ -62,7 +64,7 @@ export function buildDistantWater(world, terrain, x, z) {
     }
     ranges.push({ id: lake.id, start, count: index.length - start });
   }
-  return { ranges, position: new Float32Array(position), bedDepth: new Float32Array(bedDepth), lakeUV: new Float32Array(lakeUV), groundY: new Float32Array(groundY), index: new Uint32Array(index) };
+  return { ranges, position: new Float32Array(position), bedDepth: new Float32Array(bedDepth), lakeUV: new Float32Array(lakeUV), groundY: new Float32Array(groundY), ice: new Float32Array(ice), index: new Uint32Array(index) };
 }
 
 // River water for one terrain tile: a ribbon along each river, level across

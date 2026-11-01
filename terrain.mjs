@@ -1,14 +1,14 @@
 import * as THREE from './vendor/three.module.js';
-import { GRID, smoothstep, clamp, cellWeights, splitsAlongAD } from './world.mjs?v=open-start-1';
+import { GRID, smoothstep, clamp, cellWeights, splitsAlongAD } from './world.mjs?v=frost-1';
 // The horizon tier's grid: fine enough (48 m) to keep the ranges' shape, so
 // mountains barely change as they come nearer.
 export const ULTRA_GRID = 48;
 import { lakeRadius } from './lakes.mjs?v=open-start-1';
-import { SNOW_LINE, TREELINE } from './landforms.mjs?v=classes-2';
+import { SNOW_LINE, TREELINE } from './landforms.mjs?v=frost-1';
 import { noise } from './noise.mjs?v=terrain-1';
 export function createTerrain(world) {
   const seed = world.seed;
-  const groundColors = { grass: new THREE.Color('#7e9059'), sand: new THREE.Color('#d9b873'), lush: new THREE.Color('#536e48'), dry: new THREE.Color('#b2a477'), snow: new THREE.Color('#e2e5e3'),
+  const groundColors = { grass: new THREE.Color('#7e9059'), sand: new THREE.Color('#d9b873'), lush: new THREE.Color('#536e48'), dry: new THREE.Color('#b2a477'), snow: new THREE.Color('#e2e5e3'), snowShade: new THREE.Color('#c9d5dc'),
     alpine: new THREE.Color('#8f9463'), scree: new THREE.Color('#99958b'), granite: new THREE.Color('#8e9385'), graniteDark: new THREE.Color('#72776f'), sandstone: new THREE.Color('#c28a5a'), sandstoneDark: new THREE.Color('#9c6440') };
   const tmpColor = new THREE.Color(), rockColor = new THREE.Color(), redRock = new THREE.Color();
   // The midday sun's direction across the ground: slopes facing it are drier
@@ -64,8 +64,16 @@ export function createTerrain(world) {
     // Snow above a ragged line, lower on shady faces; the steepest faces shed it.
     const line = SNOW_LINE + (noise(x / 180, z / 180, seed + 21) - .5) * 50 + sunny * 25;
     tmpColor.lerp(groundColors.snow, smoothstep(line - 15, line + 25, h) * (1 - smoothstep(.85, 1.2, slope)) * .92);
-    const lake = world.lakeAt?.(x, z);
-    if (lake) tmpColor.lerp(groundColors.sand, (1 - smoothstep(.5, 3.8, h - lake.level)) * (1 - smoothstep(1.05, lake.sea ? 1.3 : 1.4, lakeRadius(lake, x, z))) * .84);
+    const lake = world.lakeAt?.(x, z), frost = world.frostAt?.(x, z) ?? 0;
+    // (No sandy beaches round the Frostlands' frozen lakes: snow lies to the ice.)
+    if (lake) tmpColor.lerp(groundColors.sand, (1 - smoothstep(.5, 3.8, h - lake.level)) * (1 - smoothstep(1.05, lake.sea ? 1.3 : 1.4, lakeRadius(lake, x, z))) * .84 * (1 - smoothstep(.3, .6, frost)));
+    // The Frostlands: snow right down to the valley floors and the shores,
+    // thinner on sunny rises and wind-scoured patches, bluer in the hollows,
+    // with rock showing through on steep faces.
+    if (frost > 0) {
+      rockColor.copy(groundColors.snow).lerp(groundColors.snowShade, smoothstep(.4, 3, dip) * .6);
+      tmpColor.lerp(rockColor, frost * (1 - smoothstep(.75, 1.1, slope)) * (.96 - smoothstep(.62, .8, patches) * .22 - Math.max(0, sunny) * .14));
+    }
     const sample = { height: h, normal: [-gx / length, 1 / length, -gz / length], color: [tmpColor.r, tmpColor.g, tmpColor.b] };
     if (cache) {
       if (cache.size >= 30000) cache.delete(cache.keys().next().value);

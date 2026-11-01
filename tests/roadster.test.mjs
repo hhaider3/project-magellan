@@ -98,7 +98,7 @@ test('hovering slows a fall from a big jump and turns the car on the spot', () =
 });
 
 test('deep water: the thrusters carry it across without floating or transforming', () => {
-  for (const seed of [1, 3, 77]) {
+  for (const seed of [1, 3, 78]) {
     const world = createWorld(seed), lake = world.starterLake;
     const car = roadster(world, lake.x, lake.z - lake.rz * 1.12, 0);
     let over = 0;

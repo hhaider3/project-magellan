@@ -75,15 +75,22 @@ export function createWater(scene, fog = { uFogNear: { value: 350 }, uFogFar: { 
       uSkyTop: { value: new THREE.Color(light.skyTop ?? '#729eaf') }, uSkyBottom: { value: new THREE.Color(light.skyBottom ?? '#b9cdd0') },
       uSunDir: { value: (light.sunDirection ?? new THREE.Vector3(-.52, .8, .36)).clone().normalize() }, uSunColor: { value: new THREE.Color(light.sunColor ?? '#fff0d2') }, uCloudTone: { value: new THREE.Color(.87, .9, .87) }, uLight: ambient },
     vertexShader: `attribute float bedDepth; attribute vec2 lakeUV;
-      uniform float uTime; varying vec3 vWorld; varying float vDepth; varying vec2 vLake;
+      uniform float uTime; varying vec3 vWorld; varying float vDepth; varying vec2 vLake; varying float vIce;
       #ifdef RIVER
       attribute vec3 river; varying vec3 vRiver;
+      #else
+      attribute float ice;
       #endif
       attribute vec2 groundY; uniform vec2 uStreamCenter;
       void main(){
         vec3 p=position;
+        #ifdef RIVER
+        vIce=0.;
+        #else
+        vIce=ice;
+        #endif
         float wave=sin(p.x*.11+p.z*.07+uTime*1.6)*.045+sin(p.x*-.06+p.z*.14-uTime*1.2)*.025;
-        p.y+=wave*smoothstep(0.,1.,bedDepth);
+        p.y+=wave*smoothstep(0.,1.,bedDepth)*(1.-vIce);
         // Coarse terrain tiers barely dip into a small pond's basin. Ride just
         // above whichever tier is drawn here, so distant water is never buried
         // and never fills in suddenly as the finer terrain arrives.
@@ -100,10 +107,36 @@ export function createWater(scene, fog = { uFogNear: { value: 350 }, uFogFar: { 
       varying vec3 vRiver;
       #endif
       uniform vec3 uShallow,uDeep,uSky,uSkyTop,uSkyBottom,uSunDir,uSunColor,uCloudTone,uLight;
-      varying vec3 vWorld; varying float vDepth; varying vec2 vLake;
+      varying vec3 vWorld; varying float vDepth; varying vec2 vLake; varying float vIce;
       ${skyFunctions}
       void main(){
         if(vDepth<.015||length(vLake)>1.02)discard;
+        if(vIce>.5){
+          // Ice: a frozen lake, still and polished. Pale and cloudy where it's
+          // thick over deep water, clearer toward the shore; drifts of snow
+          // swept across it, white pressure cracks, and the sky mirrored at
+          // a glance with a hard glint of sun.
+          vec2 q=vWorld.xz; float far=distance(cameraPosition,vWorld), near=1.-smoothstep(60.,480.,far);
+          vec4 w1=texture2D(uWaves,q*(1./61.)), w2=texture2D(uWaves,mat2(.8,-.6,.6,.8)*q*(1./17.));
+          vec3 n=normalize(vec3((w1.xy*2.-1.)*.025+(w2.xy*2.-1.)*.015*near,1.).xzy);
+          vec3 view=normalize(cameraPosition-vWorld), r=reflect(-view,n); r.y=max(r.y,.02);
+          vec3 iceBody=mix(vec3(.55,.71,.78),vec3(.33,.5,.6),1.-exp(-vDepth*.18));
+          iceBody=mix(iceBody,uShallow,.14);
+          // Cracks: thin bright lines where the noise crosses its middle.
+          float crack=(1.-smoothstep(0.,.018+.03*(1.-near),abs(w2.z-.5)))*smoothstep(.45,.6,w1.z)*near;
+          iceBody=mix(iceBody,vec3(.86,.92,.95),crack*.55);
+          float drift=smoothstep(.66,.86,w1.z*.7+texture2D(uWaves,q*(1./230.)).z*.5);
+          iceBody=mix(iceBody,vec3(.9,.93,.95),drift*.85);
+          float fresnel=(.03+.97*pow(1.-max(dot(n,view),0.),5.))*(1.-drift);
+          vec3 color=mix(iceBody*uLight,skyAt(normalize(r),uDetail>.5),clamp(fresnel*1.1,0.,1.));
+          vec3 h=normalize(view+uSunDir); float nh=max(dot(n,h),0.);
+          color+=uSunColor*(pow(nh,90.)*.25+pow(nh,600.)*1.4*near)*(1.-drift*.8);
+          color=mix(color,uSky,smoothstep(uFogNear,uFogFar,far));
+          gl_FragColor=vec4(color,mix(.82,1.,smoothstep(0.,.7,vDepth)));
+          #include <tonemapping_fragment>
+          #include <colorspace_fragment>
+          return;
+        }
         vec2 p=vWorld.xz, drift=vec2(0.);
         #ifdef RIVER
         // Rivers come in two tiers, near chunks and far tiles, switching at a
@@ -174,6 +207,7 @@ export function createWater(scene, fog = { uFogNear: { value: 350 }, uFogFar: { 
     geometry.setAttribute('bedDepth', new THREE.BufferAttribute(data.bedDepth, 1));
     geometry.setAttribute('lakeUV', new THREE.BufferAttribute(data.lakeUV, 2));
     geometry.setAttribute('groundY', new THREE.BufferAttribute(data.groundY, 2));
+    geometry.setAttribute('ice', new THREE.BufferAttribute(data.ice, 1));
     geometry.setIndex(new THREE.BufferAttribute(data.index, 1)); geometry.computeBoundingSphere();
     const mesh = new THREE.Mesh(geometry, material); mesh.name = lake.name; mesh.renderOrder = 1;
     scene.add(mesh); patches.set(lake.id, mesh); refreshDistant();
@@ -208,6 +242,7 @@ export function createWater(scene, fog = { uFogNear: { value: 350 }, uFogFar: { 
     geometry.setAttribute('bedDepth', new THREE.BufferAttribute(data.bedDepth, 1));
     geometry.setAttribute('lakeUV', new THREE.BufferAttribute(data.lakeUV, 2));
     geometry.setAttribute('groundY', new THREE.BufferAttribute(data.groundY, 2));
+    geometry.setAttribute('ice', new THREE.BufferAttribute(data.ice, 1));
     distant.geometry.dispose(); distant.geometry = geometry;
     distantRanges = ranges; distantIndex = data.index;
     refreshDistant();
@@ -299,6 +334,7 @@ export function createWater(scene, fog = { uFogNear: { value: 350 }, uFogFar: { 
       causticCheck = .25;
       let best = null, bestDistance = Infinity;
       if (detail.value > .5) for (const lake of world.lakesNear?.(pose.x, pose.z, 90) ?? []) {
+        if (world.frozen?.(lake)) continue; // (no sunlight dances under the ice)
         const d = Math.hypot(lake.x - pose.x, lake.z - pose.z) - lakeExtent(lake);
         if (d < bestDistance) { best = lake; bestDistance = d; }
       }

@@ -1,5 +1,5 @@
-import { CHUNK, GRID, hash, noise, random, smoothstep, cellWeights } from './world.mjs?v=open-start-1';
-import { TREELINE } from './landforms.mjs?v=classes-2';
+import { CHUNK, GRID, hash, noise, random, smoothstep, cellWeights } from './world.mjs?v=frost-1';
+import { TREELINE } from './landforms.mjs?v=frost-1';
 
 // 1.2 m cells; noise clumps decide which are filled, so meadows get thick
 // patches with gaps between them rather than an even sprinkle.
@@ -31,8 +31,8 @@ export function buildGrass(world, cx, cz, ground) {
       * (1 - smoothstep(.22, .5, slope)) * (1 - smoothstep(TREELINE - 30, TREELINE + 10, h));
     const clump = smoothstep(.3, .72, noise(px * .07, pz * .07, world.seed + 909));
     const density = plains * (.22 + .73 * clump) * (.65 + .35 * noise(px * .045, pz * .045, world.seed + 906));
-    if (hash(gx, gz, world.seed + 903) > density || world.desertAt(px, pz, h) > .12) continue;
-    if (world.roadAt(px, pz).d < 7.5 || world.waterAt?.(px, pz) || world.reserved(px, pz, sites)) continue;
+    if (hash(gx, gz, world.seed + 903) > density || world.desertAt(px, pz, h) > .12 || (world.frostAt?.(px, pz) ?? 0) > .3) continue;
+    if (world.roadAt(px, pz).d < 7.5 || world.waterAt?.(px, pz) || world.iceAt?.(px, pz) || world.reserved(px, pz, sites)) continue;
     roots.push(x, h - .035, z);
     // Taller in the heart of a clump; coloured like the ground beneath it.
     shapes.push((.36 + hash(gx, gz, world.seed + 904) * .34) * (.8 + .45 * clump), hash(gx, gz, world.seed + 905) * Math.PI * 2, .85 + hash(gx, gz, world.seed + 907) * .3);

@@ -267,7 +267,7 @@ test('lanes lead off the roads to camps, lookouts and lakes, joining at a T and 
       assert.ok(Math.hypot(p.x - spur.points[0], p.z - spur.points[1]) < .5 && Math.abs(spur.level[0] - (parent.level[k] + (parent.level[k + 1] - parent.level[k]) * (f - k))) < .05, `${spur.id} leaves its road`);
       for (let k = 1; k < spur.count; k++) assert.ok(Math.abs(spur.level[k] - spur.level[k - 1]) <= spur.length / (spur.count - 1) * .15, `${spur.id} stays drivable`);
       const x = spur.points[spur.count * 2 - 2], z = spur.points[spur.count * 2 - 1];
-      if (spur.spur.slipway) assert.ok(world.waterAt(x, z), `${spur.id} runs down into the water`);
+      if (spur.spur.slipway) assert.ok(world.waterAt(x, z) || world.iceAt(x, z), `${spur.id} runs down into the water (or onto the ice)`);
       else assert.ok(world.featuresNear(x, z, 40).some(f => ['camp', 'lookout'].includes(f.type) && Math.hypot(f.x - x, f.z - z) < 14), `${spur.id} ends at its site`);
     }
   }

@@ -23,7 +23,8 @@ test('lake terrain and water regenerate deterministically after cache eviction',
 });
 
 test('drive through a real lake: unfold continuously, float, cross and return to wheels', () => {
-  for (const seed of [1, 3, 77, 100003]) {
+  // (Seed 77 starts in the Frostlands, where its lake is frozen.)
+  for (const seed of [1, 3, 78, 100003]) {
     const world = createWorld(seed), lake = world.starterLake;
     const car = createVehicle(world, lake.x, lake.z - lake.rz * 1.12, 0);
     let partial = false, boat = false, returning = false, previous = 0;
@@ -109,7 +110,8 @@ test('inland seas are large, irregular, deep, clear of ponds, and start a kilome
       let wet = 0, deep = 0, n = 0;
       for (let u = -.8; u <= .8; u += .2) for (let v = -.8; v <= .8; v += .2) {
         const x = s.x + u * s.rx, z = s.z + v * s.rz; if (Math.hypot(u, v) > .8) continue;
-        const water = world.waterAt(x, z); n++; if (water) wet++; if (water?.depth > 5) deep++;
+        // (Open or frozen over: the basin is the same.)
+        const water = world.waterAt(x, z) ?? world.iceAt(x, z); n++; if (water) wet++; if (water?.depth > 5) deep++;
       }
       assert.ok(wet / n > .95 && deep / n > .6, `${s.id} open water ${wet}/${n}, deep ${deep}`);
       // Bays and headlands: the shoreline radius varies around the coast.

@@ -7,7 +7,7 @@ import { controlAxis } from './controls.mjs?v=slider-1';
 import { stepFlight, wingStrikes } from './flight-motion.mjs?v=open-start-1';
 import { ROADSTER, SUCTION, hoverWorld, overWater, roadsterAcceleration, roadsterDrag, fireThrusters, roadsterState } from './roadster-motion.mjs?v=steer-1';
 import { clamp, mix, smoothstep, hash, random, noise } from './noise.mjs?v=terrain-1';
-import { createLandforms, TREELINE, SNOW_LINE } from './landforms.mjs?v=classes-2';
+import { createLandforms, TREELINE, SNOW_LINE } from './landforms.mjs?v=frost-1';
 export { clamp, mix, smoothstep, hash, random, noise };
 export const CHUNK = 96;
 export const GRID = 4;
@@ -15,6 +15,12 @@ export { ROAD_HALF };
 export const FIXED_DT = 1 / 120;
 export const FEATURE_SPACING = CHUNK * 3;
 export const SPEED_LIMIT = 92; // Downhill cap; level-road cruising reaches ~300 km/h.
+// Frozen lakes: side grip per second (tarmac 12, a drift 1.9), the share of
+// drive and braking the tyres put down, steering authority, and rolling drag
+// (tarmac .11, the handbrake 1.6). Packed snow takes these shares off the
+// usual grip and drive.
+export const ICE = { grip: .9, traction: .2, steer: .75, drag: .04, brakeDrag: .35 };
+export const SNOW = { grip: .35, traction: .2 };
 // Scenery models the world picks by place, in the nature library's order.
 // Cherries stand twice a pine's height of trunk and crown, along the shores.
 export const SAKURA_HEIGHT = 10.2;
@@ -163,7 +169,7 @@ export function createWorld(seed) {
     for (let cx = Math.floor((x - radius) / FEATURE_SPACING); cx <= Math.floor((x + radius) / FEATURE_SPACING); cx++) {
       for (let cz = Math.floor((z - radius) / FEATURE_SPACING); cz <= Math.floor((z + radius) / FEATURE_SPACING); cz++) result.push(featureAtCell(cx, cz));
     }
-    return result.filter(f => f.type !== 'none' && Math.hypot(f.x - x, f.z - z) < radius && !waterAt(f.x, f.z));
+    return result.filter(f => f.type !== 'none' && Math.hypot(f.x - x, f.z - z) < radius && !waterAt(f.x, f.z) && !iceAt(f.x, f.z));
   }
   function rampLift(ramp, x, z) {
     if (ramp.type !== 'ramp') return 0;
@@ -232,17 +238,30 @@ export function createWorld(seed) {
     }
     return h;
   }
-  function waterAt(x, z) {
+  // Ponds, lakes and seas in the Frostlands are frozen over, judged at the
+  // middle so a lake is all ice or none of it. Rivers keep running.
+  const frozen = lake => lake.frozen ??= frostAt(lake.x, lake.z) > .5;
+  // A lake's water here: undefined outside every basin, null on its dry bank.
+  function lakeWater(x, z) {
     const lake = lakes.lakeAt(x, z);
-    if (lake && lakeRadius(lake, x, z) <= 1.02) {
-      const depth = lake.level - groundSurface(x, z);
-      return depth > 0 ? { lake, level: lake.level, depth } : null;
-    }
+    if (!lake || lakeRadius(lake, x, z) > 1.02) return undefined;
+    const depth = lake.level - groundSurface(x, z);
+    return depth > 0 ? { lake, level: lake.level, depth } : null;
+  }
+  // Open water to float in (frozen lakes aren't: iceAt has them).
+  function waterAt(x, z) {
+    const still = lakeWater(x, z);
+    if (still !== undefined) return still && !frozen(still.lake) ? still : null;
     // In a river's channel.
     const river = rivers.riverAt(x, z);
     if (!river || river.d > river.width / 2) return null;
     const depth = river.level - groundSurface(x, z);
     return depth > 0 ? { lake: { id: river.id, name: 'THE RIVER', level: river.level, river: true }, level: river.level, depth } : null;
+  }
+  // The ice over a frozen lake, with the depth of water beneath it.
+  function iceAt(x, z) {
+    const still = lakeWater(x, z);
+    return still && frozen(still.lake) ? still : null;
   }
   // Chunk boundaries revisit most of the same terrain samples. Retain those
   // heights so a faster car doesn't rebuild the whole horizon every 96 m.
@@ -270,12 +289,14 @@ export function createWorld(seed) {
     const a = height(ix, iz), b = height(ix + GRID, iz), c = height(ix, iz + GRID), d = height(ix + GRID, iz + GRID), w = cellWeights(u, v, a, b, c, d);
     return a * w[0] + b * w[1] + c * w[2] + d * w[3];
   }
-  // What a car drives on: the ground, or a bridge deck over a river (unless
+  // What a car drives on: the ground, a bridge deck over a river (unless
   // whatever asks is well below the deck, like a boat passing beneath; y is
-  // its height, if known).
+  // its height, if known), or the ice on a frozen lake.
   function surface(x, z, y = Infinity) {
     const ground = groundSurface(x, z), road = roadAt(x, z);
-    return road.bridge && road.d < ROAD_HALF + .9 && y > road.level - 1.5 ? Math.max(ground, road.level) : ground;
+    if (road.bridge && road.d < ROAD_HALF + .9 && y > road.level - 1.5) return Math.max(ground, road.level);
+    const lake = lakes.lakeAt(x, z);
+    return lake && lake.level > ground && frozen(lake) && lakeRadius(lake, x, z) <= 1.02 ? lake.level : ground;
   }
   function gradient(x, z) { return { x: (surface(x + 2, z) - surface(x - 2, z)) / 4, z: (surface(x, z + 2) - surface(x, z - 2)) / 4 }; }
   // How far a point sits below the ground around it, in metres: positive in
@@ -305,6 +326,9 @@ export function createWorld(seed) {
   function desertAt(x, z, elevation = height(x, z)) {
     return land.desertMask(x, z) * (1 - mountainAt(x, z)) * (1 - smoothstep(150, 200, elevation));
   }
+  // The Frostlands (0–1): broad cold regions where snow lies at every height,
+  // over the valleys, the roads and the frozen lakes (landforms.mjs).
+  function frostAt(x, z) { return land.frostMask(x, z); }
   // Low, wide props (rocks, boulders, scree, junipers) sit flat on the ground.
   // On a sharp summit or ridge the 2 m gradient reads level, but the ground
   // falls away on both sides of their footprint and they'd hang in the air:
@@ -338,7 +362,7 @@ export function createWorld(seed) {
         // inside of a tight bend), on a bridge or its approach, in water,
         // on a ramp's run-up or by a camp, or on a steep bank.
         const road = roadAt(x, z), g = gradient(x, z);
-        if (road.d < ROAD_HALF + PALM_SETBACK - 1.5 || road.bridge || road.approach || waterAt(x, z) || reserved(x, z) || Math.hypot(g.x, g.z) > .7) continue;
+        if (road.d < ROAD_HALF + PALM_SETBACK - 1.5 || road.bridge || road.approach || waterAt(x, z) || iceAt(x, z) || reserved(x, z) || Math.hypot(g.x, g.z) > .7) continue;
         const roll = hash(Math.round(x * 4), Math.round(z * 4), seed + 131), size = 1 + roll * .15;
         // All the tall palm, turned every which way.
         list.push({ id: `palm:${e.id}:${j}:${side}`, type: 'tree', variant: 0, x, z, y: surface(x, z), size, turn: roll * 97 % (Math.PI * 2), r: .24 * size, h: 6.8 * size });
@@ -353,8 +377,8 @@ export function createWorld(seed) {
     for (let i = 0; i < 30; i++) {
       const x = cx * CHUNK + 9 + rng() * (CHUNK - 18), z = cz * CHUNK + 9 + rng() * (CHUNK - 18);
       const chance = rng(), size = .8 + rng() * .65, turn = rng() * Math.PI * 2;
-      const woodland = woodlandAt(x, z), mountain = mountainAt(x, z), desert = desertAt(x, z);
-      if (Math.hypot(x, z) < 24 || roadAt(x, z).d < 12 || waterAt(x, z) || reserved(x, z)) continue;
+      const woodland = woodlandAt(x, z), mountain = mountainAt(x, z), desert = desertAt(x, z), frost = frostAt(x, z);
+      if (Math.hypot(x, z) < 24 || roadAt(x, z).d < 12 || waterAt(x, z) || iceAt(x, z) || reserved(x, z)) continue;
       const g = gradient(x, z), slope = Math.hypot(g.x, g.z), y = surface(x, z), id = `${cx},${cz}:${i}`;
       // A second, independent roll for which tree or bush grows here.
       const pick = hash(Math.round(x * 4), Math.round(z * 4), seed + 111);
@@ -387,7 +411,7 @@ export function createWorld(seed) {
         continue;
       }
       // Cherries line stretches of lowland shore round ponds, lakes and seas.
-      const shore = desert < .05 && mountain < .2 && y < TREELINE - 90 && blossomAt(x, z) > .5 ? shoreAt(x, z, y) : null, grove = shore !== null;
+      const shore = desert < .05 && frost < .2 && mountain < .2 && y < TREELINE - 90 && blossomAt(x, z) > .5 ? shoreAt(x, z, y) : null, grove = shore !== null;
       if (chance < .1 && mountain > .25) add({ id, type: 'boulder', x, z, y, size: size * 2.3, turn, r: size * 1.5, h: size * 2.6 });
       else if (chance < .22) add({ id, type: 'rock', x, z, y, size, turn, r: 0, h: .65 * size });
       else if (desert > .55) {
@@ -396,9 +420,10 @@ export function createWorld(seed) {
         else add({ id, type: 'rock', x, z, y, size: size * .7, turn, r: 0, h: .5 * size });
       }
       else if (chance < (grove ? .8 : mix(.46, .95, smoothstep(.3, .75, woodland)) * (1 - alpine * 1.6)) && mountain < .95) {
-        // Snow-dusted pines on the cold upper slopes, wind-stunted ones at the
-        // treeline, and dead snags where the land dries out.
-        const upper = smoothstep(TREELINE - 80, TREELINE - 40, y);
+        // Snow-dusted pines on the cold upper slopes and all through the
+        // Frostlands, wind-stunted ones at the treeline, and dead snags where
+        // the land dries out.
+        const upper = Math.max(smoothstep(TREELINE - 80, TREELINE - 40, y), smoothstep(.25, .6, frost) * 1.7);
         if (grove && list.some(p => p.type === 'tree' && Math.hypot(p.x - x, p.z - z) < 13)) continue; // room for the broad crowns
         const variant = grove ? VARIANT.tree.sakura : y > TREELINE - 35 ? VARIANT.tree.stunted : pick < upper * .6 ? VARIANT.tree.snow
           : (desert > .12 && pick < .35) || pick < .015 ? VARIANT.tree.dead : undefined;
@@ -409,7 +434,7 @@ export function createWorld(seed) {
         const height = variant === VARIANT.tree.stunted ? 3.4 : variant === VARIANT.tree.dead ? 5.8 : variant === VARIANT.tree.sakura ? SAKURA_HEIGHT : 6.8;
         // A cherry keeps its water's level and the slope it stands on, where its petals land.
         add({ id, type: 'tree', variant, x, z, y, size, turn, r: (variant === VARIANT.tree.sakura ? .6 : .24) * size, h: height * size, ...(grove ? { water: shore, gx: g.x, gz: g.z } : {}), ...(empty ? { empty } : {}) });
-      } else add({ id, type: 'bush', variant: desert > .3 ? VARIANT.bush.desert : y > TREELINE - 60 ? VARIANT.bush.juniper : undefined, x, z, y, size, turn, r: 0, h: size });
+      } else add({ id, type: 'bush', variant: desert > .3 ? VARIANT.bush.desert : y > TREELINE - 60 || frost > .4 ? VARIANT.bush.juniper : undefined, x, z, y, size, turn, r: 0, h: size });
     }
     if (synthwave) list.push(...roadPalms(cx, cz));
     for (const f of featuresNear(cx * CHUNK + CHUNK / 2, cz * CHUNK + CHUNK / 2, 100)) {
@@ -418,7 +443,7 @@ export function createWorld(seed) {
     }
     return list.filter(p => !p.empty && !brokenProps.has(p.id));
   }
-  return { seed, height, surface, groundSurface, gradient, hollow, footOfSlope, mountainAt, woodlandAt, blossomAt, shoreAt, desertAt, roadAt, roadsNear: roads.roadsNear, prepareRoads: (x, z, r, ms) => rivers.prepare(x, z, r + 3 * ROAD_CELL, ms / 2) && roads.prepare(x, z, r, ms / 2), riversNear: rivers.riversNear, riverAt: rivers.riverAt, roadMap: roads.roadMap, alongRoad: roads.along, junctionAt: roads.junctionAt, roadEnds: roads.endsOf, startHeading: starterRoad ? roads.along(starterRoad, 0).heading : 0, props, featuresNear, rampLift, rampAt, reserved, starterRamp, twistRamp, waterAt, lakeAt: lakes.lakeAt, lakesNear: lakes.near, seasNear: lakes.seasNear, starterLake: lakes.starter, starterSea: lakes.starterSea, brokenProps, breakProp, drainBreakEvents: () => breakEvents.splice(0), setSynthwave: on => { synthwave = on; } };
+  return { seed, height, surface, groundSurface, gradient, hollow, footOfSlope, mountainAt, woodlandAt, blossomAt, shoreAt, desertAt, frostAt, roadAt, roadsNear: roads.roadsNear, prepareRoads: (x, z, r, ms) => rivers.prepare(x, z, r + 3 * ROAD_CELL, ms / 2) && roads.prepare(x, z, r, ms / 2), riversNear: rivers.riversNear, riverAt: rivers.riverAt, roadMap: roads.roadMap, alongRoad: roads.along, junctionAt: roads.junctionAt, roadEnds: roads.endsOf, startHeading: starterRoad ? roads.along(starterRoad, 0).heading : 0, props, featuresNear, rampLift, rampAt, reserved, starterRamp, twistRamp, waterAt, iceAt, frozen, lakeAt: lakes.lakeAt, lakesNear: lakes.near, seasNear: lakes.seasNear, starterLake: lakes.starter, starterSea: lakes.starterSea, brokenProps, breakProp, drainBreakEvents: () => breakEvents.splice(0), setSynthwave: on => { synthwave = on; } };
 }
 
 export function featureLocal(feature, x, z) {
@@ -497,6 +522,7 @@ export function stepVehicle(car, input, world, obstacles, dt = FIXED_DT) {
     // Space climbs in the air and does nothing afloat: never let a press made
     // there (or one held through the landing) fire a jump on touchdown.
     car.jumpBuffer = 0; car.jumpHeld = !!input.jump;
+    car.onIce = false;
     if (car.flight > .3) wingStrikes(car, obstacles, world);
     resolveObstacles(car, obstacles, world); return;
   }
@@ -532,6 +558,11 @@ export function stepVehicle(car, input, world, obstacles, dt = FIXED_DT) {
   car.onRoad = roadDistance < ROAD_HALF;
   // A dirt track is slower than tarmac and looser than grass.
   car.onDirt = car.onRoad && road.kind === 'dirt';
+  // Ice on a frozen lake: the tyres spin, slide and barely stop. Packed snow
+  // in the Frostlands grips a good deal less than bare ground or tarmac.
+  car.onIce = car.grounded && Boolean(world.iceAt?.(car.x, car.z));
+  const snowy = car.grounded && !car.onIce ? world.frostAt?.(car.x, car.z) ?? 0 : 0;
+  const traction = car.onIce ? ICE.traction : 1 - SNOW.traction * snowy;
   const highway = (1 - smoothstep(ROAD_HALF - 1, ROAD_HALF + 3, roadDistance)) * (car.onDirt ? .45 : 1);
   const authority = car.grounded ? 1 : .16;
   // Slopes: climbing lowers the top speed (the engine runs out of power), and
@@ -553,6 +584,7 @@ export function stepVehicle(car, input, world, obstacles, dt = FIXED_DT) {
     if (throttle > 0) acceleration = throttle * (forward < -.5 ? 45 : 34 * (1 - smoothstep(mix(56, 72, highway) * power, mix(72, 89.5, highway) * power, forward)));
     if (throttle < 0) acceleration = -throttle * (forward > .5 ? -55 : -18 * (1 - smoothstep(10, 16, -forward)));
   }
+  if (car.grounded) acceleration *= traction;
   const uphillPush = rise * Math.sign(acceleration);
   if (car.grounded && uphillPush > 0) acceleration *= 1 - .92 * (suction ? smoothstep(...SUCTION.stall, uphillPush) : smoothstep(.75, 1.2, uphillPush));
   car.vx += fx * acceleration * authority * dt; car.vz += fz * acceleration * authority * dt;
@@ -567,14 +599,17 @@ export function stepVehicle(car, input, world, obstacles, dt = FIXED_DT) {
   car.yaw = yawing ? car.steer : 0;
   if (yawing) car.heading += car.steer * ROADSTER.yawRate * dt;
   else if (suction) car.heading += car.steer * (brake ? SUCTION.turnBrake : SUCTION.turn) * Math.min(speed / 5, 1) / (1 + speed * SUCTION.turnFade) * Math.sign(forward || 1) * dt;
-  else car.heading += car.steer * (brake ? 2.1 : 1.7) * Math.min(speed / 5, 1) / (1 + speed * .032) * Math.sign(forward || 1) * authority * dt;
+  else car.heading += car.steer * (brake ? 2.1 : 1.7) * Math.min(speed / 5, 1) / (1 + speed * .032) * Math.sign(forward || 1) * authority * (car.onIce ? ICE.steer : 1) * dt;
   const nx = Math.sin(car.heading), nz = Math.cos(car.heading), along = car.vx * nx + car.vz * nz;
   // The Roadster's suction fans hold it harder on tarmac; on its air cushion
   // over water it slides like a hovercraft.
-  const grip = car.grounded ? (brake ? 1.9 : roadster && car.overWater ? 1.6 : suction ? (car.onDirt ? SUCTION.grip.dirt : car.onRoad ? SUCTION.grip.road : SUCTION.grip.grass) : car.onDirt ? 6.5 : car.onRoad ? (roadster ? 14 : 12) : 8) : .2;
+  let grip = car.grounded ? (brake ? 1.9 : roadster && car.overWater ? 1.6 : suction ? (car.onDirt ? SUCTION.grip.dirt : car.onRoad ? SUCTION.grip.road : SUCTION.grip.grass) : car.onDirt ? 6.5 : car.onRoad ? (roadster ? 14 : 12) : 8) : .2;
+  // (The Roadster's fans press it down harder, so it holds the ice a little better.)
+  if (car.onIce) grip = Math.min(grip, ICE.grip * (suction ? 1.8 : 1));
+  else grip *= 1 - SNOW.grip * snowy;
   const decay = Math.exp(-grip * dt);
   car.vx = nx * along + (car.vx - nx * along) * decay; car.vz = nz * along + (car.vz - nz * along) * decay;
-  const drag = roadster ? roadsterDrag(car, brake, paved, dt) : Math.exp(-(car.grounded ? brake ? 1.6 : car.onDirt ? .15 : car.onRoad ? .11 : .19 : .015) * dt);
+  const drag = car.onIce ? Math.exp(-(brake ? ICE.brakeDrag : ICE.drag) * dt) : roadster ? roadsterDrag(car, brake, paved, dt) : Math.exp(-(car.grounded ? brake ? 1.6 : car.onDirt ? .15 : car.onRoad ? .11 : .19 : .015) * dt);
   car.vx *= drag; car.vz *= drag;
   if (car.grounded) {
     const g = slope, steep = (7 + 10 * smoothstep(.6, 1.3, Math.hypot(g.x, g.z))) * (suction ? SUCTION.slopePull : 1);

@@ -56,6 +56,13 @@ export function createLandforms(seed) {
     const wx = (noise(x / 1900 + 2.2, z / 1900, seed + 192) - .5) * 1.1, wz = (noise(x / 1900, z / 1900 + 6.1, seed + 193) - .5) * 1.1;
     return smoothstep(.5, .62, fbm(x / 3400 + wx, z / 3400 + wz, seed + 191, 3));
   }
+  // Broad cold regions, where snow lies right down to the valley floors: the
+  // same kind of warped field, never where the sand lies. It only colours
+  // and clothes the land; the land's shape is the same as anywhere else.
+  function frostMask(x, z) {
+    const wx = (noise(x / 2100 - 4.4, z / 2100, seed + 196) - .5) * 1.1, wz = (noise(x / 2100, z / 2100 - 2.7, seed + 197) - .5) * 1.1;
+    return smoothstep(.52, .62, fbm(x / 3600 + wx, z / 3600 + wz, seed + 195, 3)) * (1 - smoothstep(.05, .25, desertMask(x, z)));
+  }
   // Everything about the land at a point. offroad (0 on a road, 1 away from
   // it) calms the small rollers under roads, as before.
   function sample(x, z, offroad = 1) {
@@ -88,5 +95,5 @@ export function createLandforms(seed) {
     }
     return { height: h, type, mountain, hills, desert };
   }
-  return { sample, landType, mountainAt: (x, z) => mountainOf(landType(x, z)), hillsAt: (x, z) => hillsOf(landType(x, z)), desertMask };
+  return { sample, landType, mountainAt: (x, z) => mountainOf(landType(x, z)), hillsAt: (x, z) => hillsOf(landType(x, z)), desertMask, frostMask };
 }

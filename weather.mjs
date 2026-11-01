@@ -3,47 +3,60 @@
 // and it rains (or snows) when the roll falls under the region's chance. So
 // weather is the same for everyone in an area for a couple of minutes, then
 // moves on; the game eases between states, so nothing switches abruptly.
-import { hash } from './world.mjs?v=open-start-1';
-import { SNOW_LINE } from './landforms.mjs?v=classes-2';
+import { hash } from './world.mjs?v=frost-1';
+import { SNOW_LINE } from './landforms.mjs?v=frost-1';
 
 export const WEATHER_CELL = 120; // seconds
 export const WEATHER_AREA = 2000; // metres
 // Chance of precipitation in each kind of region. Snowfields almost always
-// snow; deserts are almost always sunny, rain very rarely and never snow;
-// pine woods rain 40% of the time; open meadows somewhere in between.
-export const PRECIPITATION = { snow: .9, desert: .03, woods: .4, meadow: .2 };
+// snow; the Frostlands snow half the time, and never rain; deserts are almost
+// always sunny, rain very rarely and never snow; pine woods rain 40% of the
+// time; open meadows somewhere in between.
+export const PRECIPITATION = { snow: .9, frost: .5, desert: .03, woods: .4, meadow: .2 };
 // How cloudy each region's sky usually is (0 clear, 1 overcast): deserts are
 // nearly cloudless, mountains often grey. It wanders around this over a few
 // minutes, and builds toward overcast shortly before rain or snow.
-export const CLOUDINESS = { snow: .66, desert: .1, woods: .48, meadow: .36 };
+export const CLOUDINESS = { snow: .66, frost: .58, desert: .1, woods: .48, meadow: .36 };
 // Deserts sometimes have a sandstorm instead: the wind picks the sand up and
 // visibility drops to under a hundred metres. Only deep in the sand, so storms
 // never blow out over meadows or woods.
 export const SANDSTORM = .3;
+// In the snow (the snowfields and the Frostlands), part of the snowfall comes
+// as a snowstorm instead: a gale drives it into a whiteout, closing the view
+// in as a sandstorm does. A share of the snow, not extra to it.
+export const SNOWSTORM = .25;
 export const CLOUD_DRIFT_CELL = 80; // seconds between cloudiness keyframes
 const GATHER = 35; // seconds of build-up before precipitation starts
 
 const smoothstep = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 
 // How much of each region a point belongs to (the weights sum to 1). The snow
-// line matches the terrain colouring; sand never lies above it.
+// line matches the terrain colouring; sand never lies above it, nor in the
+// Frostlands.
 export function regionWeights(world, x, z) {
   const snow = smoothstep(SNOW_LINE - 15, SNOW_LINE + 15, world.height(Math.round(x), Math.round(z)));
-  const desert = (1 - snow) * world.desertAt(x, z);
-  const woods = (1 - snow - desert) * smoothstep(.45, .65, world.woodlandAt(x, z));
-  return { snow, desert, woods, meadow: 1 - snow - desert - woods };
+  const frost = (1 - snow) * (world.frostAt?.(x, z) ?? 0);
+  const desert = (1 - snow - frost) * world.desertAt(x, z);
+  const woods = (1 - snow - frost - desert) * smoothstep(.45, .65, world.woodlandAt(x, z));
+  return { snow, frost, desert, woods, meadow: 1 - snow - frost - desert - woods };
 }
 
 // The chance of precipitation here, and whether it would fall as snow.
 export function precipitationChance(weights) {
   let chance = 0;
   for (const region in PRECIPITATION) chance += PRECIPITATION[region] * (weights[region] ?? 0);
-  return { chance, kind: weights.snow > .5 ? 'snow' : 'rain' };
+  return { chance, kind: weights.snow + (weights.frost ?? 0) > .5 ? 'snow' : 'rain' };
 }
 
 // The chance of a sandstorm here: only where a point is mostly desert.
 export function sandstormChance(weights) {
   return SANDSTORM * smoothstep(.45, .8, weights.desert ?? 0);
+}
+
+// The chance of a snowstorm here: only where a point is mostly snowy (and
+// so any snow falls as snow, never rain).
+export function snowstormChance(weights) {
+  return SNOWSTORM * smoothstep(.5, .8, (weights.snow ?? 0) + (weights.frost ?? 0));
 }
 
 // The seeded roll for an area and time cell: uniform in [0, 1), plus how heavy
@@ -60,8 +73,8 @@ export function cloudWander(seed, x, z, time) {
   return at(cell) * (1 - f) + at(cell + 1) * f;
 }
 
-// What the weather should be at a point: 'clear', 'rain', 'snow' or
-// 'sandstorm', with a
+// What the weather should be at a point: 'clear', 'rain', 'snow',
+// 'snowstorm' or 'sandstorm', with a
 // strength from 0 to 1, and how cloudy the sky is (0–1). A forced kind
 // (?weather=…) skips the roll.
 export function weatherAt(world, x, z, time, forced = null) {
@@ -71,15 +84,17 @@ export function weatherAt(world, x, z, time, forced = null) {
   for (const r in CLOUDINESS) base += CLOUDINESS[r] * (weights[r] ?? 0);
   // Desert skies stay mostly clear, so they wander less.
   const clouds = Math.min(.92, Math.max(0, base + cloudWander(world.seed, x, z, time) * (.06 + .2 * base)));
-  const storms = sandstormChance(weights);
+  const storms = sandstormChance(weights), blizzards = snowstormChance(weights);
   // A sandstorm hides the sky behind the sand itself, so it brings no cloud.
-  if (forced) return { kind: forced, strength: forced === 'clear' ? 0 : 1, chance, storms, region, cloudiness: forced === 'clear' || forced === 'sandstorm' ? clouds : 1 };
+  if (forced) return { kind: forced, strength: forced === 'clear' ? 0 : 1, chance, storms, blizzards, region, cloudiness: forced === 'clear' || forced === 'sandstorm' ? clouds : 1 };
   const { roll, heaviness } = weatherRoll(world.seed, x, z, time);
-  if (roll < chance) return { kind, strength: heaviness, chance, storms, region, cloudiness: 1 };
+  // The lowest part of the snow's share of the roll blows up into a snowstorm.
+  if (roll < blizzards) return { kind: 'snowstorm', strength: heaviness, chance, storms, blizzards, region, cloudiness: 1 };
+  if (roll < chance) return { kind, strength: heaviness, chance, storms, blizzards, region, cloudiness: 1 };
   // The same roll, just above the precipitation's share: never both at once.
-  if (roll < chance + storms) return { kind: 'sandstorm', strength: heaviness, chance, storms, region, cloudiness: clouds };
+  if (roll < chance + storms) return { kind: 'sandstorm', strength: heaviness, chance, storms, blizzards, region, cloudiness: clouds };
   // Clouds gather ahead of the next spell of rain or snow.
   const upcoming = weatherRoll(world.seed, x, z, time + GATHER).roll < chance;
   const into = upcoming ? smoothstep(WEATHER_CELL - GATHER, WEATHER_CELL, time % WEATHER_CELL) : 0;
-  return { kind: 'clear', strength: 0, chance, storms, region, cloudiness: clouds + (.95 - clouds) * into };
+  return { kind: 'clear', strength: 0, chance, storms, blizzards, region, cloudiness: clouds + (.95 - clouds) * into };
 }

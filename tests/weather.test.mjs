@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { weatherAt, regionWeights, precipitationChance, sandstormChance, PRECIPITATION, CLOUDINESS, SANDSTORM, WEATHER_CELL, WEATHER_AREA } from '../weather.mjs';
+import { weatherAt, regionWeights, precipitationChance, sandstormChance, snowstormChance, PRECIPITATION, CLOUDINESS, SANDSTORM, SNOWSTORM, WEATHER_CELL, WEATHER_AREA } from '../weather.mjs';
 import { createWorld } from '../world.mjs';
 import { SNOW_LINE } from '../landforms.mjs';
 
@@ -8,7 +8,7 @@ import { SNOW_LINE } from '../landforms.mjs';
 const region = ({ height = 40, desert = 0, woods = 0 }) => ({ seed: 3, height: () => height, desertAt: () => desert, woodlandAt: () => woods });
 const regions = { snow: region({ height: SNOW_LINE + 40 }), desert: region({ desert: 1 }), woods: region({ woods: 1 }), meadow: region({}) };
 function share(world, samples = 6000) {
-  const kinds = { clear: 0, rain: 0, snow: 0, sandstorm: 0 };
+  const kinds = { clear: 0, rain: 0, snow: 0, snowstorm: 0, sandstorm: 0 };
   for (let i = 0; i < samples; i++) kinds[weatherAt(world, (i % 41) * WEATHER_AREA, Math.floor(i / 41) * WEATHER_AREA, i * WEATHER_CELL).kind]++;
   for (const k in kinds) kinds[k] /= samples;
   return kinds;
@@ -16,7 +16,22 @@ function share(world, samples = 6000) {
 
 test('snowy regions almost always snow, and never rain', () => {
   const s = share(regions.snow);
-  assert.ok(Math.abs(s.snow - .9) < .02, `snow ${s.snow}`); assert.equal(s.rain, 0);
+  assert.ok(Math.abs(s.snow + s.snowstorm - .9) < .02, `snow ${s.snow} + snowstorms ${s.snowstorm}`); assert.equal(s.rain, 0);
+});
+
+test('part of the snow comes as snowstorms, only in the snow, holding for a cell, and they can be forced', () => {
+  const s = share(regions.snow);
+  assert.ok(Math.abs(s.snowstorm - SNOWSTORM) < .02, `snowstorms ${s.snowstorm}`);
+  for (const name of ['desert', 'woods', 'meadow']) assert.equal(share(regions[name]).snowstorm, 0, name);
+  assert.equal(snowstormChance({ snow: .3, frost: .2 }), 0);
+  const at = t => weatherAt(regions.snow, 500, 700, t);
+  for (let cell = 0; cell < 200; cell++) {
+    const start = at(cell * WEATHER_CELL + 1), end = at(cell * WEATHER_CELL + WEATHER_CELL - 1);
+    assert.equal(start.kind, end.kind);
+    if (start.kind === 'snowstorm') { assert.ok(start.strength >= .55 && start.strength <= 1); assert.equal(start.cloudiness, 1); }
+  }
+  const forced = weatherAt(regions.meadow, 0, 0, 0, 'snowstorm');
+  assert.equal(forced.kind, 'snowstorm'); assert.equal(forced.strength, 1); assert.equal(forced.cloudiness, 1);
 });
 
 test('deserts are mostly sunny, often have sandstorms, rain very rarely and never snow', () => {
@@ -61,7 +76,7 @@ test('region weights in a real world sum to one and the chance blends between re
   const world = createWorld(3);
   for (let i = 0; i < 200; i++) {
     const x = (i % 20) * 900 - 9000, z = Math.floor(i / 20) * 900 - 4500, w = regionWeights(world, x, z);
-    assert.ok(Math.abs(w.snow + w.desert + w.woods + w.meadow - 1) < 1e-9);
+    assert.ok(Math.abs(w.snow + w.frost + w.desert + w.woods + w.meadow - 1) < 1e-9);
     for (const v of Object.values(w)) assert.ok(v >= -1e-9 && v <= 1 + 1e-9);
     const { chance } = precipitationChance(w);
     assert.ok(chance >= PRECIPITATION.desert - 1e-9 && chance <= PRECIPITATION.snow + 1e-9);
