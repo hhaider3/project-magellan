@@ -50,7 +50,7 @@ test('Blender cacti and rocks render as seeded instances in a desert world', asy
     const errors = await openGame(page, seed);
     const state = await snapshot(page);
     expect(state.natureAsset.ready).toBe(true); expect(state.natureAsset.error).toBeNull();
-    expect(state.natureAsset.assets).toHaveLength(18);
+    expect(state.natureAsset.assets).toHaveLength(28);
     expect(state.natureAsset.instances[kind]).toBeGreaterThan(10);
     expect(state.natureAsset.instances.rock).toBeGreaterThan(0);
     await page.getByRole('button', { name: 'Start exploring', exact: true }).click();
@@ -104,7 +104,7 @@ test('worker loading, actual WebGL rendering, and stationary scenery stay stable
   expect(state.grass.triangles).toBeLessThanOrEqual(175000); // High: 15-triangle tufts within 78 m
   expect(state.loading).toBe(false); expect(state.carDraws).toBeLessThanOrEqual(72); expect(state.farTiles).toBe(81);
   expect(state.natureAsset.ready).toBe(true); expect(state.natureAsset.error).toBeNull();
-  expect(state.natureAsset.assets).toHaveLength(18); // every model in the nature library, mountain and desert variants included
+  expect(state.natureAsset.assets).toHaveLength(28); // every model in the nature library, mountain and desert variants included
   expect(state.natureAsset.instances.tree).toBeGreaterThan(10); expect(state.natureAsset.instances.rock).toBeGreaterThan(0);
   expect(state.metrics.workerBuild.count).toBeGreaterThanOrEqual(162);
   await page.getByRole('button', { name: 'Start exploring', exact: true }).click();
