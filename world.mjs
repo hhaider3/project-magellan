@@ -37,6 +37,8 @@ export function cellWeights(u, v, a, b, c, d) {
 export const splitsAlongAD = (a, b, c, d) => Math.abs(a - d) < Math.abs(b - c);
 export function createWorld(seed) {
   const land = createLandforms(seed);
+  // Synthwave (setSynthwave): palms for pines (props) and no frozen lakes.
+  let synthwave = false;
   // The natural land, before roads and ramps shape it: lakes sit in it and
   // roads are routed over it (roads.mjs), so neither depends on the other.
   const natural = (x, z) => land.sample(x, z, 1).height;
@@ -239,8 +241,9 @@ export function createWorld(seed) {
     return h;
   }
   // Ponds, lakes and seas in the Frostlands are frozen over, judged at the
-  // middle so a lake is all ice or none of it. Rivers keep running.
-  const frozen = lake => lake.frozen ??= frostAt(lake.x, lake.z) > .5;
+  // middle so a lake is all ice or none of it. Rivers keep running, and in
+  // synthwave (setSynthwave) every lake is open water.
+  const frozen = lake => !synthwave && (lake.frozen ??= frostAt(lake.x, lake.z) > .5);
   // A lake's water here: undefined outside every basin, null on its dry bank.
   function lakeWater(x, z) {
     const lake = lakes.lakeAt(x, z);
@@ -348,7 +351,6 @@ export function createWorld(seed) {
   // Synthwave (setSynthwave) grows palms where the pines would be
   // (nature-models.mjs): fewer of them, sparsest on open land, and evenly
   // along the paved roads, a pair every PALM_SPACING metres.
-  let synthwave = false;
   const PALM_SPACING = 48, PALM_SETBACK = 4.5; // m; the setback is past the asphalt
   function roadPalms(cx, cz) {
     const list = [];

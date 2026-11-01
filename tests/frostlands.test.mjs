@@ -59,6 +59,19 @@ test('its lakes freeze over: the ice is ground to drive on, with nothing growing
   assert.ok(!open.frozen(open.starterLake) && open.waterAt(open.starterLake.x, open.starterLake.z));
 });
 
+test('in synthwave every lake is open water, the Frostlands’ too, and they freeze again after', () => {
+  const world = createWorld(SEED), lake = world.starterLake;
+  world.setSynthwave(true);
+  assert.equal(world.frozen(lake), false); assert.equal(world.iceAt(lake.x, lake.z), null);
+  assert.ok(world.waterAt(lake.x, lake.z)?.depth > 1);
+  assert.ok(world.surface(lake.x, lake.z) < lake.level, 'the bed, under open water');
+  const car = createVehicle(world, lake.x, lake.z - lake.rz * 1.12, 0);
+  for (let i = 0; i < 120 * 12 && !car.floating; i++) stepVehicle(car, { up: true }, world, []);
+  assert.equal(car.floating, true, 'drives in and floats');
+  world.setSynthwave(false);
+  assert.equal(world.frozen(lake), true); assert.equal(world.waterAt(lake.x, lake.z), null);
+});
+
 test('the ATLAS drives straight across a frozen lake on its wheels, and the Roadster too', () => {
   for (const kind of ['atlas', 'roadster']) {
     const world = createWorld(SEED), lake = world.starterLake;

@@ -1,4 +1,4 @@
-import { createWorld, CHUNK, GRID } from './world.mjs?v=frost-1';
+import { createWorld, CHUNK, GRID } from './world.mjs?v=synth-water-1';
 import { createTerrain, ULTRA_GRID } from './terrain.mjs?v=frost-1';
 import { buildGrass } from './grass-data.mjs?v=frost-1';
 import { buildWaterData, buildDistantWater, buildRiverWater } from './water-data.mjs?v=frost-1';
@@ -9,7 +9,7 @@ let world, terrain;
 self.onmessage = ({ data: job }) => {
   try {
     if (!world || world.seed !== job.seed) { world = createWorld(job.seed); terrain = createTerrain(world); }
-    world.setSynthwave(Boolean(job.synthwave)); // its palms (world.mjs props)
+    world.setSynthwave(Boolean(job.synthwave)); // its palms and open lakes (world.mjs)
     const start = performance.now();
     if (job.kind === 'distant-water') {
       const water = buildDistantWater(world, terrain, job.x, job.z), { ranges, ...arrays } = water;

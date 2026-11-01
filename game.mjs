@@ -33,7 +33,7 @@ import { createWeatherEffects, toneMappedHorizon } from './weather-effects.mjs?v
 import { createLightning, createThunder } from './storm.mjs?v=storm-2';
 import { createPetals, TREES as PETAL_TREES } from './petals.mjs?v=warm-1';
 import * as THREE from 'three';
-import { CHUNK, GRID, ROAD_HALF, FIXED_DT, featurePoint, clamp, mix, smoothstep, hash, createWorld, createVehicle, stepVehicle, recoverVehicle, groundAt, VARIANT, SAKURA_HEIGHT } from './world.mjs?v=frost-1';
+import { CHUNK, GRID, ROAD_HALF, FIXED_DT, featurePoint, clamp, mix, smoothstep, hash, createWorld, createVehicle, stepVehicle, recoverVehicle, groundAt, VARIANT, SAKURA_HEIGHT } from './world.mjs?v=synth-water-1';
 import { SNOW_LINE } from './landforms.mjs?v=frost-1';
 import { ROAD_MAP } from './roads.mjs?v=open-start-1';
 import { buildLandmark, cloneOwnedGeometry, landmarkStandinSteps, landmarkSwapDistance } from './scenery.mjs?v=open-start-1';
@@ -933,12 +933,19 @@ const standinShapes = (() => {
     bush: (() => { const g = bushGeo.clone(); g.computeBoundingBox(); const b = g.boundingBox, size = b.getSize(new THREE.Vector3()); return g.translate(-(b.min.x + b.max.x) / 2, -b.min.y, -(b.min.z + b.max.z) / 2).scale(1 / size.x, 1 / size.y, 1 / size.z); })(),
   };
 })();
+// A synthwave stand-in fills its model's whole bounding box, which the model
+// itself (a stone with a smaller one beside it, a cactus and its arms) fills
+// far less of, and seen from afar its thin neon lines light fewer pixels than
+// their share of its surface. So its average colour and glow (glowLook) are
+// scaled to give off the light the real model does from 150 to 340 m, its
+// swapping distance, as measured with the game's renderer settings.
+const FAR_LIGHT = { rock: .46, boulder: .34, cactus: .31 };
 // From the real models once loaded: each variant's bounds and colour (trees:
 // the foliage's), so a stand-in matches the model it replaces.
 function natureLooks(library) {
   const looks = {};
   for (const type of STANDIN_TYPES) looks[type] = (library.variants[type] ?? []).map(({ geometry, bounds, standinColor, standinGlow }) => {
-    if (bounds) return { min: bounds.min.clone(), size: bounds.getSize(new THREE.Vector3()), color: standinColor.clone(), glow: standinGlow?.clone() };
+    if (bounds) return { min: bounds.min.clone(), size: bounds.getSize(new THREE.Vector3()), color: standinColor.clone().multiplyScalar(FAR_LIGHT[type] ?? 1), glow: standinGlow?.clone().multiplyScalar(FAR_LIGHT[type] ?? 1) };
     geometry.computeBoundingBox();
     const box = geometry.boundingBox, colors = geometry.getAttribute('color'), positions = geometry.getAttribute('position'), sum = [0, 0, 0];
     const floor = type === 'tree' ? box.min.y + (box.max.y - box.min.y) * .3 : -Infinity;
@@ -1214,12 +1221,12 @@ function streamWorld(force = false) {
   for (let dx = -FAR_VIEW; dx <= FAR_VIEW; dx++) for (let dz = -FAR_VIEW; dz <= FAR_VIEW; dz++) enqueue('far', fx + dx, fz + dz, 1 + Math.hypot(dx, dz) * 1.5 - ahead(dx, dz) * 1.5);
   for (let dx = -ULTRA_VIEW; dx <= ULTRA_VIEW; dx++) for (let dz = -ULTRA_VIEW; dz <= ULTRA_VIEW; dz++) enqueue('ultra', ux + dx, uz + dz, .5 + Math.hypot(dx, dz) - ahead(dx, dz));
   for (const lake of waterJobs) if (!existing.has(`water:${lake.id}`)) {
-    jobs.push({ kind: 'water', lake, seed, generation, id: ++jobId,
+    jobs.push({ kind: 'water', lake, seed, synthwave: synthwave.on, generation, id: ++jobId,
       priority: 2 + Math.max(0, Math.hypot(lake.x - vehicle.x, lake.z - vehicle.z) - Math.max(lake.rx, lake.rz)) / CHUNK });
   }
   if (!queuedDistant && Math.hypot(vehicle.x - distantAt.x, vehicle.z - distantAt.z) > 500 && ![...pending.values()].some(job => job.kind === 'distant-water')) {
     distantAt = { x: vehicle.x, z: vehicle.z };
-    jobs.push({ kind: 'distant-water', x: vehicle.x, z: vehicle.z, seed, generation, id: ++jobId, priority: 3 });
+    jobs.push({ kind: 'distant-water', x: vehicle.x, z: vehicle.z, seed, synthwave: synthwave.on, generation, id: ++jobId, priority: 3 });
   }
   jobs.sort((a, b) => a.priority - b.priority);
   profiler.record('streamSync', performance.now() - syncStarted);
@@ -1363,7 +1370,7 @@ function beginWorldLoad(continueDriving = false) {
   for (const tile of ultraTiles.values()) disposeTile(tile); ultraTiles.clear();
   terrain = createTerrain(world);
   waterSystem.clear(); distantAt = { x: Infinity, z: Infinity }; distantReady = false;
-  workers = [0, 1].map(() => new Worker(new URL('./world-worker.mjs?v=frost-1', import.meta.url), { type: 'module' }));
+  workers = [0, 1].map(() => new Worker(new URL('./world-worker.mjs?v=synth-water-1', import.meta.url), { type: 'module' }));
   const failed = message => { streamError = message; running = false; $('loadError').hidden = false; $('startBtn').firstElementChild.textContent = 'Unable to prepare the world'; };
   const received = ({ data }) => {
     if (data.generation !== generation) return;
