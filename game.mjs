@@ -12,7 +12,7 @@ import { ROADSTER, hoverWorld } from './roadster-motion.mjs?v=steer-1';
 import { createVehiclePresentation } from './vehicle-presentation.mjs?v=roadster-1';
 import { followTarget, followValue } from './camera-motion.mjs?v=grass-1';
 import { createTreeBreakage } from './tree-breakage.mjs?v=warm-1';
-import { loadNatureLibrary, palmMaterial } from './nature-models.mjs?v=open-start-1';
+import { loadNatureLibrary, palmMaterial } from './nature-models.mjs?v=far-glow-1';
 import { keepCoverage } from './sakura-model.mjs?v=open-start-1';
 import { createBreakAudio } from './break-audio.mjs?v=sound-2';
 import { createVehicleAudio } from './vehicle-audio.mjs?v=pedals-1';
@@ -937,8 +937,8 @@ const standinShapes = (() => {
 // the foliage's), so a stand-in matches the model it replaces.
 function natureLooks(library) {
   const looks = {};
-  for (const type of STANDIN_TYPES) looks[type] = (library.variants[type] ?? []).map(({ geometry, bounds, standinColor }) => {
-    if (bounds) return { min: bounds.min.clone(), size: bounds.getSize(new THREE.Vector3()), color: standinColor.clone() };
+  for (const type of STANDIN_TYPES) looks[type] = (library.variants[type] ?? []).map(({ geometry, bounds, standinColor, standinGlow }) => {
+    if (bounds) return { min: bounds.min.clone(), size: bounds.getSize(new THREE.Vector3()), color: standinColor.clone(), glow: standinGlow?.clone() };
     geometry.computeBoundingBox();
     const box = geometry.boundingBox, colors = geometry.getAttribute('color'), positions = geometry.getAttribute('position'), sum = [0, 0, 0];
     const floor = type === 'tree' ? box.min.y + (box.max.y - box.min.y) * .3 : -Infinity;
@@ -963,6 +963,16 @@ standinMaterial.onBeforeCompile = shader => {
     gl_Position = d > swapAt ? projectionMatrix * mvPosition : vec4(2.0, 2.0, 2.0, 1.0);`);
 };
 standinMaterial.customProgramCacheKey = () => 'standin-v1';
+// Synthwave's far cacti, rocks and boulders glow as their real models do on
+// average (glowLook, nature-models.mjs), each by its own amount, so their
+// neon doesn't switch on as they come within swapping distance.
+const glowStandinMaterial = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: .94 });
+glowStandinMaterial.onBeforeCompile = shader => {
+  standinMaterial.onBeforeCompile(shader);
+  shader.vertexShader = 'attribute vec3 standinGlow; varying vec3 vStandinGlow;\n' + shader.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\nvStandinGlow = standinGlow;');
+  shader.fragmentShader = 'varying vec3 vStandinGlow;\n' + shader.fragmentShader.replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += vStandinGlow;');
+};
+glowStandinMaterial.customProgramCacheKey = () => 'standin-glow-v1';
 // Far palms are their own low models (scripts/build-palm.py, about 60
 // triangles), vertex-coloured and glowing as the real ones are, and drawn
 // from both sides (each frond is one blade).
@@ -1053,10 +1063,13 @@ function buildImpostors(tile, props) {
     const type = palm || shape === 'blossom' || shape === 'snag' ? 'tree' : shape;
     if (!list.length || !standinLooks[type]?.length) continue;
     const geometry = (palm ? palm.standin : standinShapes[shape]).clone(), groundY = new Float32Array(list.length * 3), swap = new Float32Array(list.length);
-    const mesh = new THREE.InstancedMesh(geometry, palm ? palmStandinMaterial : shape === 'blossom' ? blossomStandinMaterial : standinMaterial, list.length);
+    const looks = list.map(i => palm ? palmLook : shape === 'blossom' ? standinLooks.blossom : standinLooks[type][variantOf({ type, x: props.x[i], z: props.z[i], variant: props.variant?.[i] })]);
+    const glow = looks.some(look => look.glow) ? new Float32Array(list.length * 3) : null;
+    const mesh = new THREE.InstancedMesh(geometry, palm ? palmStandinMaterial : shape === 'blossom' ? blossomStandinMaterial : glow ? glowStandinMaterial : standinMaterial, list.length);
     let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity, minY = Infinity, maxY = -Infinity;
     list.forEach((i, k) => {
-      const p = { type, x: props.x[i], z: props.z[i], variant: props.variant?.[i] }, look = palm ? palmLook : shape === 'blossom' ? standinLooks.blossom : standinLooks[type][variantOf(p)], size = props.size[i];
+      const p = { type, x: props.x[i], z: props.z[i], variant: props.variant?.[i] }, look = looks[k], size = props.size[i];
+      if (glow && look.glow) glow.set([look.glow.r, look.glow.g, look.glow.b], k * 3);
       pointVec.set(props.x[i] - tile.position.x, look.min.y * size, props.z[i] - tile.position.z); quaternion.setFromAxisAngle(upAxis, props.turn[i]);
       scaleVec.copy(look.size).multiplyScalar(size); matrix.compose(pointVec, quaternion, scaleVec); mesh.setMatrixAt(k, matrix);
       mesh.setColorAt(k, look.color);
@@ -1067,6 +1080,7 @@ function buildImpostors(tile, props) {
     });
     geometry.setAttribute('groundY', new THREE.InstancedBufferAttribute(groundY, 3));
     geometry.setAttribute('swapAt', new THREE.InstancedBufferAttribute(swap, 1));
+    if (glow) geometry.setAttribute('standinGlow', new THREE.InstancedBufferAttribute(glow, 3));
     // Bounds include the terrain heights the shader adds, so off-screen tiles are culled.
     const box = new THREE.Box3(new THREE.Vector3(minX - 30, minY - 5, minZ - 30), new THREE.Vector3(maxX + 30, maxY + 40, maxZ + 30));
     mesh.boundingSphere = box.getBoundingSphere(new THREE.Sphere()); mesh.boundingBox = box;
@@ -1310,7 +1324,7 @@ function natureWarmup() {
     mesh.setMatrixAt(0, new THREE.Matrix4().makeScale(0, 0, 0));
     mesh.frustumCulled = false; mesh.castShadow = mesh.receiveShadow = true; group.add(mesh);
   }
-  for (const [geometry, material] of [[standinShapes.blossom, blossomStandinMaterial], [nature.variants.tree[nature.palms.first].standin, palmStandinMaterial]]) {
+  for (const [geometry, material] of [[standinShapes.blossom, blossomStandinMaterial], [nature.variants.tree[nature.palms.first].standin, palmStandinMaterial], [standinShapes.rock, glowStandinMaterial]]) {
     const standin = new THREE.InstancedMesh(geometry, material, 1);
     standin.setMatrixAt(0, new THREE.Matrix4().makeScale(0, 0, 0)); standin.setColorAt(0, new THREE.Color(1, 1, 1));
     standin.frustumCulled = false; group.add(standin);

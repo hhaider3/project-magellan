@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import * as THREE from 'three';
 import { GLTFLoader } from '../vendor/loaders/GLTFLoader.js';
-import { assembleNatureLibrary, addPalms, addSynthProps } from '../nature-models.mjs';
+import { assembleNatureLibrary, addPalms, addSynthProps, glowLook } from '../nature-models.mjs';
 import { createDebris } from '../debris.mjs';
 
 const parse = async url => {
@@ -24,9 +24,12 @@ test('synthwave has a cactus, rock and boulder for each everyday one, the same s
     const first = library.synthProps[kind];
     assert.equal(first, plain.variants[kind].length);
     assert.equal(library.variants[kind].length, first * 2);
-    library.variants[kind].slice(first).forEach(({ name, geometry, material, bounds, standinColor }, i) => {
+    library.variants[kind].slice(first).forEach(({ name, geometry, material, bounds, standinColor, standinGlow }, i) => {
       assert.equal(material.name, 'Synth_Glow'); assert.equal(material.vertexColors, true); assert.equal(material.side, THREE.DoubleSide);
-      assert.ok(bounds && standinColor, 'far off, a stand-in sized and coloured for it');
+      assert.ok(bounds && standinColor && standinGlow, 'far off, a stand-in sized, coloured and glowing for it');
+      // It glows from afar as the model does up close: its neon's colour, not a dark violet.
+      const peak = c => Math.max(c.r, c.g, c.b);
+      assert.ok(peak(standinGlow) > .1 && peak(standinGlow) < .8, `${name} glows ${standinGlow.getHexString()} far off`);
       const { position, normal, color } = geometry.attributes;
       assert.equal(position.count, color.count); assert.equal(normal.count, position.count);
       assert.ok(position.count / 3 < 600, `${name}: ${position.count / 3} triangles`);
@@ -65,4 +68,16 @@ test('synthwave debris is dark violet with one piece in three neon, which glows'
   // Everyday debris stays too dark to glow.
   debris.clear(); debris.burst({ type: 'cactus', x: 0, y: 0, z: 0, size: 1, h: 4, vx: 0, vz: 20 }); debris.update(0, flat);
   for (let i = 0; i < mesh.count; i++) { const c = colorAt(i); assert.ok(Math.max(c.r, c.g, c.b) < .3); }
+});
+
+test('a far look averages colour and glow over the surface the eye sees, not the underside', () => {
+  // A unit square of dark violet on top, a quarter of it neon cyan, over a hidden neon base.
+  const quad = (x0, x1, y, up) => up ? [x0, y, 0, x0, y, 1, x1, y, 1, x0, y, 0, x1, y, 1, x1, y, 0] : [x0, y, 0, x1, y, 1, x0, y, 1, x0, y, 0, x1, y, 0, x1, y, 1];
+  const position = [...quad(0, .75, 1, true), ...quad(.75, 1, 1, true), ...quad(0, 1, 0, false)];
+  const dark = [.05, .02, .1], neon = [0, .9, 1], color = [...Array(6).fill(dark), ...Array(6).fill(neon), ...Array(6).fill(neon)].flat();
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(position, 3)); geometry.setAttribute('color', new THREE.Float32BufferAttribute(color, 3));
+  const { color: average, glow } = glowLook(geometry);
+  assert.ok(Math.abs(average.b - (.75 * .1 + .25 * 1)) < 1e-6 && Math.abs(average.g - (.75 * .02 + .25 * .9)) < 1e-6);
+  assert.ok(Math.abs(glow.b - .25 * 1.6) < 1e-6 && glow.r === 0, 'only the neon glows, as in the material');
 });

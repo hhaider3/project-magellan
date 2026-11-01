@@ -109,11 +109,13 @@ const PALMS = ['Palm_Tall', 'Palm_Leaning', 'Palm_Young'];
 // The palm in each pine's place: alpine and snow-dusted tall, windswept
 // leaning, the stunted treeline pine a young palm.
 const PALM_FOR_PINE = [0, 1, 0, 2];
+// How brightly a vertex colour glows in that material (and in glowLook).
+const GLOW_FROM = .3, GLOW_FULL = .6, GLOW_GAIN = 1.6;
 export function palmMaterial(name = 'Palm_Glow') {
   const material = new THREE.MeshStandardMaterial({ name, color: '#ffffff', vertexColors: true, roughness: .9, side: THREE.DoubleSide });
   const glow = shader => {
     shader.fragmentShader = shader.fragmentShader.replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
-      totalEmissiveRadiance += vColor.rgb * smoothstep(.3, .6, max(vColor.r, max(vColor.g, vColor.b))) * 1.6;`);
+      totalEmissiveRadiance += vColor.rgb * smoothstep(${GLOW_FROM}, ${GLOW_FULL}, max(vColor.r, max(vColor.g, vColor.b))) * ${GLOW_GAIN};`);
   };
   material.onBeforeCompile = glow; material.customProgramCacheKey = () => 'palm-glow-1';
   Object.assign(material.userData, { compile: glow, compileKey: 'palm-glow-1' });
@@ -142,19 +144,44 @@ export function addPalms(library, scene) {
   return library;
 }
 
+// What a glowing model looks like from far enough off that its neon lines
+// are thinner than a pixel: its colour and its glow, each averaged over its
+// surface (the faces seen from above or the side, not its underside). Far
+// stand-ins take these, so a prop neither lights up nor dims as it swaps.
+const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+export function glowLook(geometry) {
+  const position = geometry.getAttribute('position'), color = geometry.getAttribute('color'), index = geometry.index;
+  const at = k => index ? index.getX(k) : k, count = index ? index.count : position.count;
+  const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3(), sum = [0, 0, 0], glow = [0, 0, 0];
+  let total = 0;
+  for (let t = 0; t < count; t += 3) {
+    const [i, j, k] = [at(t), at(t + 1), at(t + 2)];
+    a.fromBufferAttribute(position, i); b.fromBufferAttribute(position, j).sub(a); c.fromBufferAttribute(position, k).sub(a);
+    const normal = b.cross(c), area = normal.length() / 2;
+    if (area < 1e-9 || normal.y / (2 * area) < -.5) continue;
+    total += area;
+    for (const v of [i, j, k]) {
+      const rgb = [color.getX(v), color.getY(v), color.getZ(v)], lit = smooth(GLOW_FROM, GLOW_FULL, Math.max(...rgb)) * GLOW_GAIN;
+      for (let n = 0; n < 3; n++) { sum[n] += rgb[n] * area / 3; glow[n] += rgb[n] * lit * area / 3; }
+    }
+  }
+  return { color: new THREE.Color(...sum.map(v => v / total)), glow: new THREE.Color(...glow.map(v => v / total)) };
+}
+
 // Synthwave's cacti, rocks and boulders (scripts/build-synth-props.py), in
 // the same glowing material as the palms: each joins its kind after the
 // everyday ones, and variantFor(prop, true) gives it in their place. Far off
-// they are the everyday stand-ins' shapes in a dark violet.
+// they are the everyday stand-ins' shapes, coloured and glowing as the model
+// does on average (glowLook).
 const SYNTH_PROPS = { cactus: ['Cactus_Synth_Saguaro', 'Cactus_Synth_Forked'], rock: ['Rock_Synth_A', 'Rock_Synth_B'], boulder: ['Boulder_Synth_A', 'Boulder_Synth_B'] };
 export function addSynthProps(library, scene) {
   scene.updateMatrixWorld(true);
-  const material = palmMaterial('Synth_Glow'), first = {}, standinColor = new THREE.Color('#2a1a48');
+  const material = palmMaterial('Synth_Glow'), first = {};
   for (const [kind, names] of Object.entries(SYNTH_PROPS)) {
     first[kind] = library.variants[kind].length;
     for (const name of names) {
-      const { geometry } = assembleRoot(scene, name, kind);
-      library.variants[kind].push({ name, geometry, material, bounds: geometry.boundingBox.clone(), standinColor });
+      const { geometry } = assembleRoot(scene, name, kind), far = glowLook(geometry);
+      library.variants[kind].push({ name, geometry, material, bounds: geometry.boundingBox.clone(), standinColor: far.color, standinGlow: far.glow });
       library.stats.push({ name, kind, triangles: geometry.attributes.position.count / 3, fragments: 0 });
     }
   }
