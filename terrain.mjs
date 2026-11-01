@@ -1,10 +1,10 @@
 import * as THREE from './vendor/three.module.js';
-import { GRID, smoothstep, clamp, cellWeights, splitsAlongAD } from './world.mjs?v=synth-water-1';
+import { GRID, smoothstep, clamp, cellWeights, splitsAlongAD } from './world.mjs?v=climate-1';
 // The horizon tier's grid: fine enough (48 m) to keep the ranges' shape, so
 // mountains barely change as they come nearer.
 export const ULTRA_GRID = 48;
 import { lakeRadius } from './lakes.mjs?v=open-start-1';
-import { SNOW_LINE, TREELINE } from './landforms.mjs?v=frost-1';
+import { SNOW_LINE, TREELINE } from './landforms.mjs?v=climate-1';
 import { noise } from './noise.mjs?v=terrain-1';
 export function createTerrain(world) {
   const seed = world.seed;
@@ -70,9 +70,13 @@ export function createTerrain(world) {
     // The Frostlands: snow right down to the valley floors and the shores,
     // thinner on sunny rises and wind-scoured patches, bluer in the hollows,
     // with rock showing through on steep faces.
+    // At the region's edge it breaks up into drifts rather than fading evenly,
+    // lingering longest in the hollows and on the shady faces.
     if (frost > 0) {
+      const drifts = smoothstep(.25, .75, noise(x / 260 + 7.3, z / 260, seed + 22) * .6 + noise(x / 90, z / 90 - 3.1, seed + 23) * .4);
+      const edge = clamp(.06 + .88 * drifts - smoothstep(.4, 3, dip) * .2 + sunny * .1, .06, .94);
       rockColor.copy(groundColors.snow).lerp(groundColors.snowShade, smoothstep(.4, 3, dip) * .6);
-      tmpColor.lerp(rockColor, frost * (1 - smoothstep(.75, 1.1, slope)) * (.96 - smoothstep(.62, .8, patches) * .22 - Math.max(0, sunny) * .14));
+      tmpColor.lerp(rockColor, smoothstep(edge - .05, edge + .05, frost) * (1 - smoothstep(.75, 1.1, slope)) * (.96 - smoothstep(.62, .8, patches) * .22 - Math.max(0, sunny) * .14));
     }
     const sample = { height: h, normal: [-gx / length, 1 / length, -gz / length], color: [tmpColor.r, tmpColor.g, tmpColor.b] };
     if (cache) {

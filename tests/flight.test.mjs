@@ -318,6 +318,36 @@ test('a small bump while the wings unfold stays driving: no flight, no touchdown
   assert.equal(car.flight, 1);
 });
 
+test('folded wings give no control: the keys do nothing and the body drifts upright', () => {
+  const bank = car => { const wing = rotate(q(car), [1, 0, 0]); return Math.atan2(wing[1], mastUp(car)); };
+  for (const simpleFlight of [false, true]) {
+    const car = high(airborne()); toggleFlight(car);
+    run(car, { simpleFlight }, FLIGHT_TRANSFORM_SECONDS + .1);
+    assert.equal(car.flight, 0); assert.equal(car.flying, true);
+    const held = high(airborne());
+    toggleFlight(held); run(held, { simpleFlight }, FLIGHT_TRANSFORM_SECONDS + .1);
+    run(car, { simpleFlight }, 1); run(held, { simpleFlight, right: true, rollRight: true, yawRight: true, pitchUp: true }, 1);
+    assert.ok(Math.abs(bank(car) - bank(held)) < 1e-9 && Math.abs(noseUp(car) - noseUp(held)) < 1e-9, `simple ${simpleFlight}: controls still bite`);
+    // Nor the propeller or the air brakes: W and S leave its speed alone.
+    for (const keys of [{ up: true, throttleUp: true }, { down: true, throttleDown: true }]) {
+      const coasting = high(airborne()), pressed = high(airborne());
+      for (const c of [coasting, pressed]) { toggleFlight(c); run(c, { simpleFlight }, FLIGHT_TRANSFORM_SECONDS + .1); }
+      run(coasting, { simpleFlight }, 1); run(pressed, { simpleFlight, ...keys }, 1);
+      assert.ok(Math.abs(coasting.airspeed - pressed.airspeed) < 1e-9, `simple ${simpleFlight}: ${coasting.airspeed} vs ${pressed.airspeed} m/s`);
+    }
+  }
+  // Banked when folded, it comes back toward level hands off.
+  const banked = high(airborne());
+  [banked.qx, banked.qy, banked.qz, banked.qw] = attitudeFromEuler(banked.heading, 0, 1);
+  toggleFlight(banked); run(banked, {}, FLIGHT_TRANSFORM_SECONDS + .1);
+  const start = Math.abs(bank(banked)); run(banked, {}, 3);
+  assert.ok(Math.abs(bank(banked)) < start * .4, `${start} -> ${bank(banked)}`);
+  // Pressing F again brings the controls back with the wings.
+  const back = high(airborne()); toggleFlight(back); run(back, {}, FLIGHT_TRANSFORM_SECONDS + .1); toggleFlight(back); run(back, {}, FLIGHT_TRANSFORM_SECONDS + .1);
+  high(back); const level = bank(back); run(back, { rollRight: true }, .3);
+  assert.ok(Math.abs(bank(back) - level) > .3, 'rolls again with the wings out');
+});
+
 test('a wingtip touching the ground ends the flight: it becomes the car and lands, never buried', () => {
   for (const side of ['rollLeft', 'rollRight']) {
     const car = airborne();

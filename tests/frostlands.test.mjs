@@ -23,14 +23,26 @@ function slide(world, kind) {
   return Math.abs(car.heading - Math.atan2(car.vx, car.vz));
 }
 
-test('the Frostlands are broad regions of their own, never in the desert', () => {
-  const world = createWorld(3);
-  let frost = 0, n = 0;
-  for (let x = -12000; x <= 12000; x += 400) for (let z = -12000; z <= 12000; z += 400) {
-    n++; const f = world.frostAt(x, z);
-    if (f > .5) { frost++; assert.ok(world.desertAt(x, z) < .2, `sand at ${x}, ${z}`); }
+test('the Frostlands are broad regions of their own, far from the sand', () => {
+  const STEP = 200, SPAN = 60, SIZE = 2 * SPAN + 1;
+  for (const seed of [3, 77, 12345]) {
+    const world = createWorld(seed), frosty = new Uint8Array(SIZE * SIZE);
+    let frost = 0;
+    for (let i = 0; i < SIZE; i++) for (let j = 0; j < SIZE; j++) {
+      const x = (j - SPAN) * STEP, z = (i - SPAN) * STEP, f = world.frostAt(x, z);
+      if (f > .5) { frosty[i * SIZE + j] = 1; frost++; }
+      // Temperate land lies between any snow at all and the sand.
+      if (f > .05) for (let k = 0; k < 8; k++) assert.ok(world.desertAt(x + Math.cos(k * Math.PI / 4) * 300, z + Math.sin(k * Math.PI / 4) * 300, 0) < .5, `sand beside snow at ${x}, ${z}`);
+    }
+    // Nearly all of it lies within a block about 600 m across: no thin strips.
+    // (Away from the edge of the scan, where a block wouldn't fit.)
+    const within = (i, j, test) => { for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) if (test(i + a, j + b)) return true; return false; };
+    const solid = (i, j) => !within(i, j, (a, b) => !frosty[a * SIZE + b]);
+    let inside = 0, broad = 0;
+    for (let i = 2; i < SIZE - 2; i++) for (let j = 2; j < SIZE - 2; j++) if (frosty[i * SIZE + j]) { inside++; if (within(i, j, solid)) broad++; }
+    assert.ok(broad / inside > .95, `seed ${seed}: ${(broad / inside * 100).toFixed(0)}% broad`);
+    if (seed === 3) assert.ok(frost / frosty.length > .08 && frost / frosty.length < .4, `${(frost / frosty.length * 100).toFixed(0)}% Frostlands`);
   }
-  assert.ok(frost / n > .08 && frost / n < .4, `${(frost / n * 100).toFixed(0)}% Frostlands`);
   assert.ok(createWorld(SEED).frostAt(0, 0) > .9);
 });
 

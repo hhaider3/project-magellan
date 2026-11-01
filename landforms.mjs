@@ -51,18 +51,25 @@ export function createLandforms(seed) {
     return mix(.34, t, smoothstep(START_PLAINS, START_OPEN, Math.hypot(x, z)));
   }
   const mountainOf = t => smoothstep(.52, .66, t), hillsOf = t => smoothstep(.4, .52, t);
-  // Broad, warped dry regions (one coarse noise layer would read as squares).
+  // The climate, 0 hot to 1 cold: one very broad field, so the sand and the
+  // snow are decided together and lie far apart, with temperate land between.
+  // (Shifted so the start isn't on a noise lattice point, where every octave
+  // would peak together and most worlds would begin in sand or snow.)
+  function climate(x, z) {
+    const wx = (noise(x / 4000 - 4.4, z / 4000, seed + 217) - .5) * .35, wz = (noise(x / 4000, z / 4000 - 2.7, seed + 218) - .5) * .35;
+    return fbm(x / 8000 + wx + 6.11, z / 8000 + wz + 6.856, seed + 216, 3, .4);
+  }
+  // Broad, warped dry regions (one coarse noise layer would read as squares):
+  // commoner in the hot half of the climate, and fading out well before the cold.
   function desertMask(x, z) {
     const wx = (noise(x / 1900 + 2.2, z / 1900, seed + 192) - .5) * 1.1, wz = (noise(x / 1900, z / 1900 + 6.1, seed + 193) - .5) * 1.1;
-    return smoothstep(.5, .62, fbm(x / 3400 + wx, z / 3400 + wz, seed + 191, 3));
+    const c = climate(x, z), lean = .32 * (1 - smoothstep(.29, .41, c)) - .45 * smoothstep(.41, .56, c);
+    return smoothstep(.5, .62, fbm(x / 3400 + wx, z / 3400 + wz, seed + 191, 3) + lean);
   }
   // Broad cold regions, where snow lies right down to the valley floors: the
-  // same kind of warped field, never where the sand lies. It only colours
-  // and clothes the land; the land's shape is the same as anywhere else.
-  function frostMask(x, z) {
-    const wx = (noise(x / 2100 - 4.4, z / 2100, seed + 196) - .5) * 1.1, wz = (noise(x / 2100, z / 2100 - 2.7, seed + 197) - .5) * 1.1;
-    return smoothstep(.52, .62, fbm(x / 3600 + wx, z / 3600 + wz, seed + 195, 3)) * (1 - smoothstep(.05, .25, desertMask(x, z)));
-  }
+  // cold end of the climate. It only colours and clothes the land; the land's
+  // shape is the same as anywhere else.
+  function frostMask(x, z) { return smoothstep(.61, .66, climate(x, z)); }
   // Everything about the land at a point. offroad (0 on a road, 1 away from
   // it) calms the small rollers under roads, as before.
   function sample(x, z, offroad = 1) {

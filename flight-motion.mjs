@@ -259,12 +259,15 @@ function fly(car, input, world, dt, groundAt) {
   const across = mast.map((c, k) => c - dir[k] * dot(mast, dir)), length = Math.hypot(...across) || 1;
   const lift = clamp(LIFT * pressure * cl, -MAX_LOAD, MAX_LOAD);
   // Thrust only while W is held; S opens air brakes. Hands off, it glides.
-  const thrust = MAX_THRUST * Math.max(0, throttle) * rho * (.4 + .6 * wings);
-  const drag = (DRAG * (1 + 2.5 * Math.max(0, -throttle)) + INDUCED * cl * cl) * pressure, slip = SIDE * pressure * beta;
+  // Both stow with the wings: a folded car in the air has neither.
+  const power = throttle * (car.flightMode ? 1 : wings);
+  const thrust = MAX_THRUST * Math.max(0, power) * rho * (.4 + .6 * wings);
+  const drag = (DRAG * (1 + 2.5 * Math.max(0, -power)) + INDUCED * cl * cl) * pressure, slip = SIDE * pressure * beta;
   for (let k = 0; k < 3; k++) v[k] += (nose[k] * thrust + across[k] / length * lift - dir[k] * drag - wing[k] * slip + (k === 1 ? -9.8 : 0)) * dt;
   const fast = Math.hypot(...v); if (fast > NEVER_EXCEED) for (let k = 0; k < 3; k++) v[k] *= NEVER_EXCEED / fast;
-  // Controls: body-axis rates. Their bite grows with airspeed and air density.
-  const authority = (.35 + .65 * wings) * clamp(speed / 30, .3, 1) * Math.sqrt(rho);
+  // Controls: body-axis rates. Their bite grows with airspeed and air density,
+  // and goes as the wings fold: a folded car has nothing to steer the air with.
+  const authority = (.35 + .65 * wings) * (car.flightMode ? 1 : wings) * clamp(speed / 30, .3, 1) * Math.sqrt(rho);
   const bank = Math.atan2(wing[1], mast[1]); // 0 level, + right wing down, ±π inverted
   let pitchRate = pitch * PITCH_RATE, rollRate = -roll * ROLL_RATE, yawRate = yaw * YAW_RATE;
   // Released controls leave the attitude alone: no wing levelling, no pull
@@ -283,12 +286,14 @@ function fly(car, input, world, dt, groundAt) {
       if (Math.abs(pathAngle) < .02) car.climbOut = false;
     } else car.climbOut = false;
   }
-  q = qMul(q, qAxis(-pitchRate * authority * dt, yawRate * authority * dt, rollRate * authority * dt));
+  // Folded, the body drifts upright slowly, as any car does in the air.
+  const righting = car.flightMode ? 0 : -bank * .5 * (1 - wings);
+  q = qMul(q, qAxis(-pitchRate * authority * dt, yawRate * authority * dt, (rollRate * authority + righting) * dt));
   // Rudder: the nose yaws about the plane's own up axis, and on the full
   // controls the flight path swings round with it (a flat, skidding turn that
   // bleeds a little speed). Left to the aerodynamics alone, the tail would
   // weathervane the nose straight back and the plane would only crab.
-  if (yawRate && !simple) {
+  if (yawRate && authority && !simple) {
     const swing = yawRate * authority * dt, [mx, my, mz] = mast, c = Math.cos(swing), sn = Math.sin(swing), along = v[0] * mx + v[1] * my + v[2] * mz;
     const [vx, vy, vz] = v, cx = my * vz - mz * vy, cy = mz * vx - mx * vz, cz = mx * vy - my * vx;
     v[0] = vx * c + cx * sn + mx * along * (1 - c); v[1] = vy * c + cy * sn + my * along * (1 - c); v[2] = vz * c + cz * sn + mz * along * (1 - c);

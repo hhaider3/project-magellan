@@ -4,10 +4,10 @@ import { createRoads, ROAD_HALF, ROAD_REACH, ROAD_CELL } from './roads.mjs?v=ope
 import { createRivers } from './rivers.mjs?v=rivers-1';
 import { stepAmphibious } from './amphibious-motion.mjs?v=open-start-1';
 import { controlAxis } from './controls.mjs?v=slider-1';
-import { stepFlight, wingStrikes } from './flight-motion.mjs?v=open-start-1';
+import { stepFlight, wingStrikes } from './flight-motion.mjs?v=fold-1';
 import { ROADSTER, SUCTION, hoverWorld, overWater, roadsterAcceleration, roadsterDrag, fireThrusters, roadsterState } from './roadster-motion.mjs?v=steer-1';
 import { clamp, mix, smoothstep, hash, random, noise } from './noise.mjs?v=terrain-1';
-import { createLandforms, TREELINE, SNOW_LINE } from './landforms.mjs?v=frost-1';
+import { createLandforms, TREELINE, SNOW_LINE } from './landforms.mjs?v=climate-1';
 export { clamp, mix, smoothstep, hash, random, noise };
 export const CHUNK = 96;
 export const GRID = 4;
