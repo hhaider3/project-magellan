@@ -215,8 +215,13 @@ scene.add(hemisphere);
 const sun = new THREE.DirectionalLight('#fff0d2', 2.5);
 sun.castShadow = true;
 sun.shadow.mapSize.setScalar(levels[qualityLevel].shadow);
-Object.assign(sun.shadow.camera, { left: -48, right: 48, top: 48, bottom: -48, near: 1, far: 230 });
-sun.shadow.bias = -.00015; sun.shadow.normalBias = .04;
+// It sits as far toward the sun as the wide map's does: at a low sun the hills
+// cast too (buildChunk), from hundreds of metres off, and both maps must see them.
+// (The depth fade is a share of near to far, sunShadowCoverage: this far keeps it
+// 76 m past the target, where crisp shadows run down-sun on the ground.)
+const SUN_REACH = 320;
+Object.assign(sun.shadow.camera, { left: -48, right: 48, top: 48, bottom: -48, near: 1, far: SUN_REACH + 130 });
+sun.shadow.bias = -.00008; sun.shadow.normalBias = .04;
 scene.add(sun, sun.target);
 // A second, coarse shadow map for the same sun reaches about 150 m ahead, so
 // trees and rocks cast shadows long before the sharp map around the car
@@ -760,7 +765,11 @@ function buildChunk({ cx, cz, ground: groundData, roadMap, roadInfo, river, brid
   const propInstances = new Map();
   const ground = new THREE.Mesh(geometryFromData(groundData), terrainSurface(roadMap, CHUNK, roadInfo));
   ground.geometry.userData.owned = true;
-  ground.receiveShadow = true; group.add(ground);
+  // The ground casts as well as receives: otherwise a tree's low-sun shadow
+  // passes through its own hill and lands beyond it, floating on lit ground.
+  // (Drawn by its back faces, as three.js does, so only slopes turned from the
+  // sun reach the maps and lit ground can't shadow itself.)
+  ground.castShadow = ground.receiveShadow = true; group.add(ground);
   function instances(type, geometry, mat, variant, countAsProp = true, depthMaterial = undefined) {
     const list = props.filter(p => p.type === type && (variant === undefined || variantOf(p) === variant)); if (!list.length) return;
     const mesh = new THREE.InstancedMesh(geometry, mat, list.length);
@@ -2369,14 +2378,14 @@ function render(dt) {
   if (shadowAhead.lengthSq() < 1e-4) shadowAhead.set(Math.sin(pose.heading), 0, Math.cos(pose.heading));
   shadowAhead.normalize().multiplyScalar(18).add(car.position);
   snapToTexels(shadowAhead, 96, sun.shadow.mapSize.x);
-  sun.target.position.copy(shadowAhead); sun.position.copy(shadowAhead).addScaledVector(sunDirection, 127.5); sun.target.updateMatrixWorld();
+  sun.target.position.copy(shadowAhead); sun.position.copy(shadowAhead).addScaledVector(sunDirection, SUN_REACH); sun.target.updateMatrixWorld();
   vehicleSun.target.position.copy(car.position); vehicleSun.position.copy(car.position).addScaledVector(sunDirection, 80); vehicleSun.target.updateMatrixWorld();
   if (farSun.castShadow) {
     camera.getWorldDirection(farAhead).setY(0);
     if (farAhead.lengthSq() < 1e-4) farAhead.set(Math.sin(pose.heading), 0, Math.cos(pose.heading));
     farAhead.normalize().multiplyScalar(FAR_SHADOW_AHEAD).add(car.position);
     snapToTexels(farAhead, FAR_SHADOW * 2, farSun.shadow.mapSize.x);
-    farSun.target.position.copy(farAhead); farSun.position.copy(farAhead).addScaledVector(sunDirection, 320); farSun.target.updateMatrixWorld();
+    farSun.target.position.copy(farAhead); farSun.position.copy(farAhead).addScaledVector(sunDirection, SUN_REACH); farSun.target.updateMatrixWorld();
   }
   // The water feels the Roadster's air cushion as if its hull were in it.
   const waterPose = vehicle.kind === 'roadster' && vehicle.overWater ? Object.assign(hoverPose, pose, { y: pose.y - ROADSTER.waterGap - .1 }) : pose;

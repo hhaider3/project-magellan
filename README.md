@@ -441,6 +441,7 @@ The sun casts from three maps:
 - **Sharp map.** A 96 m map sits ahead of the car along your view.
 - **Wide map.** A coarser 220 m map (Medium and High only) takes over toward its edge, so trees and rocks cast shadows from about 150 m away. It's a depth pass only, and the shader blends the two.
 - **Vehicle map.** The car (or boat, or plane) casts only into a third map, 11 m across, that moves with it (Medium and High; on Low it stays in the sharp map). At about 1 cm a texel its shadow is crisp, and since it meets the same texels every frame it doesn't step or crawl as the car moves. Motion blur leaves the car's shadow sharp too, along with the car.
+- **Hills.** The ground near the car casts into the sharp and wide maps too, so a low sun puts the far side of a hill in shadow, and a tree's shadow can't pass through its own hill and land beyond it. Only slopes turned away from the sun are drawn, so lit ground never shadows itself.
 - **Fading.** The sharp and wide maps fade out gradually at their edges instead of cutting off.
 - **No crawl.** Those two move only in whole texels, so scenery shadow edges don't crawl as you drive.
 
