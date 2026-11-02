@@ -84,6 +84,17 @@ test('in synthwave every lake is open water, the Frostlands’ too, and they fre
   assert.equal(world.frozen(lake), true); assert.equal(world.waterAt(lake.x, lake.z), null);
 });
 
+test('synthwave has no Frostlands: no snow to slip on, and they come back after', () => {
+  const world = createWorld(SEED);
+  world.setSynthwave(true);
+  assert.equal(world.frostAt(0, 0), 0);
+  const glass = createVehicle(world, 0, 0, 0), everyday = createVehicle(createWorld(SEED), 0, 0, 0);
+  advance(glass, { up: true }, world, 2); advance(everyday, { up: true }, createWorld(SEED), 2);
+  assert.ok(glass.speed > everyday.speed, `${glass.speed} m/s on the grid, ${everyday.speed} m/s on packed snow`);
+  world.setSynthwave(false);
+  assert.ok(world.frostAt(0, 0) > .9);
+});
+
 test('the ATLAS drives straight across a frozen lake on its wheels, and the Roadster too', () => {
   for (const kind of ['atlas', 'roadster']) {
     const world = createWorld(SEED), lake = world.starterLake;

@@ -1,10 +1,10 @@
-import { createWorld, CHUNK, GRID } from './world.mjs?v=climate-1';
-import { createTerrain, ULTRA_GRID } from './terrain.mjs?v=climate-1';
-import { buildGrass } from './grass-data.mjs?v=climate-1';
+import { createWorld, CHUNK, GRID } from './world.mjs?v=synth-lean-1';
+import { createTerrain, ULTRA_GRID } from './terrain.mjs?v=synth-lean-1';
+import { buildGrass } from './grass-data.mjs?v=synth-lean-1';
 import { buildWaterData, buildDistantWater, buildRiverWater } from './water-data.mjs?v=frost-1';
 import { buildBridges } from './bridge-data.mjs?v=classes-2';
-import { buildRoadside } from './roadside-data.mjs?v=climate-1';
-import { FAR_SIZE, ULTRA_SIZE } from './streaming-layout.mjs?v=climate-1';
+import { buildRoadside } from './roadside-data.mjs?v=synth-lean-1';
+import { FAR_SIZE, ULTRA_SIZE } from './streaming-layout.mjs?v=synth-lean-1';
 let world, terrain;
 self.onmessage = ({ data: job }) => {
   try {
@@ -32,7 +32,7 @@ self.onmessage = ({ data: job }) => {
     if (job.kind !== 'ultra') result.river = buildRiverWater(world, terrain, wx, wz, size, job.kind === 'near' ? 0 : 1, job.kind === 'near' ? 1 : 3);
     if (job.kind === 'near') result.bridges = buildBridges(world, wx, wz, size);
     if (job.kind === 'near') {
-      result.grass = buildGrass(world, job.cx, job.cz, ground);
+      if (!job.synthwave) result.grass = buildGrass(world, job.cx, job.cz, ground); // synthwave's grid lies bare
       result.props = world.props(job.cx, job.cz);
       result.features = world.featuresNear(wx + CHUNK / 2, wz + CHUNK / 2, 100).filter(f => Math.floor(f.x / CHUNK) === job.cx && Math.floor(f.z / CHUNK) === job.cz);
       // Marker posts, guardrails, chevrons and signs (roadside-data.mjs).

@@ -330,8 +330,9 @@ export function createWorld(seed) {
     return land.desertMask(x, z) * (1 - mountainAt(x, z)) * (1 - smoothstep(150, 200, elevation));
   }
   // The Frostlands (0–1): broad cold regions where snow lies at every height,
-  // over the valleys, the roads and the frozen lakes (landforms.mjs).
-  function frostAt(x, z) { return land.frostMask(x, z); }
+  // over the valleys, the roads and the frozen lakes (landforms.mjs). Synthwave
+  // has none: no snow to slip on, and every road is its neon glass.
+  function frostAt(x, z) { return synthwave ? 0 : land.frostMask(x, z); }
   // Low, wide props (rocks, boulders, scree, junipers) sit flat on the ground.
   // On a sharp summit or ridge the 2 m gradient reads level, but the ground
   // falls away on both sides of their footprint and they'd hang in the air:
@@ -445,7 +446,7 @@ export function createWorld(seed) {
     }
     return list.filter(p => !p.empty && !brokenProps.has(p.id));
   }
-  return { seed, height, surface, groundSurface, gradient, hollow, footOfSlope, mountainAt, woodlandAt, blossomAt, shoreAt, desertAt, frostAt, roadAt, roadsNear: roads.roadsNear, prepareRoads: (x, z, r, ms) => rivers.prepare(x, z, r + 3 * ROAD_CELL, ms / 2) && roads.prepare(x, z, r, ms / 2), riversNear: rivers.riversNear, riverAt: rivers.riverAt, roadMap: roads.roadMap, alongRoad: roads.along, junctionAt: roads.junctionAt, roadEnds: roads.endsOf, startHeading: starterRoad ? roads.along(starterRoad, 0).heading : 0, props, featuresNear, rampLift, rampAt, reserved, starterRamp, twistRamp, waterAt, iceAt, frozen, lakeAt: lakes.lakeAt, lakesNear: lakes.near, seasNear: lakes.seasNear, starterLake: lakes.starter, starterSea: lakes.starterSea, brokenProps, breakProp, drainBreakEvents: () => breakEvents.splice(0), setSynthwave: on => { synthwave = on; } };
+  return { seed, height, surface, groundSurface, gradient, hollow, footOfSlope, mountainAt, woodlandAt, blossomAt, shoreAt, desertAt, frostAt, roadAt, roadsNear: roads.roadsNear, prepareRoads: (x, z, r, ms) => rivers.prepare(x, z, r + 3 * ROAD_CELL, ms / 2) && roads.prepare(x, z, r, ms / 2), riversNear: rivers.riversNear, riverAt: rivers.riverAt, roadMap: roads.roadMap, alongRoad: roads.along, junctionAt: roads.junctionAt, roadEnds: roads.endsOf, startHeading: starterRoad ? roads.along(starterRoad, 0).heading : 0, props, featuresNear, rampLift, rampAt, reserved, starterRamp, twistRamp, waterAt, iceAt, frozen, lakeAt: lakes.lakeAt, lakesNear: lakes.near, seasNear: lakes.seasNear, starterLake: lakes.starter, starterSea: lakes.starterSea, brokenProps, breakProp, drainBreakEvents: () => breakEvents.splice(0), setSynthwave: on => { synthwave = on; }, isSynthwave: () => synthwave };
 }
 
 export function featureLocal(feature, x, z) {

@@ -25,6 +25,18 @@ test('coarse tiles cut out only loaded fine chunks, including negative coordinat
     assert.ok(indices.every(index => index >= 0 && index < 289));
   }
 });
+test('synthwave terrain skips the land colours, and switching back brings them back', () => {
+  const world = createWorld(100003), terrain = createTerrain(world);
+  const everyday = terrain.build(0, 0, 96, 4);
+  assert.ok(everyday.color.some(c => c > 0) && everyday.coarseColor.some(c => c > 0));
+  world.setSynthwave(true);
+  const synth = terrain.build(0, 0, 96, 4);
+  assert.ok(synth.color.every(c => c === 0) && synth.coarseColor.every(c => c === 0), 'its shader paints the land');
+  assert.deepEqual(synth.position, everyday.position); assert.deepEqual(synth.normal, everyday.normal);
+  assert.deepEqual(synth.coarseHeight, everyday.coarseHeight); assert.deepEqual(synth.coarseNormal, everyday.coarseNormal);
+  world.setSynthwave(false);
+  assert.deepEqual(terrain.build(0, 0, 96, 4).coarseColor, everyday.coarseColor);
+});
 test('worker terrain retains exact fine triangles and matching coarse boundaries', () => {
   const world = createWorld(100003), terrain = createTerrain(world);
   const a = terrain.build(-96, 0, 96, 4), b = terrain.build(0, 0, 96, 4);

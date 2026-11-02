@@ -1,5 +1,5 @@
 import * as THREE from './vendor/three.module.js';
-import { GRID, smoothstep, clamp, cellWeights, splitsAlongAD } from './world.mjs?v=climate-1';
+import { GRID, smoothstep, clamp, cellWeights, splitsAlongAD } from './world.mjs?v=synth-lean-1';
 // The horizon tier's grid: fine enough (48 m) to keep the ranges' shape, so
 // mountains barely change as they come nearer.
 export const ULTRA_GRID = 48;
@@ -16,7 +16,20 @@ export function createTerrain(world) {
   const sunX = -.872, sunZ = .489;
   // Far (24 m) and horizon (96 m) samples are revisited by neighbouring tiles.
   const sampleCaches = { 24: new Map(), 48: new Map() };
+  // Synthwave's ground shader paints the land itself (game.mjs), so its samples
+  // carry no colours, and everyday ones can't be reused for it or it for them.
+  const NO_COLOR = [0, 0, 0];
+  let cachedSynth = false;
+  function remember(cache, key, sample) {
+    if (cache) {
+      if (cache.size >= 30000) cache.delete(cache.keys().next().value);
+      cache.set(key, sample);
+    }
+    return sample;
+  }
   function terrainSample(x, z, step) {
+    const synth = Boolean(world.isSynthwave?.());
+    if (synth !== cachedSynth) { cachedSynth = synth; for (const stale of Object.values(sampleCaches)) stale.clear(); }
     const key = `${x},${z}`, cache = sampleCaches[step];
     if (cache?.has(key)) return cache.get(key);
     // Shading follows the ground over 8 m (or the tier's own cell); colour
@@ -27,6 +40,7 @@ export function createTerrain(world) {
     const gx = (world.height(x + delta, z) - world.height(x - delta, z)) / (2 * delta);
     const gz = (world.height(x, z + delta) - world.height(x, z - delta)) / (2 * delta);
     const length = Math.hypot(gx, 1, gz);
+    if (synth) return remember(cache, key, { height: h, normal: [-gx / length, 1 / length, -gz / length], color: NO_COLOR });
     const wx = (world.height(x + 12, z) - world.height(x - 12, z)) / 24, wz = (world.height(x, z + 12) - world.height(x, z - 12)) / 24;
     const slope = Math.hypot(wx, wz), mountain = world.mountainAt(x, z), desert = world.desertAt(x, z, h);
     // 1 facing the midday sun, -1 facing away (flat ground counts as neither).
@@ -78,12 +92,7 @@ export function createTerrain(world) {
       rockColor.copy(groundColors.snow).lerp(groundColors.snowShade, smoothstep(.4, 3, dip) * .6);
       tmpColor.lerp(rockColor, smoothstep(edge - .05, edge + .05, frost) * (1 - smoothstep(.75, 1.1, slope)) * (.96 - smoothstep(.62, .8, patches) * .22 - Math.max(0, sunny) * .14));
     }
-    const sample = { height: h, normal: [-gx / length, 1 / length, -gz / length], color: [tmpColor.r, tmpColor.g, tmpColor.b] };
-    if (cache) {
-      if (cache.size >= 30000) cache.delete(cache.keys().next().value);
-      cache.set(key, sample);
-    }
-    return sample;
+    return remember(cache, key, { height: h, normal: [-gx / length, 1 / length, -gz / length], color: [tmpColor.r, tmpColor.g, tmpColor.b] });
   }
   // The surface a coarser tier actually draws: its grid triangles, split the
   // same way as the rendered index buffers (cellWeights).

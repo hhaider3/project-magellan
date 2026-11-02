@@ -1,31 +1,31 @@
-import { createTerrain } from './terrain.mjs?v=climate-1';
+import { createTerrain } from './terrain.mjs?v=synth-lean-1';
 import { createWater } from './water.mjs?v=frost-1';
-import { FAR_SIZE, FAR_VIEW, NEAR_VIEW, ULTRA_SIZE, ULTRA_VIEW, ULTRA_BLEND_START, ULTRA_BLEND_END, farIndices, farCoverage, ultraIndices, ultraCoverage } from './streaming-layout.mjs?v=climate-1';
+import { FAR_SIZE, FAR_VIEW, NEAR_VIEW, ULTRA_SIZE, ULTRA_VIEW, ULTRA_BLEND_START, ULTRA_BLEND_END, farIndices, farCoverage, ultraIndices, ultraCoverage } from './streaming-layout.mjs?v=synth-lean-1';
 import { loadVehicleModel, VEHICLE_NAMES } from './vehicle-model.mjs?v=synth-1';
 import { createShowroom } from './garage.mjs?v=synth-1';
 import { VEHICLE_ORDER, VEHICLE_SPECS, PREVIEWS } from './vehicle-specs.mjs?v=garage-1';
 import { createProfiler } from './profiling.mjs?v=timing-1';
-import { createDebris } from './debris.mjs?v=climate-1';
+import { createDebris } from './debris.mjs?v=synth-lean-1';
 import { createDust } from './dust.mjs?v=roadster-1';
 import { createThrusterPlumes, createVapour } from './thrusters.mjs?v=roadster-1';
 import { ROADSTER, hoverWorld } from './roadster-motion.mjs?v=steer-1';
 import { createVehiclePresentation } from './vehicle-presentation.mjs?v=roadster-1';
 import { followTarget, followValue } from './camera-motion.mjs?v=grass-1';
 import { createTreeBreakage } from './tree-breakage.mjs?v=warm-1';
-import { loadNatureLibrary, palmMaterial } from './nature-models.mjs?v=climate-1';
-import { keepCoverage } from './sakura-model.mjs?v=climate-1';
+import { loadNatureLibrary, palmMaterial } from './nature-models.mjs?v=synth-lean-1';
+import { keepCoverage } from './sakura-model.mjs?v=synth-lean-1';
 import { createBreakAudio } from './break-audio.mjs?v=sound-2';
 import { createVehicleAudio } from './vehicle-audio.mjs?v=pedals-1';
 import { createMusic, volumeGain } from './music.mjs?v=synth-1';
 import { installSunShadowFade, separateVehicleShadow } from './shadow-fade.mjs?v=shadow-2';
-import { createGrass } from './grass.mjs?v=climate-1';
+import { createGrass } from './grass.mjs?v=synth-lean-1';
 import { createPerfMeter, createGpuTimer } from './perf-meter.mjs?v=perf-2';
 import { QUALITY_PRESETS, qualityLevels, presetLevel, autoStartLevel, createAutoQuality } from './quality.mjs?v=blur-1';
 import { controlAxis, steerAxis } from './controls.mjs?v=slider-1';
 import { readTilt, tiltAxes } from './tilt.mjs?v=tilt-1';
 import { toggleFlight, flightAxes, TAKEOFF_SPEED, STALL_SPEED } from './flight-motion.mjs?v=fold-1';
-import { createClouds } from './clouds.mjs?v=climate-1';
-import { weatherAt } from './weather.mjs?v=climate-1';
+import { createClouds } from './clouds.mjs?v=synth-lean-1';
+import { weatherAt } from './weather.mjs?v=synth-lean-1';
 import { createSky } from './sky.mjs?v=synth-2';
 import { SYNTHWAVE, GRID_CELL, GRID_LINE, SYNTH_GRID_GLSL, synthwaveLight } from './synthwave.mjs?v=synth-1';
 import { daylight, advanceClock, clockLabel, startHour } from './daylight.mjs?v=day-3';
@@ -33,10 +33,10 @@ import { createWeatherEffects, toneMappedHorizon } from './weather-effects.mjs?v
 import { createLightning, createThunder } from './storm.mjs?v=storm-2';
 import { createPetals, TREES as PETAL_TREES } from './petals.mjs?v=warm-1';
 import * as THREE from 'three';
-import { CHUNK, GRID, ROAD_HALF, FIXED_DT, featurePoint, clamp, mix, smoothstep, hash, createWorld, createVehicle, stepVehicle, recoverVehicle, groundAt, VARIANT, SAKURA_HEIGHT } from './world.mjs?v=climate-1';
+import { CHUNK, GRID, ROAD_HALF, FIXED_DT, featurePoint, clamp, mix, smoothstep, hash, createWorld, createVehicle, stepVehicle, recoverVehicle, groundAt, VARIANT, SAKURA_HEIGHT } from './world.mjs?v=synth-lean-1';
 import { SNOW_LINE } from './landforms.mjs?v=climate-1';
 import { ROAD_MAP } from './roads.mjs?v=open-start-1';
-import { buildLandmark, cloneOwnedGeometry, landmarkStandinSteps, landmarkSwapDistance } from './scenery.mjs?v=climate-1';
+import { buildLandmark, cloneOwnedGeometry, landmarkStandinSteps, landmarkSwapDistance } from './scenery.mjs?v=synth-lean-1';
 import { createMotionBlur } from './motion-blur.mjs?v=blur-2';
 
 const $ = id => document.getElementById(id);
@@ -338,6 +338,20 @@ function setSynthwave(on) {
   for (const loading of vehicleAssets.values()) loading.then(asset => asset.relight(on ? 'synthwave' : 'studio')).catch(() => {});
   if (regrow) beginWorldLoad(running);
 }
+const roadLinesGlsl = `
+      // Markings: edge lines (around a junction's corners), the centre line
+      // (dashed, or a solid double line on bends and crests, ending before
+      // each junction), and a stop line across a side road's incoming lane.
+      float edge=(1.0-smoothstep(.065,.065+aa,abs(rd-4.13)))*mix(smoothstep(3.9,4.4,otherRoad),1.0,zone);
+      float single=(1.0-smoothstep(.065,.065+aaSide,abs(lateral)))*smoothstep(-.06,.06,dashes);
+      float twin=1.0-smoothstep(.05,.05+aaSide,abs(abs(lateral)-.16));
+      float centre=mix(single,twin,max(solidLine,highway))*smoothstep(.45,.45+aaJunction,junction)*(1.0-step(1.0,d))*(1.0-lineless);
+      // A highway's lane lines, dashed, 3.45 m either side of its centre.
+      centre=max(centre,(1.0-smoothstep(.065,.065+aaSide,abs(abs(lateral)-3.45)))*smoothstep(-.06,.06,dashes)*highway*smoothstep(.45,.45+aaJunction,junction));
+      float approach=info.a*2.0-1.0;
+      // Solid at a stop; dashed where it gives way to a roundabout (flagged nearer 0).
+      float flag=abs(approach), giveWay=smoothstep(.35,.45,flag)*(1.0-smoothstep(.75,.85,flag)), dashedAcross=smoothstep(.42,.5,fract(d/.9))*(1.0-smoothstep(.92,1.0,fract(d/.9)));
+      float stop=(smoothstep(.8,.9,flag)+giveWay*dashedAcross)*smoothstep(.1,.2,lateral*sign(approach))*(1.0-smoothstep(4.2,4.2+aa,d))*(1.0-smoothstep(.25,.25+aaJunction,abs(junction-.27)));`;
 const headlightGlsl = `uniform vec4 uHeadlight; uniform vec3 uHeadlightDir;
   // How brightly the headlights shine back off a reflective surface here
   // (road paint, reflectors): inside their beam, fading with distance.
@@ -529,6 +543,14 @@ function compileTerrain(shader) {
     float shoulder=0.0;
     // For synthwave: how much is road here, and its edge and centre lines.
     float synthRoad=0.0, synthEdge=0.0, synthCentre=0.0;
+    if(uSynth>.5){
+      // Only the roads' shape and lines show under its glass.
+      if(rd<7.6+aa){
+        float asphalt=1.0-smoothstep(4.65-aa-dirt*.15,4.65+aa+dirt*.15,rd);
+        ${roadLinesGlsl}
+        synthRoad=asphalt; synthEdge=edge*asphalt; synthCentre=max(centre,stop)*asphalt*(1.0-dirt);
+      }
+    }else{
     // Rain darkens the ground a little and the roads more; wet asphalt and
     // puddles turn glossy and mirror the sky (terrainMirror, after lighting).
     terrainRough=1.0;
@@ -587,22 +609,9 @@ function compileTerrain(shader) {
         tarmac=mix(tarmac,earth*(1.0-.35*uWet),dirt);
       }
       diffuseColor.rgb=mix(diffuseColor.rgb,tarmac,asphalt);
-      // Markings: edge lines (around a junction's corners), the centre line
-      // (dashed, or a solid double line on bends and crests, ending before
-      // each junction), and a stop line across a side road's incoming lane.
-      float edge=(1.0-smoothstep(.065,.065+aa,abs(rd-4.13)))*mix(smoothstep(3.9,4.4,otherRoad),1.0,zone);
-      float single=(1.0-smoothstep(.065,.065+aaSide,abs(lateral)))*smoothstep(-.06,.06,dashes);
-      float twin=1.0-smoothstep(.05,.05+aaSide,abs(abs(lateral)-.16));
-      float centre=mix(single,twin,max(solidLine,highway))*smoothstep(.45,.45+aaJunction,junction)*(1.0-step(1.0,d))*(1.0-lineless);
-      // A highway's lane lines, dashed, 3.45 m either side of its centre.
-      centre=max(centre,(1.0-smoothstep(.065,.065+aaSide,abs(abs(lateral)-3.45)))*smoothstep(-.06,.06,dashes)*highway*smoothstep(.45,.45+aaJunction,junction));
-      float approach=info.a*2.0-1.0;
-      // Solid at a stop; dashed where it gives way to a roundabout (flagged nearer 0).
-      float flag=abs(approach), giveWay=smoothstep(.35,.45,flag)*(1.0-smoothstep(.75,.85,flag)), dashedAcross=smoothstep(.42,.5,fract(d/.9))*(1.0-smoothstep(.92,1.0,fract(d/.9)));
-      float stop=(smoothstep(.8,.9,flag)+giveWay*dashedAcross)*smoothstep(.1,.2,lateral*sign(approach))*(1.0-smoothstep(4.2,4.2+aa,d))*(1.0-smoothstep(.25,.25+aaJunction,abs(junction-.27)));
+      ${roadLinesGlsl}
       float wear=clamp(age*.55+(smoothGrain(p*2.3)-.5)*.6+(smoothGrain(p*9.0+3.0)-.5)*.4*fine*still,0.0,1.0);
       float paint=max(edge*.72,max(centre*.88,stop*(1.0-.5*tracks)*.9))*(1.0-.6*wear)*(1.0-.55*patched)*(1.0-.8*slush)*(1.0-.92*packed)*asphalt*(1.0-dirt);
-      synthRoad=asphalt; synthEdge=edge*asphalt; synthCentre=max(centre,stop)*asphalt*(1.0-dirt);
       vec3 paintColor=vec3(.77,.72,.56);
       diffuseColor.rgb=mix(diffuseColor.rgb,paintColor,paint);
       // Road paint is retroreflective: in the headlights it shines back.
@@ -644,6 +653,7 @@ function compileTerrain(shader) {
         float c=pow(1.0-abs(sin(a.x)*sin(a.y)),7.0)+pow(1.0-abs(sin(b.x+.7)*sin(b.y-.4)),7.0);
         diffuseColor.rgb*=1.0+c*.42*fade;
       }
+    }
     }
     // Synthwave: dark glass ruled by a glowing grid, magenta on the low
     // ground and cyan up the mountains; black, glossy roads with neon lines.
@@ -836,7 +846,7 @@ function buildChunk({ cx, cz, ground: groundData, roadMap, roadInfo, river, brid
     }
     softenScenery(o.material, feature ? 'landmark' : o.userData.swap ? 'swap' : 'fade');
   });
-  const grassMesh = grass.build(grassData);
+  const grassMesh = grassData ? grass.build(grassData) : null;
   if (grassMesh) { grass.update(grassMesh, cx, cz, vehicle.x, vehicle.z); group.add(grassMesh); }
   profiler.record('chunkBuild', performance.now() - buildStart);
   // River water rides in world space (the water shader works in world
@@ -1379,7 +1389,7 @@ function beginWorldLoad(continueDriving = false) {
   for (const tile of ultraTiles.values()) disposeTile(tile); ultraTiles.clear();
   terrain = createTerrain(world);
   waterSystem.clear(); distantAt = { x: Infinity, z: Infinity }; distantReady = false;
-  workers = [0, 1].map(() => new Worker(new URL('./world-worker.mjs?v=climate-1', import.meta.url), { type: 'module' }));
+  workers = [0, 1].map(() => new Worker(new URL('./world-worker.mjs?v=synth-lean-1', import.meta.url), { type: 'module' }));
   const failed = message => { streamError = message; running = false; $('loadError').hidden = false; $('startBtn').firstElementChild.textContent = 'Unable to prepare the world'; };
   const received = ({ data }) => {
     if (data.generation !== generation) return;
@@ -2101,7 +2111,7 @@ function drawMap() {
     // grid points every sample was a full terrain evaluation (480 a redraw).
     const x = Math.round((vehicle.x - (ix - w / 2) / scale) / GRID) * GRID, z = Math.round((vehicle.z - (iy - h / 2) / scale) / GRID) * GRID, elev = world.height(x, z);
     // Lighter with height; the square root keeps plains varied and peaks below white.
-    const band = Math.floor(Math.sqrt(Math.max(0, elev)) * 1.2), sand = world.desertAt(x, z, elev);
+    const band = Math.floor(Math.sqrt(Math.max(0, elev)) * 1.2), sand = neon ? 0 : world.desertAt(x, z, elev);
     const frost = world.frostAt(x, z);
     ctx.fillStyle = world.waterAt(x, z) ? water : world.iceAt(x, z) ? ice : !neon && frost > .5 ? `hsl(205 ${8 + band * .3}% ${58 + band * 1.2}%)` : neon ? `hsl(${mix(272, 195, smoothstep(8, 22, band))} 55% ${8 + band * 1.1}%)` : `hsl(${mix(89 - band * 1.5, 40, sand)} ${mix(16, 38, sand)}% ${25 + band * 1.7 + sand * 13}%)`; ctx.fillRect(ix, iy, step + 1, step + 1);
   }
@@ -2284,14 +2294,11 @@ function render(dt) {
   if (garage.open) { renderGarage(); return; } // the showroom, in place of the world
   const pose = vehiclePresentation.sample(running ? accumulator / FIXED_DT : 1);
   streamUniforms.uStreamCenter.value.set(pose.x, pose.z);
-  for (const chunk of chunks.values()) {
-    grass.update(chunk.grassMesh, chunk.cx, chunk.cz, pose.x, pose.z);
-    if (synthwave.on && chunk.grassMesh) chunk.grassMesh.visible = false; // the grid lies bare
-  }
+  for (const chunk of chunks.values()) grass.update(chunk.grassMesh, chunk.cx, chunk.cz, pose.x, pose.z);
   // Grass sways with the weather's wind (harder in a storm) and parts for the car.
   const breeze = Math.hypot(weather.gust.x, weather.gust.z) || 1, storm = 1 + .7 * Math.max(weather.rain, weather.snow, weather.sand, weather.blizzard);
   // The simulation clock, so pausing freezes the grass like everything else.
-  grass.animate(pose.time, pose.x, pose.y, pose.z, weather.gust.x / breeze * storm, weather.gust.z / breeze * storm, Math.abs(pose.speed));
+  if (!synthwave.on) grass.animate(pose.time, pose.x, pose.y, pose.z, weather.gust.x / breeze * storm, weather.gust.z / breeze * storm, Math.abs(pose.speed));
   roadLook.uCalm.value = smoothstep(11, 33, Math.abs(pose.speed)); // the road's fine detail softens at speed, like the grass
   if (pose.useAttitude) car.quaternion.set(pose.qx, pose.qy, pose.qz, pose.qw);
   else car.rotation.set(pose.pitch, pose.heading, pose.roll, 'YXZ');
