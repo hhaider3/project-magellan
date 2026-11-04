@@ -282,7 +282,7 @@ With the development server running:
 
 | Command | What it measures |
 | --- | --- |
-| `PROFILE_GPU=1 PW_CHANNEL=chrome node scripts/profile-frame-timing.mjs output/timing/drive.json` | Frame intervals, CPU percentiles and streaming work over a 20 s seed-3 drive |
+| `PROFILE_GPU=1 PW_CHANNEL=chrome node scripts/profile-frame-timing.mjs output/timing/drive.json` | Frame intervals, CPU percentiles and streaming work over a 20 s seed-3 drive. See [docs/performance.md](docs/performance.md) |
 | `PROFILE_GPU=1 PW_CHANNEL=chrome node scripts/audit-frame-alignment.mjs` | Car/world synchronization on road, desert and water drives (not an FPS benchmark) |
 | `npm run profile` | Repeatable software-rendered CPU timings, draw counts and scene sizes |
 | `PW_CHANNEL=chrome node scripts/profile-grass.mjs` | Grass on/off render cost in the same scene |
