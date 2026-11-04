@@ -76,7 +76,7 @@ const vertexShader = /* glsl */ `
   }`;
 
 const fragmentShader = /* glsl */ `
-  uniform float uTime;
+  uniform float uTime, uDay;
   varying vec2 vUv;
   varying float vAlong, vAge, vLife, vBoost, vStrength, vLayer, vFacing, vFade, vLift;
   const vec3 CYAN = vec3(.03, .78, 1.), HOT = vec3(.82, .98, 1.), BLACK = vec3(.002, .004, .012);
@@ -119,6 +119,8 @@ const fragmentShader = /* glsl */ `
       float level = vLayer < 3.5 ? mix(.42, 1., vBoost) : 1.;
       color = (HOT * core * (.8 + heat * .4) + CYAN * fringe * (.7 + flow * .5)) * level;
     }
+    // By day there's light behind it to wash out: its colour covers what it adds to.
+    alpha = max(alpha, min(1., max(color.r, max(color.g, color.b))) * uDay);
     gl_FragColor = vec4(color * strength, alpha * strength);
   }`;
 
@@ -154,7 +156,7 @@ export function createCycleTrail(scene) {
   const indices = new Uint16Array((SLOTS - 1) * 6);
   for (let i = 0; i < SLOTS - 1; i++) indices.set([i * 2, i * 2 + 1, i * 2 + 2, i * 2 + 2, i * 2 + 1, i * 2 + 3], i * 6);
   geometry.setIndex(new THREE.BufferAttribute(indices, 1));
-  const uniforms = THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { uTime: { value: 0 }, uLife: { value: TRAIL_LIFE }, uPixels: { value: 720 }, uHead: { value: 0 } }]);
+  const uniforms = THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { uTime: { value: 0 }, uLife: { value: TRAIL_LIFE }, uPixels: { value: 720 }, uHead: { value: 0 }, uDay: { value: 0 } }]);
   const material = new THREE.ShaderMaterial({
     vertexShader, fragmentShader, uniforms, fog: true, transparent: true, depthWrite: false, side: THREE.DoubleSide,
     blending: THREE.CustomBlending, blendEquation: THREE.AddEquation, blendSrc: THREE.OneFactor, blendDst: THREE.OneMinusSrcAlphaFactor,
@@ -192,7 +194,7 @@ export function createCycleTrail(scene) {
   }
   // s: the emitter (top) and the point below it (base) in the world, the bike's
   // heading and forward speed, whether it's boosting, the canvas height in
-  // pixels and the ground's height: groundAt(x, z).
+  // pixels, the ground's height: groundAt(x, z), and how much daylight (0 to 1).
   function update(dt, s) {
     clock += dt;
     let dirty = end - 1, whole = false; // the head changes, at least
@@ -246,7 +248,7 @@ export function createCycleTrail(scene) {
     else buffer.addUpdateRange(offset(dirty), offset(end) - offset(dirty));
     buffer.needsUpdate = true;
     geometry.setDrawRange(start * 6, (end - start - 1) * 6);
-    uniforms.uTime.value = clock; uniforms.uPixels.value = s.pixels; uniforms.uHead.value = along;
+    uniforms.uTime.value = clock; uniforms.uPixels.value = s.pixels; uniforms.uHead.value = along; uniforms.uDay.value = s.daylight ?? 0;
     mesh.visible = true;
   }
   // Drawn once during the load's warm-up, so its shader doesn't stall the first ride.

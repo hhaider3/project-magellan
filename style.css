@@ -1547,8 +1547,8 @@ body.synthwave .setup .setting b { background:rgba(32,8,62,.42); border-color:rg
 body.synthwave .setup button.setting:hover b { border-color:var(--yellow); box-shadow:0 0 12px rgba(255,79,184,.45); }
 .setup button.setting:not(.toggle) b::after { margin-left:4px; }
 
-/* The light cycle is available only in Synth mode. */
-body:not(.synthwave) [data-vehicle="lightcycle"],
+/* The Light Cycle comes first in Synth, its home mode, and has nothing to fly. */
+body.synthwave #vehicleLightcycle { order:-1; }
 body.lightcycle #flyBtn, body.lightcycle #menuFly,
 body.lightcycle .flight-control { display: none !important; }
 body.lightcycle { --accent: #71e6ff; }
@@ -1556,7 +1556,8 @@ body.lightcycle { --accent: #71e6ff; }
 body:not(.lightcycle) .cycle-only { display: none !important; }
 
 /* The Light Cycle's HUD: cyan light on dark glass, each line glowing like the
-   bike's own circuitry. Magenta is for the boost: firing, or running low. */
+   bike's own circuitry. Boosting, it turns black with neon edges, as the wall of
+   light does. Magenta only warns that the meter is running low. */
 body.lightcycle .in-game, body.lightcycle #touch, body.lightcycle header {
   --yellow:#5ff0ff;
   --line:rgba(95,240,255,.42);
@@ -1589,17 +1590,22 @@ body.lightcycle #toast { background:rgba(3,7,26,.88); border-color:rgba(95,240,2
 #neonRow.low { color:#ff4fb8; text-shadow:0 0 6px rgba(255,79,184,.7); }
 #neonRow.low .gas-track { background:rgba(255,79,184,.16); box-shadow:inset 0 0 0 1px rgba(255,79,184,.4); }
 #neonRow.low .gas-track i { background:#ff4fb8; box-shadow:0 0 10px #ff4fb8; }
-#neonRow.active .gas-track i { background:#ff4fb8; box-shadow:0 0 12px #ff4fb8, 0 0 22px rgba(255,79,184,.6); animation:neon-burn .28s ease-in-out infinite alternate; }
-@keyframes neon-burn { to { filter:brightness(1.45); } }
-body.neon-on .speed-row strong { color:#fff; text-shadow:0 0 5px #ffd2ec, 0 0 26px #ff4fb8, 0 0 44px rgba(255,79,184,.55); }
-body.neon-on #surfaceState { color:#ff7fcb; text-shadow:0 0 8px rgba(255,79,184,.85); }
-body.neon-on .speed-track i { background:#ff4fb8; box-shadow:0 0 10px #ff4fb8; }
+#neonRow.active { color:var(--yellow); text-shadow:0 0 6px rgba(95,240,255,.6); }
+#neonRow.active .gas-track { background:rgba(95,240,255,.14); box-shadow:inset 0 0 0 1px rgba(95,240,255,.3); }
+#neonRow.active .gas-track i, body.neon-on .speed-track i { background:#01030a; box-shadow:0 0 0 1px #5ff0ff, 0 0 8px #5ff0ff; }
+#neonRow.active .gas-track i { animation:neon-burn .28s ease-in-out infinite alternate; }
+@keyframes neon-burn { to { box-shadow:0 0 0 1px #b8f8ff, 0 0 14px #5ff0ff; } }
+body.neon-on .speed-row strong { color:#01030a; -webkit-text-stroke:1.5px #5ff0ff; paint-order:stroke fill; text-shadow:0 0 8px rgba(95,240,255,.85), 0 0 26px rgba(95,240,255,.5); }
+/* Small print can't be black on black: a black tag with a neon edge, and the
+   tag takes up no more room than the words did, so nothing moves as it fires. */
+body.neon-on #surfaceState, body.neon-on #ctBoost { width:max-content; margin:-2px -6px 0 auto; padding:2px 6px; color:#8ff5ff; background:#01030a; box-shadow:0 0 0 1px #5ff0ff, 0 0 8px rgba(95,240,255,.6); text-shadow:0 0 6px rgba(95,240,255,.7); }
+body.neon-on #surfaceState { margin-bottom:0; }
+body.neon-on #ctBoost { margin-bottom:-2px; justify-self:end; }
 /* Its telemetry panel: the Roadster's layout, in its own light. */
 #cycleTelemetry .tm-pedals i { background:rgba(95,240,255,.18); }
 #cycleTelemetry .tm-pedals u { box-shadow:0 0 6px #5ff0ff; }
 #cycleTelemetry .tm-g svg { height:54px; stroke:rgba(95,240,255,.55); stroke-width:1.2; stroke-linecap:round; }
 #cycleTelemetry #ctNeedle { stroke:var(--yellow); stroke-width:2; filter:drop-shadow(0 0 3px #5ff0ff); }
 #cycleTelemetry .tm-dynamics dd { text-shadow:0 0 6px rgba(95,240,255,.6); }
-body.neon-on #ctBoost { color:#ff7fcb; text-shadow:0 0 6px rgba(255,79,184,.8); }
 /* Its meter needs the room on phones, as the Roadster's does. */
 body.lightcycle.touch #dashboard { bottom:calc(env(safe-area-inset-bottom) + 118px); }

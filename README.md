@@ -78,11 +78,11 @@ You need a browser with WebGL and module workers. Everything else is bundled: Th
 | F | Unfold the wings to fly; press again to fold them and land. Roadster: hold to hover on the thrusters. Light Cycle: neon boost to 500 km/h (press) |
 | E | Roadster: boost on the rear thrusters (hold) |
 | Q E | Light Cycle: lean further left / right (it also leans by itself as it turns); leaning into a turn tightens it |
-| ↑ ↓ | Light Cycle: lift and lower the front wheel (W/S drive it) |
+| ↓ ↑ | Light Cycle: lift and lower the front wheel (W/S drive it) |
 | G | Roadster: suction fans on / off |
 | R | Recover onto nearby clear ground |
 | C | Camera: chase, wide or bonnet |
-| V | Switch vehicle where you are: the ATLAS, the Roadster and, in Synth mode, the Light Cycle (also the ⇄ button at the top right) |
+| V | Switch vehicle where you are: the ATLAS, the Roadster and the Light Cycle (also the ⇄ button at the top right) |
 | L | Headlights |
 | M | Mute / unmute |
 | Esc / P | Pause / resume |
@@ -282,7 +282,7 @@ With the development server running:
 
 | Command | What it measures |
 | --- | --- |
-| `PROFILE_GPU=1 PW_CHANNEL=chrome node scripts/profile-frame-timing.mjs output/timing/drive.json` | Frame intervals, CPU percentiles and streaming work over a 20 s seed-3 drive. See [docs/performance.md](docs/performance.md) |
+| `PROFILE_GPU=1 PW_CHANNEL=chrome node scripts/profile-frame-timing.mjs output/timing/drive.json` | Frame intervals, CPU percentiles and streaming work over a 20 s seed-3 drive |
 | `PROFILE_GPU=1 PW_CHANNEL=chrome node scripts/audit-frame-alignment.mjs` | Car/world synchronization on road, desert and water drives (not an FPS benchmark) |
 | `npm run profile` | Repeatable software-rendered CPU timings, draw counts and scene sizes |
 | `PW_CHANNEL=chrome node scripts/profile-grass.mjs` | Grass on/off render cost in the same scene |

@@ -17,9 +17,8 @@ import * as THREE from 'three';
 // smear over farther ones.
 //
 // The car moves with the camera and stays sharp: any point inside its box
-// (the plane's, wings and all) is taken as not moving. So is its shadow: any
-// point whose line to the sun (or moon) passes through that box. Smeared with
-// the ground streaming past beneath it, the shadow went fuzzy and shimmered.
+// (the plane's, wings and all) is taken as not moving. Everything else blurs,
+// its shadow included, with the ground the shadow lies on.
 //
 // With the blur off the scene still comes through the target, copied to the
 // screen as it is: the target is the scene's multisampling, so the screen
@@ -33,7 +32,7 @@ const SHUTTER = .5;      // the share of the frame's motion each frame shows
 const motionChunk = /* glsl */ `
   uniform sampler2D tDepth;
   uniform mat4 uInvViewProj, uPrevViewProj, uCarInverse;
-  uniform vec3 uCarMin, uCarMax, uShadowMin, uLight;
+  uniform vec3 uCarMin, uCarMax;
   uniform float uCarMask, uShutter, uMaxBlur, uNear, uFar;
   uniform vec2 uResolution;
   // The point seen at uv (with this depth), and how far it moved on screen
@@ -48,12 +47,6 @@ const motionChunk = /* glsl */ `
     if (uCarMask > .5) {
       vec3 local = (uCarInverse * vec4(world, 1.0)).xyz;
       if (all(greaterThan(local, uCarMin)) && all(lessThan(local, uCarMax))) return vec2(0.0);
-      // A ray from the point toward the light, against the box (slab test).
-      vec3 toward = mat3(uCarInverse) * uLight, inverse = 1.0 / (toward + sign(toward) * 1e-5 + vec3(1e-7));
-      vec3 t0 = (uShadowMin - local) * inverse, t1 = (uCarMax - local) * inverse;
-      vec3 near = min(t0, t1), far = max(t0, t1);
-      float enter = max(max(near.x, near.y), near.z), leave = min(min(far.x, far.y), far.z);
-      if (leave > max(enter, 0.0) && enter < 40.0) return vec2(0.0);
     }
     vec4 before = uPrevViewProj * vec4(world, 1.0);
     if (before.w <= 0.0) return vec2(0.0);
@@ -143,7 +136,10 @@ const blurShader = /* glsl */ `
   void main() {
     vec2 px = gl_FragCoord.xy, uv = px / uResolution;
     vec4 color = texture2D(tColor, uv);
-    vec2 reach = texelFetch(tNeighbours, ivec2(px / uTile), 0).xy;
+    // Which tile's blur: each pixel looks up to half a tile off, or the square
+    // tiles show where one's blur meets the next's on a bright line.
+    vec2 scatter = fract(52.9829189 * fract(vec2(dot(px, vec2(.06711056, .00583715)), dot(px, vec2(.00583715, .06711056))))) - .5;
+    vec2 reach = texelFetch(tNeighbours, ivec2(clamp((px + scatter * uTile) / uTile, vec2(0.0), uResolution / uTile - .5)), 0).xy;
     float reachLength = length(reach);
     if (reachLength < .5) { gl_FragColor = color; return; }
     vec4 here = texelFetch(tMotion, ivec2(px), 0);
@@ -188,7 +184,6 @@ export function createMotionBlur(renderer) {
     tColor: { value: target.texture }, tDepth: { value: target.depthTexture }, tMotion: { value: motion.texture }, tRows: { value: rows.texture }, tTiles: { value: tiles.texture }, tNeighbours: { value: neighbours.texture },
     uInvViewProj: { value: new THREE.Matrix4() }, uPrevViewProj: { value: new THREE.Matrix4() }, uCarInverse: { value: carInverse },
     uCarMin: { value: new THREE.Vector3() }, uCarMax: { value: new THREE.Vector3() }, uCarMask: { value: 0 },
-    uShadowMin: { value: new THREE.Vector3() }, uLight: { value: new THREE.Vector3(0, 1, 0) },
     uShutter: { value: SHUTTER }, uMaxBlur: { value: 1 }, uNear: { value: .1 }, uFar: { value: 1000 },
     uResolution: { value: new THREE.Vector2(1, 1) }, uTile: { value: 1 }, uTiles: { value: new THREE.Vector2(1, 1) },
   };
@@ -213,8 +208,9 @@ export function createMotionBlur(renderer) {
   }
   // The car's (or plane's) box in its own frame, from the meshes drawn now,
   // with its floor a little above the ground it stands on (so the ground
-  // around the wheels still blurs).
-  function measureCar(car) {
+  // around the wheels still blurs), and higher as it leans (floorLift, metres),
+  // or the tipped box takes in the ground on the side it leans from.
+  function measureCar(car, floorLift) {
     carInverse.copy(car.matrixWorld).invert(); carBox.makeEmpty();
     car.traverseVisible(o => {
       if (!o.isMesh) return;
@@ -223,9 +219,8 @@ export function createMotionBlur(renderer) {
       for (let i = 0; i < 8; i++) carBox.expandByPoint(corner.set(i & 1 ? box.max.x : box.min.x, i & 2 ? box.max.y : box.min.y, i & 4 ? box.max.z : box.min.z).applyMatrix4(toLocal));
     });
     if (carBox.isEmpty()) return false;
-    uniforms.uCarMin.value.copy(carBox.min).subScalar(.08); uniforms.uCarMin.value.y = carBox.min.y + .3;
+    uniforms.uCarMin.value.copy(carBox.min).subScalar(.08); uniforms.uCarMin.value.y = carBox.min.y + .3 + floorLift;
     uniforms.uCarMax.value.copy(carBox.max).addScalar(.08);
-    uniforms.uShadowMin.value.copy(carBox.min).subScalar(.08); // for the shadow, down to the ground
     return true;
   }
   return {
@@ -236,10 +231,8 @@ export function createMotionBlur(renderer) {
     // The next frame starts afresh: after a cut, a reset or a pause.
     reset() { moved = false; },
     // Draw the scene, through the blur or (blur false) as it is. car: the
-    // vehicle, kept sharp (with its shadow), or null; light: the direction
-    // toward the light casting that shadow.
-    render(scene, camera, car, blur = true, light = null) {
-      if (light) uniforms.uLight.value.copy(light).normalize();
+    // vehicle, kept sharp, or null; floorLift: see measureCar.
+    render(scene, camera, car, blur = true, floorLift = 0) {
       resize();
       drawing = true;
       renderer.setRenderTarget(target); renderer.render(scene, camera);
@@ -250,7 +243,7 @@ export function createMotionBlur(renderer) {
       uniforms.uInvViewProj.value.copy(viewProj).invert();
       if (!moved) uniforms.uPrevViewProj.value.copy(viewProj);
       uniforms.uNear.value = camera.near; uniforms.uFar.value = camera.far;
-      uniforms.uCarMask.value = car && measureCar(car) ? 1 : 0;
+      uniforms.uCarMask.value = car && measureCar(car, floorLift) ? 1 : 0;
       draw('motion', motion); draw('rows', rows); draw('tiles', tiles); draw('neighbours', neighbours); draw('blur', null);
       uniforms.uPrevViewProj.value.copy(viewProj); moved = true;
     },

@@ -11,10 +11,11 @@ import { CYCLE_LEAN } from '../cycle-motion.mjs';
 
 const flat = { surface: () => 0, gradient: () => ({ x: 0, z: 0 }), roadAt: () => ({ d: 0 }) };
 
-test('light cycle selection is exclusive to Synth, including invalid saved choices and URLs', () => {
-  assert.deepEqual(vehicleOrder(false), ['atlas', 'roadster']);
+test('the light cycle is in both modes, and comes first in Synth; invalid saved choices and URLs fall back', () => {
+  assert.deepEqual(vehicleOrder(false), ['atlas', 'roadster', 'lightcycle']);
   assert.deepEqual(vehicleOrder(true), ['lightcycle', 'atlas', 'roadster']);
-  assert.equal(vehicleForTheme('lightcycle', false), 'atlas');
+  assert.equal(vehicleForTheme('lightcycle', false), 'lightcycle');
+  assert.equal(vehicleForTheme(undefined, false), 'atlas');
   assert.equal(vehicleForTheme(undefined, true), 'lightcycle');
   assert.equal(vehicleForTheme('roadster', false), 'roadster');
   assert.equal(vehicleForTheme('atlas', true), 'atlas');
@@ -92,6 +93,16 @@ test('jumping high over water does not fire the boost until it comes down', () =
   for (let i = 0; i < 3 / FIXED_DT && !bike.neonBoost; i++) stepVehicle(bike, {}, lake, []);
   assert.equal(bike.neonBoost, true);
   assert.ok(bike.y < 2.6);
+});
+
+test('a frozen lake is ice to the bike, not water to skip', () => {
+  const world = createWorld(77), lake = world.starterLake; // the Frostlands: Mirror Lake is frozen
+  assert.ok(world.frozen(lake));
+  const bike = createVehicle(world, lake.x, lake.z, 0, 'lightcycle');
+  for (let i = 0; i < 30; i++) stepVehicle(bike, { up: true }, world, []);
+  assert.equal(bike.overWater, false);
+  assert.equal(bike.neonBoost, false);
+  assert.equal(bike.onIce, true);
 });
 
 test('a bridge over water is land to the bike', () => {

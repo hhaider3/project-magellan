@@ -1,4 +1,4 @@
-import { createCycleTrail, createSkipSpray } from './cycle-trail.mjs?v=ribbon-2';
+import { createCycleTrail, createSkipSpray } from './cycle-trail.mjs?v=ribbon-3';
 import { skimWorld, CYCLE_MAX_LEAN } from './cycle-motion.mjs?v=cycle-4';
 import { createTerrain } from './terrain.mjs?v=lightcycle-3';
 import { createWater } from './water.mjs?v=frost-1';
@@ -39,7 +39,7 @@ import { CHUNK, GRID, ROAD_HALF, FIXED_DT, featurePoint, clamp, mix, smoothstep,
 import { SNOW_LINE } from './landforms.mjs?v=climate-1';
 import { ROAD_MAP } from './roads.mjs?v=open-start-1';
 import { buildLandmark, cloneOwnedGeometry, landmarkStandinSteps, landmarkSwapDistance } from './scenery.mjs?v=lightcycle-3';
-import { createMotionBlur } from './motion-blur.mjs?v=blur-2';
+import { createMotionBlur } from './motion-blur.mjs?v=blur-3';
 
 const $ = id => document.getElementById(id);
 const coarse = matchMedia('(pointer:coarse)').matches || navigator.maxTouchPoints > 0;
@@ -1375,7 +1375,7 @@ function precompileShaders() {
   updateDesiredCamera(); camera.position.copy(desiredCamera); camera.lookAt(look); camera.updateMatrixWorld();
   if (plumes) for (const group of Object.values(plumes.groups)) for (const mesh of group.plumes) mesh.visible = true;
   lightning.warm(true); petals.warm(true); cycleTrail.warm(true);
-  motionBlur.render(scene, camera, car, true, sunDirection);
+  motionBlur.render(scene, camera, car, true);
   plumes?.update({}, 1, 0); lightning.warm(false); petals.warm(false); cycleTrail.warm(false);
   if (natureWarm) { scene.remove(natureWarm); natureWarm.traverse(o => { if (o.isInstancedMesh) o.dispose(); }); }
   started = wasStarted; resetCamera();
@@ -1599,8 +1599,8 @@ function syncInput() {
   // Light Cycle: F for its neon boost, Q / E to lean, A / D to turn.
   const roadster = vehicle.kind === 'roadster', cycle = vehicle.kind === 'lightcycle';
   if (cycle) { input.up = keyStates.has('KeyW') || touches.includes('up'); input.down = keyStates.has('KeyS') || touches.includes('down'); }
-  input.wheelieUp = cycle && (keyStates.has('ArrowUp') || touches.includes('wheelieUp'));
-  input.wheelieDown = cycle && (keyStates.has('ArrowDown') || touches.includes('wheelieDown'));
+  input.wheelieUp = cycle && (keyStates.has('ArrowDown') || touches.includes('wheelieUp')); // pull back to lift the front
+  input.wheelieDown = cycle && (keyStates.has('ArrowUp') || touches.includes('wheelieDown'));
   input.lift = roadster && (keyStates.has('KeyF') || touches.includes('lift'));
   input.boost = (roadster || cycle) && (keyStates.has(cycle ? 'KeyF' : 'KeyE') || touches.includes('boost'));
   input.leanLeft = cycle && keyStates.has('KeyQ'); input.leanRight = cycle && keyStates.has('KeyE');
@@ -1691,7 +1691,7 @@ $('startBtn').onclick = resume; $('pauseBtn').onclick = pause; $('newWorld').onc
 $('themeBtn').onclick = () => {
   const on = !synthwave.on;
   settings.theme = on ? 'synthwave' : 'normal'; saveSettings();
-  setSynthwave(on);
+  setSynthwave(on); cycleTrail.clear();
   switchVehicle(vehicleForTheme(on ? settings.synthVehicle : settings.vehicle, on));
   syncSettings();
   if (audio?.music.playing) { audio.music.next(); setTimeout(syncTrack, 50); }
@@ -1764,7 +1764,7 @@ function switchVehicle(requested = null) {
     reportedBoat = vehicle.boatMode; reportedFlying = vehicle.flying; reportedPlane = vehicle.flightMode; reportedLanding = vehicle.landings;
     clearInput(); vehiclePresentation.reset(vehicle); resetCamera(); updateHUD();
     if (!loading) { $('startBtn').disabled = false; $('startBtn').firstElementChild.textContent = started ? 'Keep exploring' : 'Start exploring'; }
-    toast(kind === 'lightcycle' ? 'Light Cycle · F neon boost · Q/E lean · ↑/↓ wheelie' : kind === 'roadster' ? 'Roadster · hold F to hover, E to boost' : 'ATLAS · it sails and flies');
+    toast(kind === 'lightcycle' ? 'Light Cycle · F neon boost · Q/E lean · ↓/↑ wheelie' : kind === 'roadster' ? 'Roadster · hold F to hover, E to boost' : 'ATLAS · it sails and flies');
   }).catch(error => { if (request === vehicleRequest) vehicleFailed(error); });
 }
 // The garage (View cars on the menu): each car on a turntable, drawn on the
@@ -1975,9 +1975,8 @@ function syncSettings() {
   for (const button of document.querySelectorAll('[data-vehicle]')) button.setAttribute('aria-pressed', String(button.dataset.vehicle === vehicleKind));
   document.body.classList.toggle('roadster', roadster);
   document.body.classList.toggle('lightcycle', cycle);
-  $('vehicleLightcycle').hidden = !synthwave.on;
   const copy = $('menuVehicleCopy');
-  if (copy) copy.innerHTML = cycle ? 'Ride the neon grid on your Light Cycle.<br>F neon boost to 500 km/h · Q/E lean · ↑/↓ front lift.' : roadster ? 'Your Roadster skims lakes on its thrusters.<br>Hold F to hover, E to boost.' : 'Find a lake. Your car becomes a boat.<br>Press F (or FLY) and it takes to the sky.';
+  if (copy) copy.innerHTML = cycle ? 'Your Light Cycle leaves a wall of light behind it.<br>F neon boost to 500 km/h · Q/E lean · ↓/↑ front lift.' : roadster ? 'Your Roadster skims lakes on its thrusters.<br>Hold F to hover, E to boost.' : 'Find a lake. Your car becomes a boat.<br>Press F (or FLY) and it takes to the sky.';
   $('menuFly').innerHTML = roadster ? '<kbd>F</kbd> HOVER' : '<kbd>F</kbd> FLY';
   settingValue('perfBtn', settings.perfMeter ? 'On' : 'Off'); $('perfBtn').setAttribute('aria-pressed', String(Boolean(settings.perfMeter)));
   settingValue('blurBtn', !settings.motionBlur ? 'Off' : blurShed ? 'Off (Auto)' : 'On'); $('blurBtn').setAttribute('aria-pressed', String(settings.motionBlur && !blurShed));
@@ -2217,7 +2216,7 @@ function updateCycleTelemetry() {
   $('ctLift').textContent = `${Math.round(lift * 100)}%`; $('ctLiftBar').style.width = lift * 100 + '%';
   $('ctBoost').textContent = v.neonBoost ? v.neonForced ? 'WATER FIRED' : 'ACTIVE' : charge === 100 ? 'READY' : v.neonCharge >= .25 ? `READY ${charge}%` : 'CHARGING';
   $('ctTrail').textContent = `${Math.round(cycleTrail.length)} M`;
-  $('ctSurface').textContent = v.overWater ? 'WATER' : v.onDirt ? 'DIRT' : v.onRoad ? 'ROAD' : 'GRID';
+  $('ctSurface').textContent = v.overWater ? 'WATER' : v.onIce ? 'ICE' : v.onDirt ? 'DIRT' : v.onRoad ? 'ROAD' : synthwave.on ? 'GRID' : 'WILD';
 }
 function updateHUD() {
   const hudStarted = performance.now();
@@ -2256,7 +2255,7 @@ function updateHUD() {
       : !vehicle.grounded ? 'A LITTLE AIR' : input.brake && speed > 10 ? 'TAKE IT SIDEWAYS' : vehicle.onIce ? 'ON THIN ICE' : vehicle.onDirt ? 'ON THE TRACK' : vehicle.onRoad ? 'ON THE ROAD' : 'OFF THE BEATEN PATH';
     $('airtime').textContent = hovering ? `HOVER · ${Math.max(0, vehicle.y - vehicle.groundY).toFixed(1)} M` : vehicle.overWater ? `${vehicle.waterDepth.toFixed(1)} M BELOW` : `GAS ${Math.round(vehicle.gas * 100)}% · BEST JUMP ${Math.round(vehicle.bestJump)} M`;
   } else if (cycle) {
-    $('surfaceState').textContent = vehicle.skimming ? 'SKIPPING THE WATER' : vehicle.neonBoost ? 'NEON BOOST' : !vehicle.grounded ? 'A LITTLE AIR' : input.brake && speed > 10 ? 'TAKE IT SIDEWAYS' : vehicle.onDirt ? 'ON THE TRACK' : vehicle.onRoad ? 'ON THE ROAD' : 'OFF THE BEATEN PATH';
+    $('surfaceState').textContent = vehicle.skimming ? 'SKIPPING THE WATER' : vehicle.neonBoost ? 'NEON BOOST' : !vehicle.grounded ? 'A LITTLE AIR' : input.brake && speed > 10 ? 'TAKE IT SIDEWAYS' : vehicle.onIce ? 'ON THIN ICE' : vehicle.onDirt ? 'ON THE TRACK' : vehicle.onRoad ? 'ON THE ROAD' : 'OFF THE BEATEN PATH';
     $('airtime').textContent = vehicle.overWater ? `${vehicle.waterDepth.toFixed(1)} M BELOW` : `BEST JUMP ${Math.round(vehicle.bestJump)} M`;
   } else {
   $('surfaceState').textContent = flying ? !vehicle.flightMode ? 'WINGS FOLDED — COMING DOWN' : vehicle.alpha > .24 || vehicle.airspeed < STALL_SPEED ? 'STALL WARNING — LOWER THE NOSE' : 'FLYING'
@@ -2388,16 +2387,16 @@ function render(dt) {
   const throttle = wingsActive ? flightAxes(input).throttle : throttleInput();
   body.rotation.x = (throttle > 0 ? -.012 * throttle : -.024 * throttle) * (1 - pose.transform);
   if (vehicle.kind === 'lightcycle') body.rotation.set(0, 0, 0);
-  if (synthwave.on && vehicle.kind === 'lightcycle' && shownAsset?.kind === 'lightcycle' && trailEmitter) {
+  if (vehicle.kind === 'lightcycle' && shownAsset?.kind === 'lightcycle' && trailEmitter) {
     // From the ground under the tail up to the emitter, in the bike's own pose.
     trailEmitter.getWorldPosition(trailTop);
     car.localToWorld(car.worldToLocal(trailBase.copy(trailTop)).setY(.03));
-    cycleTrail.update(running ? dt : 0, { top: trailTop, base: trailBase, heading: pose.heading, speed: pose.speed, boost: vehicle.neonBoost, pixels: renderer.domElement.height, groundAt: trailGround });
+    cycleTrail.update(running ? dt : 0, { top: trailTop, base: trailBase, heading: pose.heading, speed: pose.speed, boost: vehicle.neonBoost, pixels: renderer.domElement.height, groundAt: trailGround, daylight: synthwave.on ? 0 : dayLight.day });
   } else cycleTrail.clear();
   wheelSpinners.forEach((w, i) => w.rotation.x = pose.wheelAngle * (vehicle.kind === 'lightcycle' ? .604 / (i === 0 ? .594 : .614) : 1));
   wheelPivots.forEach(p => { if (p.name.startsWith('Wheel_F')) p.rotation.y = pose.steer * .4 * (1 - pose.transform); });
   brakeMat.emissiveIntensity = throttle < -.05 || (input.brake && !wingsActive) ? 2 : .25;
-  car.visible = (cameraMode !== 2 || !running) && (shownAsset?.kind !== 'lightcycle' || synthwave.on);
+  car.visible = cameraMode !== 2 || !running;
   // The soft shadow lies on the ground's own slope, both ways (as the wheels
   // meet it): tilted only fore and aft, on a sideways slope half of it sank
   // into the ground and cut a straight line along the car.
@@ -2478,7 +2477,7 @@ function render(dt) {
   // Through the motion blur while driving or flying (on the menus nothing
   // moves); on computers through its target either way.
   const blur = settings.motionBlur && !blurShed && running;
-  if (blur || !screenMultisampled) { motionBlur.render(scene, camera, car.visible ? car : null, blur, sunDirection); drawStats = motionBlur.stats; }
+  if (blur || !screenMultisampled) { motionBlur.render(scene, camera, car.visible ? car : null, blur, Math.abs(Math.sin(bikeLean)) * .2); drawStats = motionBlur.stats; }
   else { renderer.render(scene, camera); motionBlur.reset(); drawStats = renderer.info.render; }
   if (timed) gpuTimer.end();
   profiler.record('renderCPU', performance.now() - renderStarted, testMode ? { time: pose.time, transform: pose.transform, wakes: waterSystem.wakeCount } : undefined);

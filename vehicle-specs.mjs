@@ -1,14 +1,14 @@
 // What the garage shows of each car. The figures are the simulation's own
 // (world.mjs, flat ground, full throttle; tests/vehicle-specs.test.mjs checks
 // them); the ratings out of 10 compare the vehicles on those figures.
-export const VEHICLE_ORDER = ['atlas', 'roadster'];
-export const SYNTH_VEHICLE_ORDER = ['lightcycle', ...VEHICLE_ORDER];
+export const VEHICLE_ORDER = ['atlas', 'roadster', 'lightcycle'];
+export const SYNTH_VEHICLE_ORDER = ['lightcycle', 'atlas', 'roadster']; // the bike comes first in its home mode
 export const vehicleOrder = synth => synth ? SYNTH_VEHICLE_ORDER : VEHICLE_ORDER;
 export const vehicleForTheme = (kind, synth) => vehicleOrder(synth).includes(kind) ? kind : vehicleOrder(synth)[0];
 export const VEHICLE_SPECS = {
   lightcycle: {
     name: 'Light Cycle', model: 'Light Cycle + Grid Rider',
-    tagline: 'A neon electric bike with a suited rider, exclusive to Synth mode.',
+    tagline: 'A neon electric bike with a suited rider and a wall of light behind it.',
     figures: { topSpeed: 301, boostSpeed: 500, accel100: .9, boost100: .2, grassSpeed: 236, dirtSpeed: 265, waterSpeed: 500, turnRate: 61, leanTurnRate: 83 },
     ratings: [
       { key: 'speed', label: 'Max speed', score: 10, detail: '301 km/h · 500 km/h neon boost' },
@@ -20,7 +20,7 @@ export const VEHICLE_SPECS = {
     features: [
       { key: 'boost', title: 'Neon boost', keys: 'F', text: 'A charged burst up to 500 km/h for four seconds, refilling in eight. The trail turns black with neon edges.' },
       { key: 'lean', title: 'Leans', keys: 'Q / E', text: 'It leans into every turn by itself. Q and E bank it further, and leaning into a turn tightens it by a third.' },
-      { key: 'wheelie', title: 'Front wheel lift', keys: '↑ / ↓', text: 'Hold up for a wheelie, down to set the front wheel back down. W / S accelerate and brake.' },
+      { key: 'wheelie', title: 'Front wheel lift', keys: '↓ / ↑', text: 'Hold down for a wheelie, up to set the front wheel back down. W / S accelerate and brake.' },
       { key: 'jump', title: 'Jump and drift', keys: 'Space / Shift', text: 'Jump off the ground or launch from ramps. Hold Shift to slide through corners.' },
       { key: 'water', title: 'Skips water', keys: 'auto', text: 'Reach water and the neon boost fires, however little is left, and holds to the far shore: you skip across at up to 500 km/h.' },
     ],
