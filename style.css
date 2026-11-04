@@ -978,7 +978,9 @@ body.upright #rotateNotice {
    JUMP and DRIFT and BOOST over the pedals, and its E key in the hints. All
    hidden while driving the ATLAS (and the ATLAS's own DRIFT for the Roadster). */
 body:not(.roadster) .roadster-only { display:none!important; }
-body.roadster .atlas-only { display:none!important; }
+body.roadster .atlas-only, body.lightcycle .atlas-only { display:none!important; }
+body:not(.roadster):not(.lightcycle) .not-atlas { display:none!important; }
+body.lightcycle .not-cycle { display:none!important; }
 .gas-row {
   display:flex;
   align-items:center;
@@ -997,8 +999,8 @@ body.roadster .atlas-only { display:none!important; }
 #touch .fan-button { color:var(--yellow); border-color:rgba(233,201,138,.45); }
 #touch .fan-button[aria-pressed="false"] { color:var(--faint); border-style:dashed; } /* fans off */
 /* The buttons stacked over the pedals stand taller: the speed sits higher. */
-body.roadster.touch #dashboard { bottom:170px; }
-@media(max-height:600px) { body.roadster.touch #dashboard { bottom:136px; } }
+body.roadster.touch #dashboard, body.lightcycle.touch #dashboard { bottom:170px; }
+@media(max-height:600px) { body.roadster.touch #dashboard, body.lightcycle.touch #dashboard { bottom:136px; } }
 
 /* The Roadster's HUD: red telemetry on black glass, after its own track
    interface. The in-game panels take red lines and accents; the minimap is
@@ -1226,8 +1228,8 @@ body.touch .trip { gap:10px; white-space:nowrap; }
 @media(max-height:420px) {
   body.touch .speed-row strong { font-size:42px; }
   body.touch .speed-track { margin:4px 0 9px; }
-  body.roadster.touch .gas-row { margin:-3px 0 8px; }
-  body.roadster.touch #dashboard { bottom:130px; }
+  body.roadster.touch .gas-row, body.lightcycle.touch .gas-row { margin:-3px 0 8px; }
+  body.roadster.touch #dashboard, body.lightcycle.touch #dashboard { bottom:130px; }
 }
 
 /* The main menu: the drive (a title, a line or two and Start), and with it
@@ -1607,5 +1609,5 @@ body.neon-on #ctBoost { margin-bottom:-2px; justify-self:end; }
 #cycleTelemetry .tm-g svg { height:54px; stroke:rgba(95,240,255,.55); stroke-width:1.2; stroke-linecap:round; }
 #cycleTelemetry #ctNeedle { stroke:var(--yellow); stroke-width:2; filter:drop-shadow(0 0 3px #5ff0ff); }
 #cycleTelemetry .tm-dynamics dd { text-shadow:0 0 6px rgba(95,240,255,.6); }
-/* Its meter needs the room on phones, as the Roadster's does. */
-body.lightcycle.touch #dashboard { bottom:calc(env(safe-area-inset-bottom) + 118px); }
+/* Phones: LIFT and LOWER fill the row over the steering, with JUMP beside the slider. */
+#touch .steer-jump { flex:1; min-width:46px; height:auto; align-self:stretch; font-size:9px; letter-spacing:.08em; }

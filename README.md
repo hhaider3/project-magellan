@@ -110,6 +110,7 @@ On phones and compact windows:
 
 - **Steering slider** (lower left): slide to steer. The track stays put, and the knob stops at either end however far your finger travels.
 - **↑ / ↓**: accelerate, and brake then reverse.
+- **Light Cycle:** LIFT and LOWER fill the row over the steering slider, JUMP sits to its right, BOOST above ↑ and DRIFT above ↓.
 - **Jump** and **Drift** sit side by side just above the slider. **FLY** is just left of the brake; in the air it becomes **LAND**, with **SIMPLE** above it. In the Roadster it's **HOVER** (hold it), with **BOOST** and **FANS** (suction on / off) beside it.
 - **Flight ring:** in the air the steering slider becomes a ring in the same spot. Drag the knob up to climb, down to dive, and sideways to roll (or turn, on simple controls). The ring stays put, the knob stops at its edge and re-centres when you let go, and ↑ / ↓ are the throttle.
 - **Tilt steering** (menu → **Settings** → **Tilt steering**, off by default): turn the phone like a steering wheel to steer; full lock is about 35° of turn. The slider steps aside, and Jump and Drift stay put. In the air, turning rolls (or turns, on simple controls), and tilting the top toward you climbs and away dives, measured from how you held the phone when the wings came out. The ring still works and takes over while you touch it. iPhones ask once for motion access when you turn it on.
