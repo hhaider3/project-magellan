@@ -8,3 +8,5 @@ output/
 test-results/
 playwright-report/
 scripts/__pycache__/
+*.blend1
+.playwright-cli/

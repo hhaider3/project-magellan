@@ -75,19 +75,21 @@ You need a browser with WebGL and module workers. Everything else is bundled: Th
 | A D / ← → | Steer |
 | Space | Jump (stopped or moving) |
 | Shift | Handbrake / drift |
-| F | Unfold the wings to fly; press again to fold them and land. Roadster: hold to hover on the thrusters |
+| F | Unfold the wings to fly; press again to fold them and land. Roadster: hold to hover on the thrusters. Light Cycle: neon boost to 500 km/h (press) |
 | E | Roadster: boost on the rear thrusters (hold) |
+| Q E | Light Cycle: lean further left / right (it also leans by itself as it turns); leaning into a turn tightens it |
+| ↑ ↓ | Light Cycle: lift and lower the front wheel (W/S drive it) |
 | G | Roadster: suction fans on / off |
 | R | Recover onto nearby clear ground |
 | C | Camera: chase, wide or bonnet |
-| V | Switch between the ATLAS and the Roadster where you are (also the ⇄ button at the top right) |
+| V | Switch vehicle where you are: the ATLAS, the Roadster and, in Synth mode, the Light Cycle (also the ⇄ button at the top right) |
 | L | Headlights |
 | M | Mute / unmute |
 | Esc / P | Pause / resume |
 | N | New world |
 | 1 / 2 / 3 / 4 | Jump to sunrise, noon, sunset or night (also **Time** in the menu) |
 
-In the water the same keys drive the boat: W/S thrust, A/D steer, Shift slows down. You can't jump while floating. The Roadster never floats: over water it skims on its thrusters and drives as it does on land.
+In the water the same keys drive the boat: W/S thrust, A/D steer, Shift slows down. You can't jump while floating. The Light Cycle never floats either: reach water and its neon boost fires, however little charge is left, and holds until the far shore while it skips across at up to 500 km/h. The Roadster never floats: over water it skims on its thrusters and drives as it does on land.
 
 ### Flying
 

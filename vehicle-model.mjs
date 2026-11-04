@@ -6,9 +6,10 @@ import { SYNTHWAVE } from './synthwave.mjs?v=synth-1';
 export const VEHICLE_URLS = {
   atlas: new URL('./assets/vehicles/atlas-amphibious.glb?v=tail-1', import.meta.url),
   roadster: new URL('./assets/vehicles/roadster-rocket.glb?v=roadster-5', import.meta.url),
+  lightcycle: new URL('./assets/vehicles/light-cycle-rider.glb?v=3', import.meta.url),
 };
 export const VEHICLE_URL = VEHICLE_URLS.atlas;
-export const VEHICLE_NAMES = { atlas: 'ATLAS', roadster: 'Roadster' };
+export const VEHICLE_NAMES = { atlas: 'ATLAS', roadster: 'Roadster', lightcycle: 'Light Cycle' };
 
 // Parts that exist only in one form. While that form is fully stowed they sit
 // inside the body, so they are hidden to keep car-mode draw calls unchanged.
@@ -87,18 +88,21 @@ export async function loadVehicleModel(renderer, kind = 'atlas', look = 'studio'
     return node;
   };
   const body = required('Body');
-  const wheelPivots = ['FL', 'RL', 'FR', 'RR'].map(name => required(`Wheel_${name}`));
-  const wheelSpinners = ['FL', 'RL', 'FR', 'RR'].map(name => required(`Spinner_${name}`));
+  const cycle = kind === 'lightcycle', roadster = kind === 'roadster';
+  const wheels = cycle ? ['Front', 'Rear'] : ['FL', 'RL', 'FR', 'RR'];
+  const wheelPivots = wheels.map(name => required(`Wheel_${name}`));
+  const wheelSpinners = wheels.map(name => required(`Spinner_${name}`));
+  if (cycle) { required('Rider'); required('Trail_Emitter'); }
   const atlas = kind === 'atlas';
   const transformation = atlas ? createTransformation(model, gltf.animations) : null;
   const flight = atlas ? createTransformation(model, gltf.animations, 'Transform_To_Plane') : null;
   transformation?.update(0); flight?.update(0);
   // Not animated by the clip: the game spins it about the shaft (model +Z).
   const propeller = atlas ? required('Propeller') : null;
-  const nozzles = atlas ? null : thrusterNozzles(model);
+  const nozzles = roadster ? thrusterNozzles(model) : null;
   if (nozzles && !nozzles.rear.length) throw new Error('Vehicle asset is missing its thruster nozzles');
   // The Roadster's rear wing tilts on its pivot to brake (about model +X).
-  const wing = atlas ? null : required('Rear_Wing');
+  const wing = roadster ? required('Rear_Wing') : null;
   const materials = new Map();
   let triangles = 0, meshes = 0;
   let reflections = bakeReflections(renderer, look);
@@ -113,7 +117,8 @@ export async function loadVehicleModel(renderer, kind = 'atlas', look = 'studio'
       materials.set(material.name, material);
     }
   });
-  const headMat = materials.get('Headlamp'), brakeMat = materials.get('Brake_Lamp');
+  const headMat = materials.get(cycle ? 'Ice white headlamp' : 'Headlamp');
+  const brakeMat = materials.get(cycle ? 'Brake lamp' : 'Brake_Lamp');
   if (!headMat || !brakeMat) throw new Error('Vehicle asset is missing its working lamp materials');
   // After a lost graphics context the baked reflections are gone (a render
   // target's pixels don't survive): bake them again. With a look, reflect

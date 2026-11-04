@@ -1,8 +1,30 @@
 // What the garage shows of each car. The figures are the simulation's own
 // (world.mjs, flat ground, full throttle; tests/vehicle-specs.test.mjs checks
-// them); the ratings out of 10 compare the two cars on those figures.
+// them); the ratings out of 10 compare the vehicles on those figures.
 export const VEHICLE_ORDER = ['atlas', 'roadster'];
+export const SYNTH_VEHICLE_ORDER = ['lightcycle', ...VEHICLE_ORDER];
+export const vehicleOrder = synth => synth ? SYNTH_VEHICLE_ORDER : VEHICLE_ORDER;
+export const vehicleForTheme = (kind, synth) => vehicleOrder(synth).includes(kind) ? kind : vehicleOrder(synth)[0];
 export const VEHICLE_SPECS = {
+  lightcycle: {
+    name: 'Light Cycle', model: 'Light Cycle + Grid Rider',
+    tagline: 'A neon electric bike with a suited rider, exclusive to Synth mode.',
+    figures: { topSpeed: 301, boostSpeed: 500, accel100: .9, boost100: .2, grassSpeed: 236, dirtSpeed: 265, waterSpeed: 500, turnRate: 61, leanTurnRate: 83 },
+    ratings: [
+      { key: 'speed', label: 'Max speed', score: 10, detail: '301 km/h · 500 km/h neon boost' },
+      { key: 'accel', label: 'Acceleration', score: 9, detail: '0–100 km/h in 0.9 s · 0.2 s boosted' },
+      { key: 'road', label: 'On-road', score: 7, detail: 'The ATLAS’s grip, and it leans into corners' },
+      { key: 'offroad', label: 'Off-road', score: 9, detail: '236 km/h on grass · 265 km/h on dirt' },
+      { key: 'steering', label: 'Steering', score: 7, detail: '61°/s at 100 km/h · 83°/s leaning in' },
+    ],
+    features: [
+      { key: 'boost', title: 'Neon boost', keys: 'F', text: 'A charged burst up to 500 km/h for four seconds, refilling in eight. The trail turns black with neon edges.' },
+      { key: 'lean', title: 'Leans', keys: 'Q / E', text: 'It leans into every turn by itself. Q and E bank it further, and leaning into a turn tightens it by a third.' },
+      { key: 'wheelie', title: 'Front wheel lift', keys: '↑ / ↓', text: 'Hold up for a wheelie, down to set the front wheel back down. W / S accelerate and brake.' },
+      { key: 'jump', title: 'Jump and drift', keys: 'Space / Shift', text: 'Jump off the ground or launch from ramps. Hold Shift to slide through corners.' },
+      { key: 'water', title: 'Skips water', keys: 'auto', text: 'Reach water and the neon boost fires, however little is left, and holds to the far shore: you skip across at up to 500 km/h.' },
+    ],
+  },
   atlas: {
     name: 'ATLAS', model: 'ATLAS Amphibious', tagline: 'An expedition 4×4 that sails across lakes and unfolds wings to fly.',
     figures: { topSpeed: 301, accel100: .9, grassSpeed: 236, dirtSpeed: 265, turnRate: 47, climb: 50, waterSpeed: 55, airspeed: 340 },
@@ -39,4 +61,4 @@ export const VEHICLE_SPECS = {
   },
 };
 // Features the garage can show on the model: ATLAS forms and Roadster thrusters.
-export const PREVIEWS = { atlas: ['plane', 'boat'], roadster: ['boost', 'hover', 'wing'] };
+export const PREVIEWS = { atlas: ['plane', 'boat'], roadster: ['boost', 'hover', 'wing'], lightcycle: [] };

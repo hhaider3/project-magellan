@@ -1025,7 +1025,7 @@ body.roadster .gas-row b { font-weight:500; color:var(--cream); font-variant-num
 body.roadster.touch #touch button { background:rgba(10,5,5,.55); }
 body.roadster.touch #touch button.active { background:var(--yellow); }
 body.roadster #toast { background:rgba(14,6,6,.86); border-color:rgba(255,59,47,.38); color:#f1e9e7; }
-#telemetry {
+#telemetry, #cycleTelemetry {
   position:fixed;
   right:max(40px,env(safe-area-inset-right));
   bottom:calc(max(35px,env(safe-area-inset-bottom)) + 176px);
@@ -1053,8 +1053,8 @@ body.roadster #toast { background:rgba(14,6,6,.86); border-color:rgba(255,59,47,
 .tm-dynamics { display:grid; grid-template-columns:auto 1fr; gap:5px 8px; margin:0; }
 .tm-dynamics dd { margin:0; text-align:right; color:var(--yellow); white-space:nowrap; }
 /* Room only on larger screens; phones keep the view clear. */
-@media(max-height:560px), (max-width:900px) { #telemetry { display:none!important; } }
-body.touch #telemetry { display:none!important; }
+@media(max-height:560px), (max-width:900px) { #telemetry, #cycleTelemetry { display:none!important; } }
+body.touch #telemetry, body.touch #cycleTelemetry { display:none!important; }
 
 /* The garage: ratings and features on the left, the car on its turntable
    (on the game's canvas) in the space to the right. Each car has its accent. */
@@ -1069,6 +1069,7 @@ body.garage #menu { opacity:0; pointer-events:none; }
   animation:garage-in .45s ease-out;
 }
 #garage[data-car="roadster"] { --accent:#ff4a3d; }
+#garage[data-car="lightcycle"] { --accent:#71e6ff; }
 @keyframes garage-in { from { opacity:0; } }
 .garage-panel {
   display:flex;
@@ -1545,3 +1546,60 @@ body.settings-inline .setup-label { flex-basis:92px; }
 body.synthwave .setup .setting b { background:rgba(32,8,62,.42); border-color:rgba(95,240,255,.3); }
 body.synthwave .setup button.setting:hover b { border-color:var(--yellow); box-shadow:0 0 12px rgba(255,79,184,.45); }
 .setup button.setting:not(.toggle) b::after { margin-left:4px; }
+
+/* The light cycle is available only in Synth mode. */
+body:not(.synthwave) [data-vehicle="lightcycle"],
+body.lightcycle #flyBtn, body.lightcycle #menuFly,
+body.lightcycle .flight-control { display: none !important; }
+body.lightcycle { --accent: #71e6ff; }
+
+body:not(.lightcycle) .cycle-only { display: none !important; }
+
+/* The Light Cycle's HUD: cyan light on dark glass, each line glowing like the
+   bike's own circuitry. Magenta is for the boost: firing, or running low. */
+body.lightcycle .in-game, body.lightcycle #touch, body.lightcycle header {
+  --yellow:#5ff0ff;
+  --line:rgba(95,240,255,.42);
+  --faint:rgba(208,240,252,.68);
+  --cream:#ecfdff;
+  --ink:#02121c;
+}
+body.lightcycle #mapPanel, body.lightcycle #driveHint kbd, body.lightcycle #cycleTelemetry, body.lightcycle #rampHint, body.lightcycle #lakeHint {
+  background:rgba(3,7,26,.68);
+  border-color:rgba(95,240,255,.5);
+  box-shadow:0 0 14px rgba(95,240,255,.22), inset 0 0 10px rgba(95,240,255,.07);
+}
+body.lightcycle #rampHint, body.lightcycle #lakeHint { color:#8ff5ff; text-shadow:0 0 8px rgba(95,240,255,.6); }
+body.lightcycle .map-heading, body.lightcycle .map-footer { border-color:rgba(95,240,255,.25); }
+body.lightcycle #minimap { filter:saturate(1.25) brightness(1.1); }
+body.lightcycle #surfaceState { text-shadow:0 0 8px rgba(95,240,255,.75); }
+body.lightcycle .speed-row strong { text-shadow:0 0 5px rgba(180,250,255,.9), 0 0 24px rgba(95,240,255,.65); }
+body.lightcycle #gear { box-shadow:0 0 8px rgba(95,240,255,.4); }
+body.lightcycle .speed-track { height:3px; box-shadow:0 0 10px rgba(95,240,255,.4); }
+body.lightcycle .speed-track i { background:var(--yellow); box-shadow:0 0 8px #5ff0ff; }
+body.lightcycle.touch #touch button { background:rgba(3,7,26,.6); box-shadow:0 0 10px rgba(95,240,255,.18); }
+body.lightcycle.touch #touch button.active { background:var(--yellow); }
+body.lightcycle #toast { background:rgba(3,7,26,.88); border-color:rgba(95,240,255,.5); color:#ecfdff; box-shadow:0 0 16px rgba(95,240,255,.25); }
+/* The boost meter. The notch marks the 25% it takes to fire by hand. */
+#neonRow { color:var(--yellow); text-shadow:0 0 6px rgba(95,240,255,.6); }
+#neonRow .gas-track { position:relative; height:6px; background:rgba(95,240,255,.14); box-shadow:inset 0 0 0 1px rgba(95,240,255,.3); }
+#neonRow .gas-track i { background:var(--yellow); box-shadow:0 0 10px #5ff0ff; }
+#neonRow .gas-track u { position:absolute; left:25%; top:-2px; bottom:-2px; width:1px; background:var(--cream); opacity:.75; }
+#neonRow b { min-width:32px; text-align:right; font-weight:600; color:var(--cream); font-variant-numeric:tabular-nums; }
+#neonRow.low { color:#ff4fb8; text-shadow:0 0 6px rgba(255,79,184,.7); }
+#neonRow.low .gas-track { background:rgba(255,79,184,.16); box-shadow:inset 0 0 0 1px rgba(255,79,184,.4); }
+#neonRow.low .gas-track i { background:#ff4fb8; box-shadow:0 0 10px #ff4fb8; }
+#neonRow.active .gas-track i { background:#ff4fb8; box-shadow:0 0 12px #ff4fb8, 0 0 22px rgba(255,79,184,.6); animation:neon-burn .28s ease-in-out infinite alternate; }
+@keyframes neon-burn { to { filter:brightness(1.45); } }
+body.neon-on .speed-row strong { color:#fff; text-shadow:0 0 5px #ffd2ec, 0 0 26px #ff4fb8, 0 0 44px rgba(255,79,184,.55); }
+body.neon-on #surfaceState { color:#ff7fcb; text-shadow:0 0 8px rgba(255,79,184,.85); }
+body.neon-on .speed-track i { background:#ff4fb8; box-shadow:0 0 10px #ff4fb8; }
+/* Its telemetry panel: the Roadster's layout, in its own light. */
+#cycleTelemetry .tm-pedals i { background:rgba(95,240,255,.18); }
+#cycleTelemetry .tm-pedals u { box-shadow:0 0 6px #5ff0ff; }
+#cycleTelemetry .tm-g svg { height:54px; stroke:rgba(95,240,255,.55); stroke-width:1.2; stroke-linecap:round; }
+#cycleTelemetry #ctNeedle { stroke:var(--yellow); stroke-width:2; filter:drop-shadow(0 0 3px #5ff0ff); }
+#cycleTelemetry .tm-dynamics dd { text-shadow:0 0 6px rgba(95,240,255,.6); }
+body.neon-on #ctBoost { color:#ff7fcb; text-shadow:0 0 6px rgba(255,79,184,.8); }
+/* Its meter needs the room on phones, as the Roadster's does. */
+body.lightcycle.touch #dashboard { bottom:calc(env(safe-area-inset-bottom) + 118px); }

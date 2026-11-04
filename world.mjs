@@ -1,10 +1,11 @@
+import { cycleState, stepCycle, stepCycleSkip, cycleCarve, skimWorld, CYCLE_BOOST_SPEED, CYCLE_WATER_GAP } from './cycle-motion.mjs?v=cycle-4';
 // Shared, deterministic world and vehicle simulation. No browser or renderer required.
 import { createLakes, lakeRadius } from './lakes.mjs?v=open-start-1';
 import { createRoads, ROAD_HALF, ROAD_REACH, ROAD_CELL } from './roads.mjs?v=open-start-1';
 import { createRivers } from './rivers.mjs?v=rivers-1';
 import { stepAmphibious } from './amphibious-motion.mjs?v=open-start-1';
 import { controlAxis } from './controls.mjs?v=slider-1';
-import { stepFlight, wingStrikes } from './flight-motion.mjs?v=fold-1';
+import { stepFlight, wingStrikes } from './flight-motion.mjs?v=lightcycle-3';
 import { ROADSTER, SUCTION, hoverWorld, overWater, roadsterAcceleration, roadsterDrag, fireThrusters, roadsterState } from './roadster-motion.mjs?v=steer-1';
 import { clamp, mix, smoothstep, hash, random, noise } from './noise.mjs?v=terrain-1';
 import { createLandforms, TREELINE, SNOW_LINE } from './landforms.mjs?v=climate-1';
@@ -459,32 +460,32 @@ export function featurePoint(feature, across, along) {
 }
 
 // y: the car's height, so a boat beneath a bridge isn't lifted onto its deck.
-export function groundAt(world, x, z, heading, y) {
+export function groundAt(world, x, z, heading, y, kind = 'atlas') {
+  const cycle = kind === 'lightcycle', halfLength = cycle ? 1.095 : 1.36, halfWidth = cycle ? .2 : .96;
   const fx = Math.sin(heading), fz = Math.cos(heading), rx = Math.cos(heading), rz = -Math.sin(heading);
-  const f = world.surface(x + fx * 1.36, z + fz * 1.36, y), b = world.surface(x - fx * 1.36, z - fz * 1.36, y);
-  const l = world.surface(x + rx * .96, z + rz * .96, y), r = world.surface(x - rx * .96, z - rz * .96, y);
-  return { y: Math.max(world.surface(x, z, y), (f + b + l + r) / 4) + .06, pitch: -Math.atan((f - b) / 2.72), roll: Math.atan((l - r) / 1.92) };
+  const f = world.surface(x + fx * halfLength, z + fz * halfLength, y), b = world.surface(x - fx * halfLength, z - fz * halfLength, y);
+  const l = world.surface(x + rx * halfWidth, z + rz * halfWidth, y), r = world.surface(x - rx * halfWidth, z - rz * halfWidth, y);
+  return { y: Math.max(world.surface(x, z, y), cycle ? (f + b) / 2 : (f + b + l + r) / 4) + (cycle ? .015 : .06), pitch: -Math.atan((f - b) / (2 * halfLength)), roll: Math.atan((l - r) / (2 * halfWidth)) };
 }
-// kind: 'atlas' (the transforming 4×4) or 'roadster', which hovers over water
-// on its thrusters instead of floating.
+// ATLAS transforms, Roadster hovers over water, and the Light Cycle skips across it.
 export function createVehicle(world, x = 0, z = 0, heading = 0, kind = 'atlas') {
   const roadster = kind === 'roadster';
-  const g = groundAt(roadster ? hoverWorld(world) : world, x, z, heading);
-  const water = world.waterAt?.(x, z), floating = !roadster && Boolean(water && water.depth > .9);
-  return { kind, ...(roadster ? roadsterState(overWater(world, x, z)) : {}), x, z, y: floating ? Math.max(g.y, water.level - .52) : g.y, vx: 0, vz: 0, vy: 0, heading, steer: 0, grounded: !floating, groundY: g.y, pitch: floating ? 0 : g.pitch, roll: floating ? 0 : g.roll, rollVelocity: 0, airRoll: 0, rolls: 0, smashed: 0, distance: 0, airtime: 0, bestAir: 0, airDistance: 0, bestJump: 0, landings: 0, jumps: 0, jumpBuffer: 0, coyote: .1, jumpHeld: false, landLock: 0, impact: 0, speed: 0, onRoad: !floating, onDirt: false, time: 0, transform: floating ? 1 : 0, boatMode: floating, floating, waterDepth: water?.depth ?? 0, waterLevel: water?.level ?? null, boatDistance: 0, transformations: 0, flightMode: false, flight: 0, flying: false, airspeed: 0, climb: 0, sink: 0, flights: 0, flightDistance: 0, maxAltitude: 0, climbOut: false, crashFold: false, alpha: 0, shadow: 0, shadowVy: 0, qx: 0, qy: Math.sin(heading / 2), qz: 0, qw: Math.cos(heading / 2) };
+  const g = groundAt(roadster ? hoverWorld(world) : kind === 'lightcycle' ? skimWorld(world) : world, x, z, heading, undefined, kind);
+  const water = world.waterAt?.(x, z), floating = kind === 'atlas' && Boolean(water && water.depth > .9);
+  return { kind, ...(kind === 'lightcycle' ? cycleState() : {}), ...(roadster ? roadsterState(overWater(world, x, z)) : {}), x, z, y: floating ? Math.max(g.y, water.level - .52) : g.y, vx: 0, vz: 0, vy: 0, heading, steer: 0, grounded: !floating, groundY: g.y, pitch: floating ? 0 : g.pitch, roll: floating ? 0 : g.roll, rollVelocity: 0, airRoll: 0, rolls: 0, smashed: 0, distance: 0, airtime: 0, bestAir: 0, airDistance: 0, bestJump: 0, landings: 0, jumps: 0, jumpBuffer: 0, coyote: .1, jumpHeld: false, landLock: 0, impact: 0, speed: 0, onRoad: !floating, onDirt: false, time: 0, transform: floating ? 1 : 0, boatMode: floating, floating, waterDepth: water?.depth ?? 0, waterLevel: water?.level ?? null, boatDistance: 0, transformations: 0, flightMode: false, flight: 0, flying: false, airspeed: 0, climb: 0, sink: 0, flights: 0, flightDistance: 0, maxAltitude: 0, climbOut: false, crashFold: false, alpha: 0, shadow: 0, shadowVy: 0, qx: 0, qy: Math.sin(heading / 2), qz: 0, qw: Math.cos(heading / 2) };
 }
 export function resolveObstacles(car, obstacles, world) {
   for (let pass = 0; pass < 3; pass++) for (const o of obstacles) {
     // Small rocks are forgiving ground detail. Trees collide only with their
     // trunks; airborne cars can clear props, and canopies never form walls.
-    if (world?.brokenProps?.has(o.id) || car.y + .2 > o.y + o.h || car.y + 2.3 < o.y) continue;
+    if (world?.brokenProps?.has(o.id) || car.y + .2 > o.y + o.h || car.y + (car.kind === 'lightcycle' ? 1.8 : 2.3) < o.y) continue;
     const breakable = ['tree', 'cactus', 'rock', 'boulder'].includes(o.type);
     const obstacleRadius = o.r || (o.type === 'rock' ? .55 * o.size : 0);
     if (!obstacleRadius) continue;
     // A guardrail is a segment: the car meets its nearest point.
     let ox = o.x, oz = o.z;
     if (o.type === 'rail') { const ex = o.bx - o.ax, ez = o.bz - o.az, t = clamp(((car.x - o.ax) * ex + (car.z - o.az) * ez) / (ex * ex + ez * ez || 1), 0, 1); ox = o.ax + ex * t; oz = o.az + ez * t; }
-    const dx = car.x - ox, dz = car.z - oz, radius = obstacleRadius + .93;
+    const dx = car.x - ox, dz = car.z - oz, radius = obstacleRadius + (car.kind === 'lightcycle' ? .42 : .93);
     const d = Math.hypot(dx, dz);
     if (d >= radius) continue;
     const nx = d > 1e-6 ? dx / d : -Math.sin(car.heading), nz = d > 1e-6 ? dz / d : -Math.cos(car.heading);
@@ -520,8 +521,8 @@ function launchRoll(car, ramp, speed) {
   car.airRoll = 0;
 }
 export function stepVehicle(car, input, world, obstacles, dt = FIXED_DT) {
-  const roadster = car.kind === 'roadster';
-  if (!roadster && (stepFlight(car, input, world, dt, groundAt) || stepAmphibious(car, input, world, dt, groundAt))) {
+  const roadster = car.kind === 'roadster', cycle = car.kind === 'lightcycle';
+  if (!roadster && !cycle && (stepFlight(car, input, world, dt, groundAt) || stepAmphibious(car, input, world, dt, groundAt))) {
     // Space climbs in the air and does nothing afloat: never let a press made
     // there (or one held through the landing) fire a jump on touchdown.
     car.jumpBuffer = 0; car.jumpHeld = !!input.jump;
@@ -542,6 +543,15 @@ export function stepVehicle(car, input, world, obstacles, dt = FIXED_DT) {
       car.grounded = false; car.coyote = 0; car.shadow = 0; car.shadowVy = 0; car.landLock = .2;
       car.airtime = 0; car.airDistance = 0; car.airRoll = 0; car.vy = Math.max(car.vy, 2); car.hops++;
     }
+  }
+  // The Light Cycle runs on water as on land, boost burning, close enough to touch it.
+  if (cycle) {
+    const water = world.waterAt?.(car.x, car.z);
+    car.time += dt; car.waterDepth = water?.depth ?? 0; car.waterLevel = water?.level ?? null;
+    car.overWater = Boolean(water) && water.level + CYCLE_WATER_GAP > world.surface(car.x, car.z, car.y);
+    car.skimming = car.overWater && car.y < water.level + 2;
+    world = skimWorld(world);
+    stepCycle(car, input, dt);
   }
   const throttle = controlAxis(input.throttle, input.up, input.down), brake = !!input.brake;
   const jumpPressed = !!input.jump && !car.jumpHeld;
@@ -578,7 +588,7 @@ export function stepVehicle(car, input, world, obstacles, dt = FIXED_DT) {
   if (roadster) car.suction = suction;
   const power = 1 - .62 * climbing * (suction ? SUCTION.climbLoss : 1);
   const paved = 1 - smoothstep(ROAD_HALF - 1, ROAD_HALF + 3, roadDistance);
-  if (roadster && car.overWater) car.onRoad = car.onDirt = false;
+  if ((roadster || cycle) && car.overWater) car.onRoad = car.onDirt = false;
   // Braking or drifting at speed, the Roadster's wing becomes an air brake.
   if (roadster) car.airBrake = (throttle < -.05 && forward > 3) || (brake && speed > 3);
   let acceleration = 0;
@@ -593,20 +603,21 @@ export function stepVehicle(car, input, world, obstacles, dt = FIXED_DT) {
   car.vx += fx * acceleration * authority * dt; car.vz += fz * acceleration * authority * dt;
   // Thrust needs no grip: the rear nozzles push as hard in the air.
   if (thrust?.boost) { car.vx += fx * thrust.boost * dt; car.vz += fz * thrust.boost * dt; }
+  if (cycle && car.neonBoost) { car.vx += fx * 85 * dt; car.vz += fz * 85 * dt; }
   const targetSteer = controlAxis(input.steer, input.left, input.right);
   // Steer-by-wire answers the Roadster's wheel quicker than the ATLAS's rack.
-  car.steer = mix(car.steer, targetSteer, 1 - Math.exp(-(roadster ? ROADSTER.steerRate : 10) * dt));
+  car.steer = mix(car.steer, targetSteer, 1 - Math.exp(-(roadster ? ROADSTER.steerRate : cycle ? 16 : 10) * dt));
   // Hovering, the flank nozzles turn the car at any speed (its momentum
   // carries on the way it was going until the tyres touch down again).
   const yawing = roadster && !car.grounded && thrust.lifting;
   car.yaw = yawing ? car.steer : 0;
   if (yawing) car.heading += car.steer * ROADSTER.yawRate * dt;
   else if (suction) car.heading += car.steer * (brake ? SUCTION.turnBrake : SUCTION.turn) * Math.min(speed / 5, 1) / (1 + speed * SUCTION.turnFade) * Math.sign(forward || 1) * dt;
-  else car.heading += car.steer * (brake ? 2.1 : 1.7) * Math.min(speed / 5, 1) / (1 + speed * .032) * Math.sign(forward || 1) * authority * (car.onIce ? ICE.steer : 1) * dt;
+  else car.heading += car.steer * (cycle ? (brake ? 2.4 : 2.15) * cycleCarve(car) : brake ? 2.1 : 1.7) * Math.min(speed / 5, 1) / (1 + speed * .032) * Math.sign(forward || 1) * authority * (car.onIce ? ICE.steer : 1) * dt;
   const nx = Math.sin(car.heading), nz = Math.cos(car.heading), along = car.vx * nx + car.vz * nz;
   // The Roadster's suction fans hold it harder on tarmac; on its air cushion
   // over water it slides like a hovercraft.
-  let grip = car.grounded ? (brake ? 1.9 : roadster && car.overWater ? 1.6 : suction ? (car.onDirt ? SUCTION.grip.dirt : car.onRoad ? SUCTION.grip.road : SUCTION.grip.grass) : car.onDirt ? 6.5 : car.onRoad ? (roadster ? 14 : 12) : 8) : .2;
+  let grip = car.grounded ? (brake ? 1.9 : roadster && car.overWater ? 1.6 : cycle && car.overWater ? 3 : suction ? (car.onDirt ? SUCTION.grip.dirt : car.onRoad ? SUCTION.grip.road : SUCTION.grip.grass) : car.onDirt ? 6.5 : car.onRoad ? (roadster ? 14 : 12) : 8) : .2;
   // (The Roadster's fans press it down harder, so it holds the ice a little better.)
   if (car.onIce) grip = Math.min(grip, ICE.grip * (suction ? 1.8 : 1));
   else grip *= 1 - SNOW.grip * snowy;
@@ -620,18 +631,22 @@ export function stepVehicle(car, input, world, obstacles, dt = FIXED_DT) {
     // downhill gravity, and steep faces pull harder. The Roadster's boost
     // drives it like the throttle does (or the hold would swallow each step
     // of its push from a standstill).
-    const driven = throttle || thrust?.boost;
+    const driven = throttle || thrust?.boost || car.neonBoost;
     if (driven || speed > .5) { car.vx -= g.x * steep * dt; car.vz -= g.z * steep * dt; }
     if (!driven && Math.hypot(car.vx, car.vz) < .35) { car.vx = 0; car.vz = 0; }
   }
-  const horizontal = Math.hypot(car.vx, car.vz), limit = roadster ? ROADSTER.speedLimit : SPEED_LIMIT;
+  const horizontal = Math.hypot(car.vx, car.vz), limit = roadster ? ROADSTER.speedLimit : cycle ? CYCLE_BOOST_SPEED : SPEED_LIMIT;
+  if (cycle && !car.neonBoost && horizontal > SPEED_LIMIT) {
+    const coast = (SPEED_LIMIT + (horizontal - SPEED_LIMIT) * Math.exp(-dt * 1.5)) / horizontal;
+    car.vx *= coast; car.vz *= coast;
+  }
   if (horizontal > limit) { car.vx *= limit / horizontal; car.vz *= limit / horizontal; }
   const oldX = car.x, oldZ = car.z;
   car.x += car.vx * dt; car.z += car.vz * dt;
   if (thrust?.lift && !car.grounded) car.vy += thrust.lift * dt;
   if (!car.grounded) { car.vy -= 22 * dt; car.y += car.vy * dt; car.airtime += dt; car.airDistance += Math.hypot(car.vx, car.vz) * dt; car.bestAir = Math.max(car.bestAir, car.airtime); }
   resolveObstacles(car, obstacles, world);
-  let g = groundAt(world, car.x, car.z, car.heading, car.y);
+  let g = groundAt(world, car.x, car.z, car.heading, car.y, car.kind);
   // A face steeper than about 52° is a wall, not a slope: driving into one
   // stops the car (it slides along it) rather than lifting it, which would
   // throw it high off the top. Ramps keep their steep backs and sides to
@@ -641,13 +656,14 @@ export function stepVehicle(car, input, world, obstacles, dt = FIXED_DT) {
   // ahead, so a wheel meeting the foot of a face mid-step is held there too.
   const moved = Math.hypot(car.x - oldX, car.z - oldZ);
   if ((car.grounded || car.y <= g.y) && moved > 1e-4) {
-    const ax = (car.x - oldX) / moved * 1.36, az = (car.z - oldZ) / moved * 1.36, aheadX = 2 * car.x - oldX + ax, aheadZ = 2 * car.z - oldZ + az;
+    const lead = cycle ? 1.095 : 1.36;
+    const ax = (car.x - oldX) / moved * lead, az = (car.z - oldZ) / moved * lead, aheadX = 2 * car.x - oldX + ax, aheadZ = 2 * car.z - oldZ + az;
     const climb = world.surface(aheadX, aheadZ, car.y) - world.surface(oldX + ax, oldZ + az, car.y);
     if (climb > 1e-3 && climb > moved * 2 * (suction ? SUCTION.wall : 1.3) && !besideRamp(world, car.x, car.z)) {
       const up = world.gradient(aheadX, aheadZ), steepness = Math.hypot(up.x, up.z) || 1, nx = up.x / steepness, nz = up.z / steepness, into = car.vx * nx + car.vz * nz;
       car.x = oldX; car.z = oldZ;
       if (into > 0) { car.vx -= nx * into; car.vz -= nz * into; car.impact = Math.max(car.impact, Math.min(.3, into * .012)); }
-      g = groundAt(world, car.x, car.z, car.heading, car.y);
+      g = groundAt(world, car.x, car.z, car.heading, car.y, car.kind);
     }
   }
   const ramp = world.rampAt?.(car.x, car.z);
@@ -712,6 +728,7 @@ export function stepVehicle(car, input, world, obstacles, dt = FIXED_DT) {
   const travelled = Math.hypot(car.x - oldX, car.z - oldZ);
   car.distance += travelled;
   if (roadster && car.overWater) car.waterDistance += travelled;
+  if (cycle) stepCycleSkip(car, travelled, dt);
 }
 export function recoverVehicle(car, world) {
   const road = world.roadAt(car.x, car.z);
@@ -733,9 +750,9 @@ export function recoverVehicle(car, world) {
     if (nearby.some(o => o.r && Math.hypot(x - o.x, z - o.z) < o.r + 3)) continue;
     const slope = world.gradient(x, z);
     if (Math.hypot(slope.x, slope.z) > .6) continue;
-    const { distance, bestAir, jumps, bestJump, landings, rolls, smashed, boatDistance, transformations, flights, flightDistance, maxAltitude, hops, boostTime, hoverTime, waterDistance, fans } = car;
+    const { distance, bestAir, jumps, bestJump, landings, rolls, smashed, boatDistance, transformations, flights, flightDistance, maxAltitude, hops, boostTime, hoverTime, waterDistance, fans, neonCharge } = car;
     Object.assign(car, createVehicle(world, x, z, car.heading, car.kind), { distance, bestAir, jumps, bestJump, landings, rolls, smashed, boatDistance, transformations, flights, flightDistance, maxAltitude },
-      car.kind === 'roadster' ? { hops, boostTime, hoverTime, waterDistance, fans } : {});
+      car.kind === 'roadster' ? { hops, boostTime, hoverTime, waterDistance, fans } : car.kind === 'lightcycle' ? { neonCharge } : {});
     return true;
   }
   return false;

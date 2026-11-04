@@ -33,7 +33,11 @@ const smoothstep = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); retu
 export const PITCH_RATE = 1.1, ROLL_RATE = 2.2, YAW_RATE = .35; // rad/s at full authority
 
 // F toggles the request; the transformation and lift follow in fixed steps.
-export function toggleFlight(car) { car.flightMode = !car.flightMode; return car.flightMode; }
+export function toggleFlight(car) {
+  if (car.kind && car.kind !== 'atlas') return false;
+  car.flightMode = !car.flightMode;
+  return car.flightMode;
+}
 
 // Flight axes. The game supplies dedicated keys (W/S throttle, ↑↓ or
 // Space/Shift pitch, A/D or ←→ roll, Q/E yaw); anything else falls back to

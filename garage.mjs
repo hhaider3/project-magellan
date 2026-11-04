@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { createTransformation, thrusterNozzles } from './vehicle-model.mjs?v=synth-1';
+import { createTransformation, thrusterNozzles } from './vehicle-model.mjs?v=lightcycle-3';
 import { createThrusterPlumes } from './thrusters.mjs?v=roadster-1';
 
 // The garage's showroom: a car on a turntable in a dark studio, drawn by the
@@ -10,6 +10,7 @@ import { createThrusterPlumes } from './thrusters.mjs?v=roadster-1';
 const FOV = 26, ELEVATION = .2; // camera: vertical degrees, radians above the horizon
 const FORM_RATE = 1 / 1.4; // a form or thruster preview takes 1.4 s
 const SPIN = .28, IDLE = 2.5; // rad/s of auto-turn, resuming this long after a drag
+const RING = { roadster: '#ff3b2f', lightcycle: '#71e6ff' }; // the turntable's ring, where it isn't the studio's
 
 // Colours as written to the screen (the studio shaders aren't tone mapped),
 // for the usual dark green studio and for synthwave's: indigo, with a neon
@@ -39,6 +40,15 @@ const floorMaterial = new THREE.ShaderMaterial({
       c = mix(c, uGrid, max(l.x, l.y) * (1. - smoothstep(.25, .8, max(w.x, w.y))) * (1. - smoothstep(.5, 2.2, d)) * .8 * step(.01, uGrid.r + uGrid.g + uGrid.b));
       gl_FragColor = vec4(c, 1.); }`,
 });
+
+// Soft dark patches where the bike's thin, round tyres meet the floor. The key
+// light throws their shadow away from that point, so without these the bike
+// seems to hover. (Radius 1, scaled per patch.)
+const contactPatch = opacity => new THREE.Mesh(new THREE.CircleGeometry(1, 32).rotateX(-Math.PI / 2), new THREE.ShaderMaterial({
+  transparent: true, depthWrite: false, uniforms: { uOpacity: { value: opacity } },
+  vertexShader: `varying vec2 vAt; void main(){ vAt = position.xz; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.); }`,
+  fragmentShader: `uniform float uOpacity; varying vec2 vAt; void main(){ float fade = 1. - min(1., length(vAt)); gl_FragColor = vec4(0., 0., 0., uOpacity * fade * fade); }`,
+}));
 
 export function createShowroom() {
   const scene = new THREE.Scene(), camera = new THREE.PerspectiveCamera(FOV, 1, .1, 400);
@@ -75,25 +85,36 @@ export function createShowroom() {
     for (const o of dropped) o.removeFromParent();
     const body = model.getObjectByName('Body');
     body.position.y = 0; body.rotation.set(0, 0, 0);
-    model.traverse(o => { if (/^Wheel_F/.test(o.name)) o.rotation.y = 0; });
+    // As if parked. Measured turned, a wheel's bounding box reaches below the
+    // tyre (up to 25 cm on the bike's), which would stand the model above the floor.
+    model.traverse(o => { if (/^Wheel_F/.test(o.name)) o.rotation.y = 0; if (/^Spinner_/.test(o.name)) o.rotation.x = 0; });
     const atlas = asset.kind === 'atlas';
     const s = { kind: asset.kind, model, preview: null, lift: 0, bank: 0, power: { rear: 0, lift: 0 }, wing: model.getObjectByName('Rear_Wing'), propeller: model.getObjectByName('Propeller'), propellerAngle: 0, forms: {} };
     if (atlas) for (const [name, clip] of [['boat', 'Transform_To_Boat'], ['plane', 'Transform_To_Plane']]) s.forms[name] = { rig: createTransformation(model, asset.clips, clip), progress: 0 };
     if (s.wing) s.wing.rotation.x = 0;
     for (const form of Object.values(s.forms)) form.rig.update(0);
-    s.plumes = atlas ? null : createThrusterPlumes(thrusterNozzles(model));
+    s.plumes = asset.kind === 'roadster' ? createThrusterPlumes(thrusterNozzles(model)) : null;
     s.plumes?.update({}, 1, 0);
     // Framing for each form, measured once: the camera eases between them.
     s.base = measure(model);
     for (const [name, form] of Object.entries(s.forms)) { form.rig.update(1); form.frame = measure(model); form.rig.update(0); }
     model.position.y = -s.base.min;
+    if (asset.kind === 'lightcycle') {
+      const under = contactPatch(.55); under.scale.set(.5, 1, 2.4); under.position.y = s.base.min + .005;
+      model.add(under);
+      for (const name of ['Wheel_Front', 'Wheel_Rear']) {
+        const patch = contactPatch(.9), wheel = model.getObjectByName(name).getWorldPosition(new THREE.Vector3());
+        patch.scale.set(.26, 1, .8); patch.position.set(wheel.x, s.base.min + .006, wheel.z + (model.position.z || 0));
+        model.add(patch);
+      }
+    }
     return s;
   }
   function show(asset) {
     if (!stands.has(asset.kind)) stands.set(asset.kind, makeStand(asset));
     if (stand) turntable.remove(stand.model);
     stand = stands.get(asset.kind); turntable.add(stand.model);
-    ring.material.color.set(asset.kind === 'roadster' ? '#ff3b2f' : palette.ring);
+    ring.material.color.set(RING[asset.kind] ?? palette.ring);
     arrive = 1;
     return stand;
   }
@@ -160,7 +181,7 @@ export function createShowroom() {
     palette = on ? STUDIO.synthwave : STUDIO.plain;
     look.uHorizon.value.set(...palette.horizon); look.uTop.value.set(...palette.top); look.uPoolColor.value.set(...palette.pool); look.uGrid.value.set(...palette.grid);
     fill.color.set(palette.sky); fill.groundColor.set(palette.ground); rim.color.set(palette.rim);
-    if (stand?.kind !== 'roadster') ring.material.color.set(palette.ring);
+    ring.material.color.set(RING[stand?.kind] ?? palette.ring);
   }
   return {
     show, preview, render, setSynthwave,

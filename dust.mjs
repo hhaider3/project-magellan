@@ -3,7 +3,7 @@ import * as THREE from 'three';
 // Dust thrown up behind the wheels on dirt tracks: soft puffs that billow,
 // drift and thin out over a couple of seconds. One draw call and a fixed
 // pool of puffs, recycled oldest first.
-export function createDust(scene, capacity = 240) {
+export function createDust(scene, capacity = 240, opacity = .24) {
   const geometry = new THREE.BufferGeometry();
   const position = new Float32Array(capacity * 3), size = new Float32Array(capacity), alpha = new Float32Array(capacity), tint = new Float32Array(capacity * 3);
   geometry.setAttribute('position', new THREE.BufferAttribute(position, 3).setUsage(THREE.DynamicDrawUsage));
@@ -42,7 +42,7 @@ export function createDust(scene, capacity = 240) {
       const fx = Math.sin(car.heading), fz = Math.cos(car.heading), rx = Math.cos(car.heading), rz = -Math.sin(car.heading);
       while (carry >= 1) {
         carry--;
-        const side = next % 2 ? 1 : -1, jitter = ((next * 7919) % 100) / 100 - .5;
+        const side = car.kind === 'lightcycle' ? 0 : next % 2 ? 1 : -1, jitter = ((next * 7919) % 100) / 100 - .5;
         add({ x: car.x - fx * 1.5 + rx * side * .85, y: car.y + .25, z: car.z - fz * 1.5 + rz * side * .85,
           vx: car.vx * .25 + rx * side * 1.5 + jitter, vy: .8 + Math.abs(jitter) * 1.2, vz: car.vz * .25 + rz * side * 1.5 - jitter, age: 0, life: 1.4 + Math.abs(jitter), grow: .8 + speed * .012, r: color.r, g: color.g, b: color.b });
       }
@@ -55,7 +55,7 @@ export function createDust(scene, capacity = 240) {
       const t = Math.min(1, p.age / p.life);
       position[i * 3] = p.x; position[i * 3 + 1] = p.y; position[i * 3 + 2] = p.z;
       size[i] = .6 + p.grow * 1.9 * Math.sqrt(t);
-      alpha[i] = t >= 1 ? 0 : .24 * Math.min(1, p.age * 8) * (1 - t);
+      alpha[i] = t >= 1 ? 0 : opacity * Math.min(1, p.age * 8) * (1 - t);
       tint[i * 3] = p.r; tint[i * 3 + 1] = p.g; tint[i * 3 + 2] = p.b;
     }
     geometry.setDrawRange(0, puffs.length);
