@@ -1,4 +1,4 @@
-import { createWorld, CHUNK, GRID } from './world.mjs?v=lightcycle-3';
+import { createWorld, CHUNK, GRID } from './world.mjs?v=lightcycle-4';
 import { createTerrain, ULTRA_GRID } from './terrain.mjs?v=lightcycle-3';
 import { buildGrass } from './grass-data.mjs?v=lightcycle-3';
 import { buildWaterData, buildDistantWater, buildRiverWater } from './water-data.mjs?v=frost-1';

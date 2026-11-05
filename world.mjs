@@ -1,4 +1,4 @@
-import { cycleState, stepCycle, stepCycleSkip, cycleCarve, skimWorld, CYCLE_BOOST_SPEED, CYCLE_WATER_GAP } from './cycle-motion.mjs?v=cycle-4';
+import { cycleState, stepCycle, cycleCarve, skimWorld, CYCLE_BOOST_SPEED, CYCLE_WATER_GAP } from './cycle-motion.mjs?v=cycle-5';
 // Shared, deterministic world and vehicle simulation. No browser or renderer required.
 import { createLakes, lakeRadius } from './lakes.mjs?v=open-start-1';
 import { createRoads, ROAD_HALF, ROAD_REACH, ROAD_CELL } from './roads.mjs?v=open-start-1';
@@ -467,7 +467,7 @@ export function groundAt(world, x, z, heading, y, kind = 'atlas') {
   const l = world.surface(x + rx * halfWidth, z + rz * halfWidth, y), r = world.surface(x - rx * halfWidth, z - rz * halfWidth, y);
   return { y: Math.max(world.surface(x, z, y), cycle ? (f + b) / 2 : (f + b + l + r) / 4) + (cycle ? .015 : .06), pitch: -Math.atan((f - b) / (2 * halfLength)), roll: Math.atan((l - r) / (2 * halfWidth)) };
 }
-// ATLAS transforms, Roadster hovers over water, and the Light Cycle skips across it.
+// ATLAS transforms, Roadster hovers over water, and the Light Cycle rides on it.
 export function createVehicle(world, x = 0, z = 0, heading = 0, kind = 'atlas') {
   const roadster = kind === 'roadster';
   const g = groundAt(roadster ? hoverWorld(world) : kind === 'lightcycle' ? skimWorld(world) : world, x, z, heading, undefined, kind);
@@ -728,7 +728,6 @@ export function stepVehicle(car, input, world, obstacles, dt = FIXED_DT) {
   const travelled = Math.hypot(car.x - oldX, car.z - oldZ);
   car.distance += travelled;
   if (roadster && car.overWater) car.waterDistance += travelled;
-  if (cycle) stepCycleSkip(car, travelled, dt);
 }
 export function recoverVehicle(car, world) {
   const road = world.roadAt(car.x, car.z);

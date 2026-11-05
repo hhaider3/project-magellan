@@ -1,11 +1,11 @@
-import { createCycleTrail, createSkipSpray } from './cycle-trail.mjs?v=ribbon-3';
-import { skimWorld, CYCLE_MAX_LEAN } from './cycle-motion.mjs?v=cycle-4';
+import { createCycleTrail, createWaterSpray } from './cycle-trail.mjs?v=ribbon-4';
+import { skimWorld, CYCLE_MAX_LEAN } from './cycle-motion.mjs?v=cycle-5';
 import { createTerrain } from './terrain.mjs?v=lightcycle-3';
 import { createWater } from './water.mjs?v=frost-1';
 import { FAR_SIZE, FAR_VIEW, NEAR_VIEW, ULTRA_SIZE, ULTRA_VIEW, ULTRA_BLEND_START, ULTRA_BLEND_END, farIndices, farCoverage, ultraIndices, ultraCoverage } from './streaming-layout.mjs?v=lightcycle-3';
 import { loadVehicleModel, VEHICLE_NAMES } from './vehicle-model.mjs?v=lightcycle-3';
-import { createShowroom } from './garage.mjs?v=lightcycle-3';
-import { vehicleOrder, vehicleForTheme, VEHICLE_SPECS, PREVIEWS } from './vehicle-specs.mjs?v=lightcycle-3';
+import { createShowroom } from './garage.mjs?v=lightcycle-4';
+import { vehicleOrder, vehicleForTheme, VEHICLE_SPECS, PREVIEWS } from './vehicle-specs.mjs?v=lightcycle-4';
 import { createProfiler } from './profiling.mjs?v=timing-1';
 import { createDebris } from './debris.mjs?v=lightcycle-3';
 import { createDust } from './dust.mjs?v=lightcycle-3';
@@ -17,7 +17,7 @@ import { createTreeBreakage } from './tree-breakage.mjs?v=warm-1';
 import { loadNatureLibrary, palmMaterial } from './nature-models.mjs?v=lightcycle-3';
 import { keepCoverage } from './sakura-model.mjs?v=lightcycle-3';
 import { createBreakAudio } from './break-audio.mjs?v=sound-2';
-import { createVehicleAudio } from './vehicle-audio.mjs?v=pedals-1';
+import { createVehicleAudio } from './vehicle-audio.mjs?v=lightcycle-1';
 import { createMusic, volumeGain } from './music.mjs?v=synth-1';
 import { installSunShadowFade, separateVehicleShadow } from './shadow-fade.mjs?v=shadow-2';
 import { createGrass } from './grass.mjs?v=lightcycle-3';
@@ -35,7 +35,7 @@ import { createWeatherEffects, toneMappedHorizon } from './weather-effects.mjs?v
 import { createLightning, createThunder } from './storm.mjs?v=storm-2';
 import { createPetals, TREES as PETAL_TREES } from './petals.mjs?v=warm-1';
 import * as THREE from 'three';
-import { CHUNK, GRID, ROAD_HALF, FIXED_DT, featurePoint, clamp, mix, smoothstep, hash, createWorld, createVehicle, stepVehicle, recoverVehicle, groundAt, VARIANT, SAKURA_HEIGHT } from './world.mjs?v=lightcycle-3';
+import { CHUNK, GRID, ROAD_HALF, FIXED_DT, featurePoint, clamp, mix, smoothstep, hash, createWorld, createVehicle, stepVehicle, recoverVehicle, groundAt, VARIANT, SAKURA_HEIGHT } from './world.mjs?v=lightcycle-4';
 import { SNOW_LINE } from './landforms.mjs?v=climate-1';
 import { ROAD_MAP } from './roads.mjs?v=open-start-1';
 import { buildLandmark, cloneOwnedGeometry, landmarkStandinSteps, landmarkSwapDistance } from './scenery.mjs?v=lightcycle-3';
@@ -1488,7 +1488,7 @@ function updateSound(throttle, splashes, dt) {
   }
   const slip = Math.abs(v.vx * Math.cos(v.heading) - v.vz * Math.sin(v.heading));
   audio.vehicle.update({ speed: v.speed, throttle, grounded: v.grounded, floating: v.floating, flying: v.flying, airspeed: v.airspeed, transform: v.transform, flight: v.flight, slip, surface: heard.surface, waterDepth: v.waterDepth, rain: weather.rain, snow: weather.snow, sand: weather.haze,
-    electric: v.kind === 'roadster' || v.kind === 'lightcycle', thrust: v.kind === 'roadster' ? Math.min(1, v.boost + v.lift + (v.overWater ? .25 : 0)) : 0 }, dt);
+    electric: v.kind === 'roadster', cycle: v.kind === 'lightcycle', neon: v.neonBoost, wheelie: (v.wheelie ?? 0) / .68, lean: v.kind === 'lightcycle' ? Math.min(1, Math.abs(v.lean + v.turnLean) / CYCLE_MAX_LEAN) : 0, skimming: v.skimming, jumps: v.jumps, thrust: v.kind === 'roadster' ? Math.min(1, v.boost + v.lift + (v.overWater ? .25 : 0)) : 0 }, dt);
   // Events: a fresh rise in impact is a landing, bounce or knock; splashes come
   // from the water; the flight model counts wing strikes and scrapes.
   const decayed = heard.impact * Math.exp(-8 * dt);
@@ -1679,7 +1679,7 @@ function resetCamera() {
 function newWorld() {
   const continueDriving = running || resumeAfterLoad && loading;
   saveRecord(); clearInput(); seed = freshSeed(); world = createWorld(seed); world.setSynthwave(synthwave.on); vehicle = createVehicle(world, 0, 0, world.startHeading, vehicleKind);
-  cycleTrail.clear(); debris.clear(); treeBreakage?.clear(); lightning.clear(); audio?.breaks.clear(); audio?.vehicle.clear(); vapour.clear(); skipSpray.clear();
+  cycleTrail.clear(); debris.clear(); treeBreakage?.clear(); lightning.clear(); audio?.breaks.clear(); audio?.vehicle.clear(); vapour.clear(); waterSpray.clear();
   const url = new URL(location.href); url.searchParams.set('seed', seed); history.replaceState(null, '', url);
   beginWorldLoad(continueDriving); resetCamera(); syncSeed(); updateHUD(); drawMap();
   reportedLanding = 0; reportedBoat = false; reportedFlying = false; clouds.reset(seed); weather.clock = 0; weather.clouds = .38; if (!fixedTime) clock.hours = worldHour(seed); weather.check = 0; weather.rain = weather.snow = weather.sand = weather.blizzard = weather.haze = 0; $('runDistance').textContent = '0.00'; toast('A new road ahead. World ' + seed);
@@ -1790,7 +1790,7 @@ const drawPlain = (target, view) => { if (screenMultisampled) { renderer.render(
 function renderGarage() {
   const now = performance.now(), dt = Math.min(.1, (now - garage.last) / 1000);
   garage.last = now;
-  showroom.render(drawPlain, dt, { width: innerWidth, height: innerHeight }, stage.getBoundingClientRect());
+  showroom.render(drawPlain, dt, { width: innerWidth, height: innerHeight, pixels: renderer.domElement.height }, stage.getBoundingClientRect());
 }
 function syncGaragePreview() {
   const shown = showroom.kind === garageKind() ? showroom.previewing : null;
@@ -1969,7 +1969,7 @@ function syncSettings() {
   settingValue('tiltBtn', settings.tilt ? 'On' : 'Off'); $('tiltBtn').setAttribute('aria-pressed', String(settings.tilt));
   document.body.classList.toggle('tilt', settings.tilt);
   const roadster = vehicleKind === 'roadster', cycle = vehicleKind === 'lightcycle';
-  $('touchGuide').textContent = cycle ? `${settings.tilt ? 'Turn the phone like a steering wheel to steer' : 'Slide the left control to steer'}, and the bike leans with you. LIFT and LOWER above it work the front wheel, with JUMP beside it. ↑ accelerates with BOOST above it for a neon burst to 500 km/h, and ↓ brakes or reverses with DRIFT above it. Water fires the boost and you skip across.` : roadster ? `${settings.tilt ? 'Turn the phone like a steering wheel to steer; Jump and Fans sit at the left.' : 'Slide the left control to steer; Jump and Fans sit just above it.'} ↑ accelerates with BOOST above it for a burst of speed, ↓ brakes or reverses with DRIFT above it, and HOVER beside them lifts you off on the thrusters while held.`
+  $('touchGuide').textContent = cycle ? `${settings.tilt ? 'Turn the phone like a steering wheel to steer' : 'Slide the left control to steer'}, and the bike leans with you. LIFT and LOWER above it work the front wheel, with JUMP beside it. ↑ accelerates with BOOST above it for a neon burst to 500 km/h, and ↓ brakes or reverses with DRIFT above it. Water fires the boost and you ride across.` : roadster ? `${settings.tilt ? 'Turn the phone like a steering wheel to steer; Jump and Fans sit at the left.' : 'Slide the left control to steer; Jump and Fans sit just above it.'} ↑ accelerates with BOOST above it for a burst of speed, ↓ brakes or reverses with DRIFT above it, and HOVER beside them lifts you off on the thrusters while held.`
     : settings.tilt ? 'Turn the phone like a steering wheel to steer; Jump and Drift sit at the left. ↑ accelerates, ↓ brakes or reverses, and FLY is beside them. In the air, turn to roll and tilt the top toward you to climb, away to dive; the ring works too.'
     : 'Slide the left control to steer; Jump and Drift sit just above it. ↑ accelerates, ↓ brakes or reverses, and FLY is beside them. In the air the slider becomes a ring: drag up to climb, down to dive, sideways to roll.';
   for (const button of document.querySelectorAll('[data-vehicle]')) button.setAttribute('aria-pressed', String(button.dataset.vehicle === vehicleKind));
@@ -2255,7 +2255,7 @@ function updateHUD() {
       : !vehicle.grounded ? 'A LITTLE AIR' : input.brake && speed > 10 ? 'TAKE IT SIDEWAYS' : vehicle.onIce ? 'ON THIN ICE' : vehicle.onDirt ? 'ON THE TRACK' : vehicle.onRoad ? 'ON THE ROAD' : 'OFF THE BEATEN PATH';
     $('airtime').textContent = hovering ? `HOVER · ${Math.max(0, vehicle.y - vehicle.groundY).toFixed(1)} M` : vehicle.overWater ? `${vehicle.waterDepth.toFixed(1)} M BELOW` : `GAS ${Math.round(vehicle.gas * 100)}% · BEST JUMP ${Math.round(vehicle.bestJump)} M`;
   } else if (cycle) {
-    $('surfaceState').textContent = vehicle.skimming ? 'SKIPPING THE WATER' : vehicle.neonBoost ? 'NEON BOOST' : !vehicle.grounded ? 'A LITTLE AIR' : input.brake && speed > 10 ? 'TAKE IT SIDEWAYS' : vehicle.onIce ? 'ON THIN ICE' : vehicle.onDirt ? 'ON THE TRACK' : vehicle.onRoad ? 'ON THE ROAD' : 'OFF THE BEATEN PATH';
+    $('surfaceState').textContent = vehicle.skimming ? 'RIDING ON WATER' : vehicle.neonBoost ? 'NEON BOOST' : !vehicle.grounded ? 'A LITTLE AIR' : input.brake && speed > 10 ? 'TAKE IT SIDEWAYS' : vehicle.onIce ? 'ON THIN ICE' : vehicle.onDirt ? 'ON THE TRACK' : vehicle.onRoad ? 'ON THE ROAD' : 'OFF THE BEATEN PATH';
     $('airtime').textContent = vehicle.overWater ? `${vehicle.waterDepth.toFixed(1)} M BELOW` : `BEST JUMP ${Math.round(vehicle.bestJump)} M`;
   } else {
   $('surfaceState').textContent = flying ? !vehicle.flightMode ? 'WINGS FOLDED — COMING DOWN' : vehicle.alpha > .24 || vehicle.airspeed < STALL_SPEED ? 'STALL WARNING — LOWER THE NOSE' : 'FLYING'
@@ -2267,7 +2267,7 @@ function updateHUD() {
   if (lake) {
     const angle = Math.atan2(lake.x - vehicle.x, lake.z - vehicle.z) - vehicle.heading;
     const arrow = Math.cos(angle) < -.5 ? '↓' : Math.sin(angle) > .2 ? '↖' : Math.sin(angle) < -.2 ? '↗' : '↑';
-    $('lakeHint').textContent = vehicle.floating ? 'RETURN TO SHORE TO DRIVE' : `${arrow} ${world.frozen(lake) ? 'FROZEN ' : ''}${lake.sea ? 'SEA' : 'LAKE'} ${Math.round(Math.max(0, Math.hypot(lake.x - vehicle.x, lake.z - vehicle.z) - Math.min(lake.rx, lake.rz)))} M · ${world.frozen(lake) ? 'SLIPPERY' : roadster ? 'HOVER ACROSS' : cycle ? 'SKIP ACROSS' : 'AUTO BOAT'}`;
+    $('lakeHint').textContent = vehicle.floating ? 'RETURN TO SHORE TO DRIVE' : `${arrow} ${world.frozen(lake) ? 'FROZEN ' : ''}${lake.sea ? 'SEA' : 'LAKE'} ${Math.round(Math.max(0, Math.hypot(lake.x - vehicle.x, lake.z - vehicle.z) - Math.min(lake.rx, lake.rz)))} M · ${world.frozen(lake) ? 'SLIPPERY' : roadster ? 'HOVER ACROSS' : cycle ? 'RIDE ACROSS' : 'AUTO BOAT'}`;
   } else $('lakeHint').textContent = roadster ? 'THRUSTERS CARRY YOU OVER WATER' : cycle ? 'WATER FIRES THE NEON BOOST' : 'DEEP WATER TRANSFORMS YOUR CAR';
   const ramps = world.featuresNear(vehicle.x, vehicle.z, 450).filter(f => f.type === 'ramp').sort((a, b) => Math.hypot(a.x - vehicle.x, a.z - vehicle.z) - Math.hypot(b.x - vehicle.x, b.z - vehicle.z));
   if (ramps.length) {
@@ -2300,7 +2300,7 @@ const dust = createDust(scene), dustColor = new THREE.Color(), earthDust = new T
 const vapour = createDust(scene, 260), emitVapour = createVapour(vapour), hoverPose = {};
 const cycleTrail = createCycleTrail(scene), trailTop = new THREE.Vector3(), trailBase = new THREE.Vector3();
 const trailGround = (x, z) => supportWorld().surface(x, z, vehiclePresentation.pose.y);
-const skipSpray = createDust(scene, 200, .55), emitSkipSpray = createSkipSpray(skipSpray);
+const waterSpray = createDust(scene, 200, .55), emitWaterSpray = createWaterSpray(waterSpray);
 const cycleAxle = new THREE.Vector3(0, .616, -1.1), cycleAxleLean = new THREE.Vector3(), cycleAxleRest = new THREE.Vector3(), cycleRest = new THREE.Euler(0, 0, 0, 'YXZ');
 let treeBreakage = null;
 // The ground under the drawn car: for the Roadster, water counts as ground.
@@ -2370,7 +2370,7 @@ function render(dt) {
     // Wheelies and leans turn it about the rear axle, which stays where it was.
     cycleAxleLean.copy(cycleAxle).applyQuaternion(car.quaternion);
     cycleAxleRest.copy(cycleAxle).applyEuler(cycleRest.set(pose.pitch, pose.heading, pose.roll));
-    car.position.set(pose.x + cycleAxleRest.x - cycleAxleLean.x, pose.y + cycleAxleRest.y - cycleAxleLean.y + vehicle.skip, pose.z + cycleAxleRest.z - cycleAxleLean.z);
+    car.position.set(pose.x + cycleAxleRest.x - cycleAxleLean.x, pose.y + cycleAxleRest.y - cycleAxleLean.y, pose.z + cycleAxleRest.z - cycleAxleLean.z);
   }
   if (transformation) profiler.measure('transformAnimation', () => { transformation.update(pose.transform); flightRig.update(pose.flight); });
   if (propeller) { propellerAngle += dt * pose.flight * (18 + Math.abs(pose.speed) * .45); propeller.rotation.z = propellerAngle; }
@@ -2519,11 +2519,11 @@ function frame(now) {
     dust.update(dt, vehicle, vehicle.onDirt && roadLook.uWet.value < .3 && roadLook.uSnowCover.value < .3 && world.frostAt(vehicle.x, vehicle.z) < .3, dustColor, renderer.domElement.height, camera.fov);
     if (shownAsset?.nozzles && vehicle.kind === 'roadster') { const hover = hoverWorld(world); emitVapour(dt, vehicle, shownAsset.nozzles, (x, z) => hover.surface(x, z)); }
     if (vehicle.kind === 'lightcycle') {
-      emitSkipSpray(dt, vehicle);
-      if (vehicle.skimming !== reportedWater) { reportedWater = vehicle.skimming; if (reportedWater) toast('Over the water — the neon boost fires and you skip across'); }
+      emitWaterSpray(dt, vehicle);
+      if (vehicle.skimming !== reportedWater) { reportedWater = vehicle.skimming; if (reportedWater) toast('Over the water — the neon boost fires and you ride across'); }
     }
     vapour.update(dt, vehicle, false, dustColor, renderer.domElement.height, camera.fov);
-    skipSpray.update(dt, vehicle, false, dustColor, renderer.domElement.height, camera.fov);
+    waterSpray.update(dt, vehicle, false, dustColor, renderer.domElement.height, camera.fov);
     if (vehicle.kind === 'roadster') {
       if (vehicle.overWater !== reportedWater) { reportedWater = vehicle.overWater; if (reportedWater) toast('Over the water — the thrusters hold you up'); }
       if (!vehicle.gas && !reportedEmpty) toast('Thrusters empty — they refill as you drive');

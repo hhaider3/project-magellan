@@ -3,8 +3,7 @@ export const CYCLE_LEAN = .6, CYCLE_CARVE = .35; // radians at full lean; how mu
 const TURN_LEAN = .48; // radians the bike leans by itself at full steering
 export const CYCLE_MAX_LEAN = .75; // both together
 export const CYCLE_WATER_GAP = .08; // metres: how far above the water the tyres run
-const SKIP_LENGTH = 30, SKIP_HEIGHT = .55; // metres per skip, at full speed; how high each one rises
-export function cycleState() { return { wheelRadius: .604, wheelie: 0, lean: 0, turnLean: 0, neonCharge: 1, neonBoost: false, neonForced: false, boostHeld: false, overWater: false, skimming: false, skip: 0, skipPhase: 0, skips: 0 }; }
+export function cycleState() { return { wheelRadius: .604, wheelie: 0, lean: 0, turnLean: 0, neonCharge: 1, neonBoost: false, neonForced: false, boostHeld: false, overWater: false, skimming: false }; }
 // A lean with Q / E into the turn tightens it; against it, widens it. On its own it doesn't turn the bike.
 export const cycleCarve = car => 1 + Math.sign(car.steer) * car.lean / CYCLE_LEAN * CYCLE_CARVE;
 export function stepCycle(car, input, dt) {
@@ -26,15 +25,6 @@ export function stepCycle(car, input, dt) {
   car.lean += (lean * CYCLE_LEAN * (.3 + .7 * moving) - car.lean) * ease;
   car.turnLean += ((car.grounded ? car.steer * TURN_LEAN * moving : 0) - car.turnLean) * ease;
 }
-// Skipping like a stone: a run of low arcs on the drawn bike, each touching down
-// on the water. Only how it looks: the physics stays on the surface and can steer.
-export function stepCycleSkip(car, travelled, dt) {
-  if (!car.skimming || !car.grounded) { car.skip *= Math.exp(-dt * 12); car.skipPhase = 0; return; }
-  car.skipPhase += travelled / SKIP_LENGTH;
-  if (car.skipPhase >= 1) { car.skipPhase -= 1; car.skips++; }
-  car.skip = SKIP_HEIGHT * Math.min(1, Math.abs(car.speed) / 70) * 4 * car.skipPhase * (1 - car.skipPhase);
-}
-
 // The world as the bike's tyres see it: water is a surface to run on. Cached per
 // world, so the view is made once. Away from water it's the land as it is.
 const views = new WeakMap();

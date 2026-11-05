@@ -89,7 +89,7 @@ You need a browser with WebGL and module workers. Everything else is bundled: Th
 | N | New world |
 | 1 / 2 / 3 / 4 | Jump to sunrise, noon, sunset or night (also **Time** in the menu) |
 
-In the water the same keys drive the boat: W/S thrust, A/D steer, Shift slows down. You can't jump while floating. The Light Cycle never floats either: reach water and its neon boost fires, however little charge is left, and holds until the far shore while it skips across at up to 500 km/h. The Roadster never floats: over water it skims on its thrusters and drives as it does on land.
+In the water the same keys drive the boat: W/S thrust, A/D steer, Shift slows down. You can't jump while floating. The Light Cycle never floats either: reach water and its neon boost fires, however little charge is left, and holds until the far shore while it rides across at up to 500 km/h. The Roadster never floats: over water it skims on its thrusters and drives as it does on land.
 
 ### Flying
 
@@ -170,7 +170,7 @@ Cloud cover follows the region too: desert skies are nearly clear, meadows about
 
 **Scenery and destruction.** Pines, shrubs, cacti, rocks, boulders, roadside markers, cabins and lookout towers, all modeled in Blender. Flowering cherries (sakura), 10 m tall, ring stretches of lowland shore round the ponds, lakes and seas (never the rivers); their petals flutter down on the breeze and settle on the grass or float on the water. The scenery follows the land: snow-dusted pines on the cold upper slopes and all through the Frostlands, small wind-bent pines at the treeline, low junipers and boulders above it, dead snags and dry scrub at the desert's edge, granite crags on steep mountain ground, sandstone ledges on the mesas, and scree on the high slopes. Outcrops are solid and never break. Trees, cacti and small rocks shatter if you hit them above 65 km/h (boulders need 94 km/h); trees split into falling sections, and broken props stay broken for the rest of your visit. Clearances keep scenery off roads and ramp approaches.
 
-**Sound.** Five music tracks (Synth, synthwave's own, plays most of the time in that look and now and then otherwise), chosen to suit the drive and crossfading from one to the next, over effects all synthesized in the browser: a V8 engine with gears and exhaust pops, boat jets, a propeller, wind, tyre roar and squeal, rain, transformation motors, and impacts, splashes and breaking scenery placed left or right of the camera.
+**Sound.** Five music tracks (Synth, synthwave's own, plays most of the time in that look and now and then otherwise), chosen to suit the drive and crossfading from one to the next, over effects all synthesized in the browser: a V8 engine with gears and exhaust pops, the Light Cycle's neon hum and boost, boat jets, a propeller, wind, tyre roar and squeal, rain, transformation motors, and impacts, splashes and breaking scenery placed left or right of the camera.
 
 ## The menu
 
@@ -465,6 +465,7 @@ The effects are all synthesized live:
 
 - **Engine.** A loop of uneven V8 exhaust pulses runs through a muffler response, with revs that follow six gears.
 - **Roadster.** An electric drive's whine replaces the V8, rising with road speed, with the hiss and roar of cold gas whenever the thrusters fire.
+- **Light Cycle.** A neon hum of its own: two detuned saws through a resonant filter, gliding up with speed with no gears, throbbing with the wheels' turning and opening up under power and when leaned over. Its neon boost lights with a crack and a rising chord, adds a brighter layer while it lasts and falls away when it ends. A jump zips, spray hisses behind it on water, and the wall of light adds a faint high hum.
 - **Transforming.** As the ATLAS transforms, the sound crossfades to a muffled boat engine with a water jet, or to a plane engine with a propeller whoosh.
 - **Ambience.** Wind, tyre and weather sounds follow speed, surface and the weather.
 - **One-shots.** Impacts, splashes, scrapes and strikes are panned from the camera, with a short echo. Big hits briefly duck the engine.

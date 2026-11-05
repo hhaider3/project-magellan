@@ -41,16 +41,16 @@ const vertexShader = /* glsl */ `
       vec3 flat_ = vec3(aDir.z, 0., -aDir.x);
       float size = length(flat_);
       flat_ = size > 1e-4 ? flat_ / size : vec3(1., 0., 0.);
-      view = viewMatrix * vec4(aBase.x + flat_.x * aSide * ${POOL_WIDTH.toFixed(1)}, aGround + .07, aBase.z + flat_.z * aSide * ${POOL_WIDTH.toFixed(1)}, 1.);
+      view = modelViewMatrix * vec4(aBase.x + flat_.x * aSide * ${POOL_WIDTH.toFixed(1)}, aGround + .07, aBase.z + flat_.z * aSide * ${POOL_WIDTH.toFixed(1)}, 1.);
     } else if (aLayer > 1.5 && aLayer < 2.5) { // the wall itself
-      view = viewMatrix * vec4(aSide < 0. ? aBase : top, 1.);
+      view = modelViewMatrix * vec4(aSide < 0. ? aBase : top, 1.);
       vec3 normal = cross(aDir, top - aBase);
       float size = length(normal);
-      vFacing = size > 1e-4 ? abs(dot(normalize(mat3(viewMatrix) * normal), normalize(view.xyz))) : 1.;
+      vFacing = size > 1e-4 ? abs(dot(normalize(mat3(modelViewMatrix) * normal), normalize(view.xyz))) : 1.;
     } else { // halo and rails: a strip about a line, turned to face the camera
       vec3 line = aLayer < 1.5 ? (aBase + top) * .5 : aLayer < 3.5 ? aBase : top;
-      view = viewMatrix * vec4(line, 1.);
-      vec3 across = cross(mat3(viewMatrix) * aDir, normalize(view.xyz));
+      view = modelViewMatrix * vec4(line, 1.);
+      vec3 across = cross(mat3(modelViewMatrix) * aDir, normalize(view.xyz));
       float size = length(across);
       across = size > 1e-4 ? across / size : vec3(1., 0., 0.);
       float width = aLayer < 1.5 ? 1.25
@@ -126,20 +126,19 @@ const fragmentShader = /* glsl */ `
 
 const smoothstep = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 
-// Skipping over water: a rooster tail behind the rear tyre, and a burst at each
-// touchdown, into a particle pool of its own (dust.mjs).
-export function createSkipSpray(pool) {
+// Riding on water: a rooster tail behind the rear tyre, into a particle pool of
+// its own (dust.mjs).
+export function createWaterSpray(pool) {
   const color = new THREE.Color(.72, .96, 1);
-  let carry = 0, seed = 1, seen = 0;
+  let carry = 0, seed = 1;
   const random = () => (seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0) / 4294967296;
   return function emit(dt, car) {
-    if (!car.skimming || !car.grounded) { seen = car.skips; carry = 0; return; }
+    if (!car.skimming || !car.grounded) { carry = 0; return; }
     const fx = Math.sin(car.heading), fz = Math.cos(car.heading), level = car.waterLevel + .1;
     const puff = (out, up, life, size) => {
       const side = (random() - .5) * out;
       pool.puff(car.x - fx * 1.6 + fz * side * .3, level, car.z - fz * 1.6 - fx * side * .3, car.vx * .86 + fz * side * 2, up * (.5 + random()), car.vz * .86 - fx * side * 2, life + random() * .4, size, color); // it trails the bike, or the camera would never see it
     };
-    if (car.skips !== seen) { seen = car.skips; for (let i = 0; i < 12; i++) puff(9, 7, .3, .25); }
     for (carry += dt * 45; carry >= 1; carry--) puff(2, 3, .4, .5);
   };
 }

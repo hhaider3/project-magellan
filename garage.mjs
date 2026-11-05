@@ -1,15 +1,18 @@
 import * as THREE from 'three';
 import { createTransformation, thrusterNozzles } from './vehicle-model.mjs?v=lightcycle-3';
 import { createThrusterPlumes } from './thrusters.mjs?v=roadster-1';
+import { createCycleTrail, TRAIL_LIFE } from './cycle-trail.mjs?v=ribbon-4';
 
 // The garage's showroom: a car on a turntable in a dark studio, drawn by the
 // game's renderer in place of the world while the garage is open. Each car is
 // a clone of the game's model (sharing its geometry and materials) with a pose
-// of its own, so the garage can unfold the ATLAS's wings and boat hull, or
-// fire the Roadster's thrusters, without touching the car you drive.
+// of its own, so the garage can unfold the ATLAS's wings and boat hull, fire
+// the Roadster's thrusters, or ride the Light Cycle in place with its boosted
+// wall of light behind it, without touching the car you drive.
 const FOV = 26, ELEVATION = .2; // camera: vertical degrees, radians above the horizon
 const FORM_RATE = 1 / 1.4; // a form or thruster preview takes 1.4 s
 const SPIN = .28, IDLE = 2.5; // rad/s of auto-turn, resuming this long after a drag
+const RIDE = { travel: 6, speed: 30, rate: 2.5, fade: 3, pullBack: .35 }; // the bike's ride: m/s the ribbon slides back, the speed it's written at, how fast that comes on, how much faster it ages once off, and how far the camera backs off
 const RING = { roadster: '#ff3b2f', lightcycle: '#71e6ff' }; // the turntable's ring, where it isn't the studio's
 
 // Colours as written to the screen (the studio shaders aren't tone mapped),
@@ -108,19 +111,41 @@ export function createShowroom() {
         model.add(patch);
       }
     }
+    if (asset.kind === 'lightcycle') {
+      s.ride = { trail: createCycleTrail(turntable), emitter: model.getObjectByName('Trail_Emitter').getWorldPosition(new THREE.Vector3()), power: 0, travel: 0, off: TRAIL_LIFE, top: new THREE.Vector3(), base: new THREE.Vector3(), wheels: [] };
+      model.traverse(o => { if (/^Spinner_/.test(o.name)) s.ride.wheels.push(o); });
+    }
     return s;
+  }
+  // The bike rides in place: the ribbon is written ahead of the turntable's
+  // centre and slid back as far, so it stays behind the bike however it turns.
+  function ride(s, dt, pixels) {
+    const r = s.ride, on = s.preview === 'boost';
+    r.power += ((on ? 1 : 0) - r.power) * (1 - Math.exp(-dt * RIDE.rate));
+    r.off = on ? 0 : r.off + dt * RIDE.fade;
+    if (r.off >= TRAIL_LIFE) { // run out
+      if (r.travel) { r.trail.clear(); r.travel = r.power = 0; r.trail.mesh.position.z = 0; }
+      return;
+    }
+    r.travel += r.power * RIDE.travel * dt;
+    r.trail.mesh.position.z = -r.travel;
+    r.top.copy(r.emitter); r.top.z += r.travel;
+    r.base.copy(r.top); r.base.y = .03;
+    r.trail.update(on ? dt : dt * RIDE.fade, { top: r.top, base: r.base, heading: 0, speed: on ? r.power * RIDE.speed : 0, boost: on, pixels, groundAt: () => 0, daylight: 0 });
+    for (const wheel of r.wheels) wheel.rotation.x += r.power * RIDE.speed / .6 * dt;
   }
   function show(asset) {
     if (!stands.has(asset.kind)) stands.set(asset.kind, makeStand(asset));
-    if (stand) turntable.remove(stand.model);
+    if (stand) turntable.remove(stand.model, stand.ride?.trail.mesh);
     stand = stands.get(asset.kind); turntable.add(stand.model);
+    if (stand.ride) turntable.add(stand.ride.trail.mesh);
     ring.material.color.set(RING[asset.kind] ?? palette.ring);
     arrive = 1;
     return stand;
   }
   // Toggle a feature preview (see PREVIEWS in vehicle-specs.mjs); null for none.
   function preview(key) { if (stand) stand.preview = stand.preview === key ? null : key; return stand?.preview ?? null; }
-  function update(dt) {
+  function update(dt, pixels) {
     time += dt;
     idle += dt;
     if (idle > IDLE) spin += (SPIN - spin) * (1 - Math.exp(-dt * 1.5));
@@ -149,6 +174,7 @@ export function createShowroom() {
       s.plumes.update({ rear: s.power.rear, lift: hover ? .55 + Math.sin(time * 9) * .05 : 0 }, dt, time);
       s.wing.rotation.x += ((s.preview === 'wing' ? .95 : 0) - s.wing.rotation.x) * (1 - Math.exp(-dt * 5));
     }
+    if (s.ride) ride(s, dt, pixels);
     arrive *= Math.exp(-dt * 7);
     s.model.position.y = -s.base.min + lift; s.model.rotation.z = s.bank;
     s.model.scale.setScalar(1 - arrive * .08);
@@ -156,15 +182,17 @@ export function createShowroom() {
     // The camera eases toward the frame of the form being shown.
     let goal = s.base;
     for (const form of Object.values(s.forms)) if (form.progress > 0) goal = { radius: s.base.radius + (form.frame.radius - s.base.radius) * form.progress, y: s.base.y + (form.frame.y - s.base.y) * form.progress };
+    if (s.ride) goal = { radius: s.base.radius * (1 + s.ride.power * RIDE.pullBack), y: s.base.y }; // back a little, to see more of the wall
     const ease = 1 - Math.exp(-dt * 4);
     framing.radius += (goal.radius - framing.radius) * ease; framing.y += (goal.y + lift - framing.y) * ease;
     ring.scale.setScalar(s.base.radius * .92);
     floorMaterial.uniforms.uPool.value = s.base.radius * 2.2;
   }
-  // view: the screen's size, and area the part of it left for the car (in
-  // CSS pixels: left, top, right, bottom). The car is centred and fitted there.
+  // view: the screen's size (and its height in device pixels), and area the
+  // part of it left for the car (in CSS pixels: left, top, right, bottom). The
+  // car is centred and fitted there.
   function render(draw, dt, view, area) {
-    update(dt);
+    update(dt, view.pixels);
     const { width, height } = view, areaWidth = area.right - area.left, areaHeight = area.bottom - area.top;
     camera.aspect = width / height;
     camera.setViewOffset(width, height, width / 2 - (area.left + area.right) / 2, height / 2 - (area.top + area.bottom) / 2, width, height);
@@ -187,6 +215,7 @@ export function createShowroom() {
     show, preview, render, setSynthwave,
     get kind() { return stand?.kind ?? null; },
     get previewing() { return stand?.preview ?? null; },
+    get trail() { return stand?.ride?.trail ?? null; }, // what the tests look at
     // Dragging turns the car; a flick keeps it turning for a moment.
     drag(dx, dt) { idle = 0; const turn = dx * .009; angle += turn; spin = dt > 0 ? Math.max(-6, Math.min(6, turn / dt)) : spin; },
   };

@@ -7,6 +7,7 @@ import { createWorld, createVehicle, stepVehicle, recoverVehicle, FIXED_DT, grou
 import { toggleFlight } from '../flight-motion.mjs';
 import { vehicleForTheme, vehicleOrder } from '../vehicle-specs.mjs';
 import { createCycleTrail, TRAIL_CAPACITY, TRAIL_LIFE, TRAIL_SPACING } from '../cycle-trail.mjs';
+import { createShowroom } from '../garage.mjs';
 import { CYCLE_LEAN } from '../cycle-motion.mjs';
 
 const flat = { surface: () => 0, gradient: () => ({ x: 0, z: 0 }), roadAt: () => ({ d: 0 }) };
@@ -52,16 +53,16 @@ const shore = { ...flat, surface: (x, z) => z > 100 && z < 400 ? -4.5 : 0, water
 test('water fires the boost even when empty and holds it to the far shore, at full speed on the surface', () => {
   const bike = createVehicle(shore, 0, 0, 0, 'lightcycle');
   bike.neonCharge = 0;
-  let peak = 0, lowest = Infinity, wet = 0, skips = 0;
+  let peak = 0, lowest = Infinity, highest = -Infinity, wet = 0;
   for (let i = 0; i < 12 / FIXED_DT && bike.z < 395; i++) {
     stepVehicle(bike, { up: bike.z < 50 }, shore, []);
     if (bike.z < 95) assert.equal(bike.neonBoost, false, 'not before the water');
-    if (bike.z > 102) { assert.equal(bike.neonBoost, true); assert.equal(bike.overWater, true); peak = Math.max(peak, Math.hypot(bike.vx, bike.vz) * 3.6); lowest = Math.min(lowest, bike.y); wet++; skips = bike.skips; assert.ok(bike.skip >= 0 && bike.skip <= .56); }
+    if (bike.z > 102) { assert.equal(bike.neonBoost, true); assert.equal(bike.overWater, true); peak = Math.max(peak, Math.hypot(bike.vx, bike.vz) * 3.6); lowest = Math.min(lowest, bike.y); highest = Math.max(highest, bike.y); wet++; }
   }
   assert.ok(wet > 0 && bike.z >= 395, 'it crossed, with no throttle held');
   assert.ok(peak > 200, `${peak} km/h`);
   assert.ok(lowest >= -.08, 'on the water, never in it');
-  assert.ok(skips >= 5, `${skips} skips`);
+  assert.ok(highest - lowest < .01, `it drives flat on the water, no hops: ${lowest} to ${highest}`);
   assert.equal(bike.kind, 'lightcycle');
   assert.equal(bike.floating, false);
   // Back on land the forced boost lets go and the meter starts to refill.
@@ -69,7 +70,6 @@ test('water fires the boost even when empty and holds it to the far shore, at fu
   assert.ok(bike.z > 400);
   assert.equal(bike.neonBoost, false);
   assert.ok(bike.neonCharge > 0);
-  assert.ok(bike.skip < .05);
 });
 
 test('the far shore keeps a boost you fired yourself, and water burns the charge', () => {
@@ -263,4 +263,28 @@ test('a wheelie swinging the base into the ground leaves the wall standing on it
   const trail = createCycleTrail(new THREE.Scene());
   rideTrail(trail, .5, 40, { ground: () => 3, baseY: 2.5 });
   assert.ok(Math.abs(trail.samples().at(-1).baseY - 3.03) < 1e-5);
+});
+
+test('the garage shows the wall of light behind the bike on its turntable, and clears it', async () => {
+  const bytes = await readFile(new URL('../assets/vehicles/light-cycle-rider.glb', import.meta.url));
+  const { scene } = await new GLTFLoader().parseAsync(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength), '');
+  const showroom = createShowroom();
+  showroom.show({ kind: 'lightcycle', model: scene, clips: [] });
+  const trail = showroom.trail, view = { width: 1280, height: 720, pixels: 720 }, area = { left: 400, top: 0, right: 1280, bottom: 720 };
+  const run = seconds => { for (let i = 0; i < seconds * 60; i++) showroom.render(() => {}, 1 / 60, view, area); };
+  // The turntable turns the ribbon with the bike, so its shader must use the mesh's place.
+  assert.doesNotMatch(trail.mesh.material.vertexShader, /\bviewMatrix\b/);
+  run(1);
+  assert.equal(trail.mesh.visible, false, 'not until it is asked for');
+  assert.equal(showroom.preview('boost'), 'boost');
+  run(5);
+  assert.equal(trail.mesh.visible, true);
+  const lit = trail.samples();
+  assert.ok(trail.length > 15 && lit.at(-1).strength === 1 && lit.at(-1).boost > .9, `${trail.length} m`);
+  const emitter = trail.mesh.position.z + lit.at(-1).z;
+  assert.ok(emitter < 0 && emitter > -2, `the head is at the bike's tail: z ${emitter}`);
+  assert.equal(showroom.preview('boost'), null);
+  run(TRAIL_LIFE / 3 + .1);
+  assert.equal(trail.mesh.visible, false, 'switched off, it runs out in a couple of seconds');
+  assert.equal(trail.mesh.position.z, 0);
 });

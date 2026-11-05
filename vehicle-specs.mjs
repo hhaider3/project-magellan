@@ -22,7 +22,7 @@ export const VEHICLE_SPECS = {
       { key: 'lean', title: 'Leans', keys: 'Q / E', text: 'It leans into every turn by itself. Q and E bank it further, and leaning into a turn tightens it by a third.' },
       { key: 'wheelie', title: 'Front wheel lift', keys: '↓ / ↑', text: 'Hold down for a wheelie, up to set the front wheel back down. W / S accelerate and brake.' },
       { key: 'jump', title: 'Jump and drift', keys: 'Space / Shift', text: 'Jump off the ground or launch from ramps. Hold Shift to slide through corners.' },
-      { key: 'water', title: 'Skips water', keys: 'auto', text: 'Reach water and the neon boost fires, however little is left, and holds to the far shore: you skip across at up to 500 km/h.' },
+      { key: 'water', title: 'Rides on water', keys: 'auto', text: 'Reach water and the neon boost fires, however little is left, and holds to the far shore: you ride across at up to 500 km/h.' },
     ],
   },
   atlas: {
@@ -60,5 +60,5 @@ export const VEHICLE_SPECS = {
     ],
   },
 };
-// Features the garage can show on the model: ATLAS forms and Roadster thrusters.
-export const PREVIEWS = { atlas: ['plane', 'boat'], roadster: ['boost', 'hover', 'wing'], lightcycle: [] };
+// Features the garage can show on the model: ATLAS forms, Roadster thrusters, the bike's trail.
+export const PREVIEWS = { atlas: ['plane', 'boat'], roadster: ['boost', 'hover', 'wing'], lightcycle: ['boost'] };
