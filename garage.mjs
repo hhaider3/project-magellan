@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { createTransformation, thrusterNozzles } from './vehicle-model.mjs?v=lightcycle-3';
+import { createTransformation, poseRoadsterWing, thrusterNozzles } from './vehicle-model.mjs?v=roadster-6';
 import { createThrusterPlumes } from './thrusters.mjs?v=roadster-1';
 import { createCycleTrail, TRAIL_LIFE } from './cycle-trail.mjs?v=ribbon-4';
 
@@ -94,7 +94,11 @@ export function createShowroom() {
     const atlas = asset.kind === 'atlas';
     const s = { kind: asset.kind, model, preview: null, lift: 0, bank: 0, power: { rear: 0, lift: 0 }, wing: model.getObjectByName('Rear_Wing'), propeller: model.getObjectByName('Propeller'), propellerAngle: 0, forms: {} };
     if (atlas) for (const [name, clip] of [['boat', 'Transform_To_Boat'], ['plane', 'Transform_To_Plane']]) s.forms[name] = { rig: createTransformation(model, asset.clips, clip), progress: 0 };
-    if (s.wing) s.wing.rotation.x = 0;
+    if (s.wing) {
+      s.airBrake = 0;
+      poseRoadsterWing(s.wing, 0);
+      model.getObjectByName('Lamp_Shutters').rotation.x = 0;
+    }
     for (const form of Object.values(s.forms)) form.rig.update(0);
     s.plumes = asset.kind === 'roadster' ? createThrusterPlumes(thrusterNozzles(model)) : null;
     s.plumes?.update({}, 1, 0);
@@ -172,7 +176,8 @@ export function createShowroom() {
       s.lift += ((hover ? 1 : 0) - s.lift) * (1 - Math.exp(-dt * 2.4));
       lift = s.lift * (1.25 + Math.sin(time * 1.8) * .07);
       s.plumes.update({ rear: s.power.rear, lift: hover ? .55 + Math.sin(time * 9) * .05 : 0 }, dt, time);
-      s.wing.rotation.x += ((s.preview === 'wing' ? .95 : 0) - s.wing.rotation.x) * (1 - Math.exp(-dt * 5));
+      s.airBrake += ((s.preview === 'wing' ? 1 : 0) - s.airBrake) * (1 - Math.exp(-dt * 5));
+      poseRoadsterWing(s.wing, s.airBrake, Math.max(s.lift, s.power.rear));
     }
     if (s.ride) ride(s, dt, pixels);
     arrive *= Math.exp(-dt * 7);

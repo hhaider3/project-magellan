@@ -3,12 +3,13 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import * as THREE from 'three';
 import { GLTFLoader } from '../vendor/loaders/GLTFLoader.js';
+import { MeshoptDecoder } from '../vendor/libs/meshopt_decoder.module.js';
 import { assembleNatureLibrary } from '../nature-models.mjs';
 import { createTreeBreakage } from '../tree-breakage.mjs';
 import { cloneOwnedGeometry } from '../scenery.mjs';
 
 const bytes = await readFile(new URL('../assets/nature/endless-nature.glb', import.meta.url));
-const { scene } = await new GLTFLoader().parseAsync(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength), '');
+const { scene } = await new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).parseAsync(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength), '');
 const library = assembleNatureLibrary(scene);
 
 test('Blender scenery contains nineteen colored, correctly scaled assets with bounded geometry', () => {

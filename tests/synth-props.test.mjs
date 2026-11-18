@@ -3,12 +3,13 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import * as THREE from 'three';
 import { GLTFLoader } from '../vendor/loaders/GLTFLoader.js';
+import { MeshoptDecoder } from '../vendor/libs/meshopt_decoder.module.js';
 import { assembleNatureLibrary, addPalms, addSynthProps, glowLook } from '../nature-models.mjs';
 import { createDebris } from '../debris.mjs';
 
 const parse = async url => {
   const bytes = await readFile(new URL(url, import.meta.url));
-  return { bytes, scene: (await new GLTFLoader().parseAsync(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength), '')).scene };
+  return { bytes, scene: (await new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).parseAsync(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength), '')).scene };
 };
 const plain = assembleNatureLibrary((await parse('../assets/nature/endless-nature.glb')).scene);
 const props = await parse('../assets/nature/synth-props/synth-props.glb');

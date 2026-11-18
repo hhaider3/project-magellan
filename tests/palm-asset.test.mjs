@@ -3,12 +3,13 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import * as THREE from 'three';
 import { GLTFLoader } from '../vendor/loaders/GLTFLoader.js';
+import { MeshoptDecoder } from '../vendor/libs/meshopt_decoder.module.js';
 import { assembleNatureLibrary, addPalms } from '../nature-models.mjs';
 import { createTreeBreakage } from '../tree-breakage.mjs';
 
 const parse = async url => {
   const bytes = await readFile(new URL(url, import.meta.url));
-  return { bytes, scene: (await new GLTFLoader().parseAsync(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength), '')).scene };
+  return { bytes, scene: (await new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).parseAsync(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength), '')).scene };
 };
 const nature = await parse('../assets/nature/endless-nature.glb'), palms = await parse('../assets/nature/palm-synthwave/palm-trees.glb');
 const library = addPalms(assembleNatureLibrary(nature.scene), palms.scene);

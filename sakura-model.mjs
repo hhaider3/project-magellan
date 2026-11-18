@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { SAKURA_HEIGHT } from './world.mjs?v=lightcycle-4';
 
-export const SAKURA_URL = new URL('./assets/nature/sakura-realistic/sakura-tree.glb?v=sakura-shore-1', import.meta.url);
+export const SAKURA_URL = new URL('./assets/nature/sakura-realistic/sakura-tree.glb?v=packed-1', import.meta.url);
 const MESH_NAMES = ['Sakura_Trunk_Branches', 'Sakura_Blossom_Canopy'];
 
 // Mipmaps that keep a cut-out texture's coverage. Averaged as usual, alpha

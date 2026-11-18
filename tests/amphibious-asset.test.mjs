@@ -3,9 +3,10 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { Box3, Vector3 } from 'three';
 import { GLTFLoader } from '../vendor/loaders/GLTFLoader.js';
+import { MeshoptDecoder } from '../vendor/libs/meshopt_decoder.module.js';
 import { createTransformation } from '../vehicle-model.mjs';
 const bytes = await readFile(new URL('../assets/vehicles/atlas-amphibious.glb', import.meta.url));
-const { scene, animations } = await new GLTFLoader().parseAsync(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength), '');
+const { scene, animations } = await new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).parseAsync(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength), '');
 const rig = createTransformation(scene, animations), plane = createTransformation(scene, animations, 'Transform_To_Plane');
 const size = () => new Box3().setFromObject(scene, true).getSize(new Vector3());
 

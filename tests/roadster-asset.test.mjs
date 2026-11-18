@@ -3,10 +3,11 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { Box3, Vector3 } from 'three';
 import { GLTFLoader } from '../vendor/loaders/GLTFLoader.js';
-import { thrusterNozzles } from '../vehicle-model.mjs';
+import { MeshoptDecoder } from '../vendor/libs/meshopt_decoder.module.js';
+import { poseRoadsterWing, thrusterNozzles } from '../vehicle-model.mjs';
 const bytes = await readFile(new URL('../assets/vehicles/roadster-rocket.glb', import.meta.url));
 const metadata = JSON.parse(await readFile(new URL('../assets/vehicles/roadster-rocket.json', import.meta.url), 'utf8'));
-const { scene, animations } = await new GLTFLoader().parseAsync(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength), '');
+const { scene, animations } = await new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).parseAsync(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength), '');
 scene.updateMatrixWorld(true);
 const bounds = object => new Box3().setFromObject(object, true);
 
@@ -22,9 +23,9 @@ test('Blender exports a compact, self-contained Roadster with no clips, images o
   assert.ok(meshes <= 40, `${meshes} draws`); assert.ok(triangles < 80000, `${triangles} triangles`); assert.ok(bytes.length < 4 * 1024 * 1024);
   assert.equal(metadata.triangles, triangles, 'metadata includes evaluated modifiers on fixed parts');
   // Batched by material within the body and each wheel, as the export reports.
-  assert.deepEqual(metadata.batching.map(b => b.group), ['Body', 'Spinner_FL', 'Spinner_RL', 'Spinner_FR', 'Spinner_RR', 'Rear_Wing']);
+  assert.deepEqual(metadata.batching.map(b => b.group), ['Body', 'Spinner_FL', 'Spinner_RL', 'Spinner_FR', 'Spinner_RR', 'Rear_Wing', 'Wing_Carriage', 'Lamp_Shutters']);
   // (The shell keeps its carbon wheel-arch liners as a second primitive.)
-  assert.equal(scene.getObjectByName('Body').children.filter(o => !/^(Exhaust_|Rear_Wing$)/.test(o.name)).length, metadata.batching[0].after);
+  assert.equal(scene.getObjectByName('Body').children.filter(o => !/^(Exhaust_|Wing_Carriage$|Lamp_Shutters$)/.test(o.name)).length, metadata.batching[0].after);
   // An original model: no badges, wordmarks or text anywhere.
   scene.traverse(o => assert.doesNotMatch(o.name, /tesla|spacex|logo|badge|wordmark|text|registration/i));
   assert.ok(!gltf.meshes.some(m => /text|font/i.test(m.name)));
@@ -75,7 +76,9 @@ test('ten thruster nozzles in the reported Rocket layout, each with an exhaust m
   const body = bounds(scene.getObjectByName('Body')), at = n => n.node.getWorldPosition(new Vector3());
   // Four in the rear diffuser blowing backward, across the tail.
   for (const n of nozzles.rear) { assert.deepEqual(n.thrust.toArray(), [0, 0, -1]); assert.ok(at(n).z < -2.1 && at(n).y < .5); }
-  assert.ok(Math.max(...nozzles.rear.map(n => at(n).x)) - Math.min(...nozzles.rear.map(n => at(n).x)) > 1);
+  // The reveal car's four bells share the narrow central diffuser.
+  const x = nozzles.rear.map(n => at(n).x).sort((a, b) => a - b);
+  for (const [i, centre] of [-.399, -.133, .133, .399].entries()) assert.ok(Math.abs(x[i] - centre) < .01);
   // Four at the corners blowing down, under the body, two at each end.
   for (const n of nozzles.lift) { assert.deepEqual(n.thrust.toArray(), [0, -1, 0]); assert.ok(at(n).y < .12 && Math.abs(at(n).z) > 1.8 && Math.abs(at(n).x) > .7); }
   assert.equal(nozzles.lift.filter(n => at(n).z > 0).length, 2);
@@ -88,20 +91,41 @@ test('ten thruster nozzles in the reported Rocket layout, each with an exhaust m
   for (const t of metadata.thrusters) assert.ok(at({ node: scene.getObjectByName(t.name) }).distanceTo(new Vector3(...t.position)) < 1e-3);
 });
 
-test('the rear wing tilts on its own pivot into an air brake, leaving the body and pylons put', () => {
+test('the parked deck lifts on its posts and then pitches into an air brake', () => {
   const body = scene.getObjectByName('Body'), wing = scene.getObjectByName('Rear_Wing');
-  assert.equal(wing.parent, body);
-  assert.ok(wing.getWorldPosition(new Vector3()).distanceTo(new Vector3(0, .95, -1.98)) < 1e-4);
-  // The wing carries its light; the pylons stay on the body.
-  const parts = wing.children.filter(o => o.isMesh || o.isGroup).map(o => o.name);
-  assert.ok(parts.includes('Rear_Wing__Brake_Lamp') && parts.includes('Rear_Wing__Carbon'));
-  const flat = bounds(wing), rest = body.children.filter(o => o !== wing && !o.name.startsWith('Exhaust_')).map(o => bounds(o));
-  wing.rotation.x = .95; scene.updateMatrixWorld(true);
-  const raised = bounds(wing);
-  // Trailing edge up, leading edge down: the wing stands up across the airflow.
-  assert.ok(raised.max.y - raised.min.y > (flat.max.y - flat.min.y) * 1.8, 'it stands up');
-  assert.ok(raised.min.y > .80, `clear of the deck: ${raised.min.y}`);
-  body.children.filter(o => o !== wing && !o.name.startsWith('Exhaust_')).forEach((o, i) => assert.ok(bounds(o).equals(rest[i])));
-  wing.rotation.x = 0; scene.updateMatrixWorld(true);
-  assert.ok(bounds(wing).equals(flat));
+  const carriage = scene.getObjectByName('Wing_Carriage');
+  assert.equal(wing.parent, carriage);
+  assert.equal(carriage.parent, body);
+  const posts = carriage.getObjectByName('Wing_Carriage__Carbon');
+  const rest = bounds(wing), retractedPosts = bounds(posts);
+  assert.ok(rest.max.y < .90, 'the stowed airfoil follows the deck');
+  assert.ok(wing.getObjectByName('Rear_Wing__Brake_Lamp') && wing.getObjectByName('Rear_Wing__Ano_White'));
+  const shell = scene.getObjectByName('Body__Ano_White'), parked = bounds(shell);
+  poseRoadsterWing(wing, .25);
+  scene.updateMatrixWorld(true);
+  assert.equal(wing.rotation.x, 0, 'the blade lifts before it pitches');
+  assert.ok(bounds(wing).min.y > rest.min.y + .10);
+  poseRoadsterWing(wing, 1);
+  scene.updateMatrixWorld(true);
+  assert.ok(Math.abs(wing.rotation.x - .95) < .001);
+  assert.ok(bounds(posts).min.y > retractedPosts.min.y + .19);
+  assert.ok(bounds(wing).min.y > .88);
+  assert.ok(bounds(shell).equals(parked));
+  poseRoadsterWing(wing, 0);
+  scene.updateMatrixWorld(true);
+  assert.ok(bounds(wing).equals(rest) && bounds(posts).equals(retractedPosts));
+});
+
+test('the headlamp covers drop into the nose, leaving the optical cells in place', () => {
+  const shutters = scene.getObjectByName('Lamp_Shutters');
+  const lamps = scene.getObjectByName('Body__Headlamp');
+  const top = bounds(shutters), fixed = bounds(lamps);
+  assert.ok(top.min.z > 1.80 && top.max.z < 2.25);
+  shutters.rotation.x = shutters.userData.openAngle;
+  scene.updateMatrixWorld(true);
+  assert.ok(bounds(shutters).max.y < top.max.y - .025);
+  assert.ok(bounds(lamps).equals(fixed));
+  shutters.rotation.x = 0;
+  scene.updateMatrixWorld(true);
+  assert.ok(bounds(shutters).equals(top));
 });

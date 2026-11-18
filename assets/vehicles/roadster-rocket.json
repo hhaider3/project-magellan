@@ -1,41 +1,51 @@
 {
   "name": "Roadster Rocket",
-  "revision": 5,
+  "revision": 6,
   "reference": "https://www.tesla.com/roadster",
   "source": "roadster-rocket.blend",
   "asset": "roadster-rocket.glb",
-  "sourceParts": 538,
-  "triangles": 46912,
+  "sourceParts": 543,
+  "triangles": 48608,
   "batching": [
     {
       "group": "Body",
-      "before": 178,
-      "after": 10
+      "before": 200,
+      "after": 9
     },
     {
       "group": "Spinner_FL",
-      "before": 88,
-      "after": 4
+      "before": 82,
+      "after": 3
     },
     {
       "group": "Spinner_RL",
-      "before": 88,
-      "after": 4
+      "before": 82,
+      "after": 3
     },
     {
       "group": "Spinner_FR",
-      "before": 88,
-      "after": 4
+      "before": 82,
+      "after": 3
     },
     {
       "group": "Spinner_RR",
-      "before": 88,
-      "after": 4
+      "before": 82,
+      "after": 3
     },
     {
       "group": "Rear_Wing",
-      "before": 4,
-      "after": 2
+      "before": 7,
+      "after": 3
+    },
+    {
+      "group": "Wing_Carriage",
+      "before": 2,
+      "after": 1
+    },
+    {
+      "group": "Lamp_Shutters",
+      "before": 2,
+      "after": 1
     }
   ],
   "wheelRadius": {
@@ -58,9 +68,9 @@
     {
       "name": "Exhaust_Lift_FL",
       "position": [
-        -0.78,
-        0.085,
-        1.92
+        -0.754,
+        0.109,
+        1.84
       ],
       "thrust": [
         0.0,
@@ -71,9 +81,9 @@
     {
       "name": "Exhaust_Lift_FR",
       "position": [
-        0.78,
-        0.085,
-        1.92
+        0.754,
+        0.109,
+        1.84
       ],
       "thrust": [
         0.0,
@@ -84,9 +94,9 @@
     {
       "name": "Exhaust_Lift_RL",
       "position": [
-        -0.8,
-        0.085,
-        -1.92
+        -0.79,
+        0.109,
+        -1.84
       ],
       "thrust": [
         0.0,
@@ -97,9 +107,9 @@
     {
       "name": "Exhaust_Lift_RR",
       "position": [
-        0.8,
-        0.085,
-        -1.92
+        0.79,
+        0.109,
+        -1.84
       ],
       "thrust": [
         0.0,
@@ -110,9 +120,9 @@
     {
       "name": "Exhaust_Rear_1",
       "position": [
-        -0.6,
-        0.395,
-        -2.25
+        -0.399,
+        0.455,
+        -2.191
       ],
       "thrust": [
         0.0,
@@ -123,9 +133,9 @@
     {
       "name": "Exhaust_Rear_2",
       "position": [
-        -0.2,
-        0.395,
-        -2.25
+        -0.133,
+        0.455,
+        -2.191
       ],
       "thrust": [
         0.0,
@@ -136,9 +146,9 @@
     {
       "name": "Exhaust_Rear_3",
       "position": [
-        0.2,
-        0.395,
-        -2.25
+        0.133,
+        0.455,
+        -2.191
       ],
       "thrust": [
         0.0,
@@ -149,9 +159,9 @@
     {
       "name": "Exhaust_Rear_4",
       "position": [
-        0.6,
-        0.395,
-        -2.25
+        0.399,
+        0.455,
+        -2.191
       ],
       "thrust": [
         0.0,
@@ -162,9 +172,9 @@
     {
       "name": "Exhaust_Yaw_L",
       "position": [
-        -1.005,
-        0.44,
-        0.92
+        -0.983,
+        0.216,
+        0.943
       ],
       "thrust": [
         -1.0,
@@ -175,9 +185,9 @@
     {
       "name": "Exhaust_Yaw_R",
       "position": [
-        1.005,
-        0.44,
-        0.92
+        0.983,
+        0.216,
+        0.943
       ],
       "thrust": [
         1.0,
@@ -194,7 +204,6 @@
     "Carbon",
     "Gold_Glass",
     "Headlamp",
-    "Lens_White",
     "Rubber",
     "Thruster_Throat",
     "Titanium",

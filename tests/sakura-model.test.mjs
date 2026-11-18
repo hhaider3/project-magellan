@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import * as THREE from 'three';
+import { MeshoptDecoder } from '../vendor/libs/meshopt_decoder.module.js';
 import { assembleSakura } from '../sakura-model.mjs';
 import { createTreeBreakage } from '../tree-breakage.mjs';
 import { createWorld, createVehicle, resolveObstacles, VARIANT, SAKURA_HEIGHT } from '../world.mjs';
@@ -12,14 +13,23 @@ const bytes = await readFile(new URL('../assets/nature/sakura-realistic/sakura-t
 const jsonLength = bytes.readUInt32LE(12);
 const gltf = JSON.parse(bytes.subarray(20, 20 + jsonLength));
 const binary = bytes.subarray(28 + jsonLength);
+// The buffers are packed for the download (scripts/compress-models.mjs).
+await MeshoptDecoder.ready;
+function unpacked(view) {
+  const packed = view.extensions?.EXT_meshopt_compression;
+  if (!packed) return binary.subarray(view.byteOffset || 0, (view.byteOffset || 0) + view.byteLength);
+  const data = new Uint8Array(packed.count * packed.byteStride);
+  MeshoptDecoder.decodeGltfBuffer(data, packed.count, packed.byteStride, binary.subarray(packed.byteOffset, packed.byteOffset + packed.byteLength), packed.mode, packed.filter ?? 'NONE');
+  return data;
+}
 function attribute(index) {
   const a = gltf.accessors[index], view = gltf.bufferViews[a.bufferView];
   const sizes = { SCALAR: 1, VEC2: 2, VEC3: 3, VEC4: 4 };
   const types = { 5126: Float32Array, 5125: Uint32Array, 5123: Uint16Array };
   const Type = types[a.componentType], size = sizes[a.type];
   assert.ok(!view.byteStride || view.byteStride === size * Type.BYTES_PER_ELEMENT);
-  const start = (view.byteOffset || 0) + (a.byteOffset || 0);
-  const data = binary.subarray(start, start + a.count * size * Type.BYTES_PER_ELEMENT);
+  const start = a.byteOffset || 0;
+  const data = unpacked(view).subarray(start, start + a.count * size * Type.BYTES_PER_ELEMENT);
   return new THREE.BufferAttribute(new Type(data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength)), size);
 }
 function makeScene() {

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import * as THREE from 'three';
 import { GLTFLoader } from '../vendor/loaders/GLTFLoader.js';
+import { MeshoptDecoder } from '../vendor/libs/meshopt_decoder.module.js';
 import { createWorld, createVehicle, stepVehicle, recoverVehicle, FIXED_DT, groundAt } from '../world.mjs';
 import { toggleFlight } from '../flight-motion.mjs';
 import { vehicleForTheme, vehicleOrder } from '../vehicle-specs.mjs';
@@ -127,7 +128,7 @@ test('a recovery does not refill the neon boost', () => {
 
 test('the bundled bike includes its rider, separate wheel spinners and working lamp materials', async () => {
   const bytes = await readFile(new URL('../assets/vehicles/light-cycle-rider.glb', import.meta.url));
-  const { scene } = await new GLTFLoader().parseAsync(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength), '');
+  const { scene } = await new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).parseAsync(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength), '');
   const rider = scene.getObjectByName('Rider');
   assert.equal(rider.parent.name, 'Body');
   assert.equal(rider.getObjectByName('Identity_Disc').parent, rider);
@@ -267,7 +268,7 @@ test('a wheelie swinging the base into the ground leaves the wall standing on it
 
 test('the garage shows the wall of light behind the bike on its turntable, and clears it', async () => {
   const bytes = await readFile(new URL('../assets/vehicles/light-cycle-rider.glb', import.meta.url));
-  const { scene } = await new GLTFLoader().parseAsync(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength), '');
+  const { scene } = await new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).parseAsync(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength), '');
   const showroom = createShowroom();
   showroom.show({ kind: 'lightcycle', model: scene, clips: [] });
   const trail = showroom.trail, view = { width: 1280, height: 720, pixels: 720 }, area = { left: 400, top: 0, right: 1280, bottom: 720 };

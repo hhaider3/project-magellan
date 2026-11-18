@@ -1,12 +1,13 @@
 import * as THREE from 'three';
 import { GLTFLoader } from './vendor/loaders/GLTFLoader.js';
+import { MeshoptDecoder } from './vendor/libs/meshopt_decoder.module.js';
 import { RoomEnvironment } from './vendor/environments/RoomEnvironment.js';
 import { SYNTHWAVE } from './synthwave.mjs?v=synth-1';
 
 export const VEHICLE_URLS = {
-  atlas: new URL('./assets/vehicles/atlas-amphibious.glb?v=tail-1', import.meta.url),
-  roadster: new URL('./assets/vehicles/roadster-rocket.glb?v=roadster-5', import.meta.url),
-  lightcycle: new URL('./assets/vehicles/light-cycle-rider.glb?v=3', import.meta.url),
+  atlas: new URL('./assets/vehicles/atlas-amphibious.glb?v=packed-1', import.meta.url),
+  roadster: new URL('./assets/vehicles/roadster-rocket.glb?v=roadster-6', import.meta.url),
+  lightcycle: new URL('./assets/vehicles/light-cycle-rider.glb?v=packed-1', import.meta.url),
 };
 export const VEHICLE_URL = VEHICLE_URLS.atlas;
 export const VEHICLE_NAMES = { atlas: 'ATLAS', roadster: 'Roadster', lightcycle: 'Light Cycle' };
@@ -47,6 +48,15 @@ export function thrusterNozzles(model) {
   return nozzles;
 }
 
+// The deck panel lifts clear of its tray before it pitches. The two posts
+// translate with the carriage and stay vertical below the rotating hinge.
+export function poseRoadsterWing(wing, brake, lift = 0) {
+  const carriage = wing.parent;
+  const extension = Math.min(1, Math.max(brake / .42, lift));
+  carriage.position.y = carriage.userData.restHeight + extension * carriage.userData.travel;
+  wing.rotation.x = Math.max(0, (brake - .30) / .70) * wing.userData.brakeAngle;
+}
+
 // Synthwave's sky for the paint and glass to reflect, alike all round:
 // indigo overhead to hot pink at the horizon, and the dark land below
 // glowing magenta toward it, as its far grid does.
@@ -80,7 +90,8 @@ function bakeReflections(renderer, look) {
 // kind: 'atlas' (with its boat and plane clips and propeller) or 'roadster'
 // (with thruster nozzles instead); look: what it reflects (see bakeReflections).
 export async function loadVehicleModel(renderer, kind = 'atlas', look = 'studio') {
-  const gltf = await new GLTFLoader().loadAsync(VEHICLE_URLS[kind].href);
+  // The models are packed for the download (scripts/compress-models.mjs).
+  const gltf = await new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).loadAsync(VEHICLE_URLS[kind].href);
   const model = gltf.scene;
   const required = name => {
     const node = model.getObjectByName(name);
@@ -103,6 +114,7 @@ export async function loadVehicleModel(renderer, kind = 'atlas', look = 'studio'
   if (nozzles && !nozzles.rear.length) throw new Error('Vehicle asset is missing its thruster nozzles');
   // The Roadster's rear wing tilts on its pivot to brake (about model +X).
   const wing = roadster ? required('Rear_Wing') : null;
+  const lampShutters = roadster ? required('Lamp_Shutters') : null;
   const materials = new Map();
   let triangles = 0, meshes = 0;
   let reflections = bakeReflections(renderer, look);
@@ -129,6 +141,6 @@ export async function loadVehicleModel(renderer, kind = 'atlas', look = 'studio'
     reflections.dispose(); reflections = bakeReflections(renderer, look);
     for (const material of materials.values()) { material.envMap = reflections.texture; material.needsUpdate = true; }
   }
-  return { kind, model, clips: gltf.animations, body, relight, wheelPivots, wheelSpinners, headMat, brakeMat, meshes, triangles, transformation, flight, propeller, nozzles, wing,
-    batching: [body, ...wheelSpinners, ...(wing ? [wing] : [])].map(group => ({ before: group.userData.sourceParts, after: group.children.filter(o => o.isMesh).length })) };
+  return { kind, model, clips: gltf.animations, body, relight, wheelPivots, wheelSpinners, headMat, brakeMat, meshes, triangles, transformation, flight, propeller, nozzles, wing, lampShutters,
+    batching: [body, ...wheelSpinners, ...(wing ? [wing, wing.parent, lampShutters] : [])].map(group => ({ before: group.userData.sourceParts, after: group.children.filter(o => o.isMesh).length })) };
 }

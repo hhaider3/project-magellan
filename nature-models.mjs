@@ -1,10 +1,11 @@
 import * as THREE from 'three';
 import { GLTFLoader } from './vendor/loaders/GLTFLoader.js';
-import { assembleSakura, SAKURA_URL } from './sakura-model.mjs?v=lightcycle-3';
+import { MeshoptDecoder } from './vendor/libs/meshopt_decoder.module.js';
+import { assembleSakura, SAKURA_URL } from './sakura-model.mjs?v=packed-1';
 
-export const NATURE_URL = new URL('./assets/nature/endless-nature.glb?v=sakura-push-1', import.meta.url);
-export const PALM_URL = new URL('./assets/nature/palm-synthwave/palm-trees.glb?v=palm-lean-1', import.meta.url);
-export const SYNTH_PROPS_URL = new URL('./assets/nature/synth-props/synth-props.glb?v=synth-props-1', import.meta.url);
+export const NATURE_URL = new URL('./assets/nature/endless-nature.glb?v=packed-1', import.meta.url);
+export const PALM_URL = new URL('./assets/nature/palm-synthwave/palm-trees.glb?v=packed-1', import.meta.url);
+export const SYNTH_PROPS_URL = new URL('./assets/nature/synth-props/synth-props.glb?v=packed-1', import.meta.url);
 const names = {
   tree: ['Pine_Alpine', 'Pine_Windswept', 'Pine_Snow', 'Pine_Stunted', 'Tree_Dead', 'Sakura_Blossom'],
   cactus: ['Cactus_Saguaro', 'Cactus_Forked'],
@@ -196,7 +197,7 @@ export function addSynthProps(library, scene) {
 }
 
 export async function loadNatureLibrary() {
-  const loader = new GLTFLoader();
+  const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder); // the models are packed (scripts/compress-models.mjs)
   const [nature, sakura, palms, props] = await Promise.all([NATURE_URL, SAKURA_URL, PALM_URL, SYNTH_PROPS_URL].map(url => loader.loadAsync(url.href)));
   return addSynthProps(addPalms(assembleNatureLibrary(nature.scene, new Map([['Sakura_Blossom', assembleSakura(sakura.scene)]])), palms.scene), props.scene);
 }

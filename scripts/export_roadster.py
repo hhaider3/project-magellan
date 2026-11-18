@@ -14,6 +14,7 @@ def export_roadster(root, OUT, source_parts):
     body = next(child for child in root.children if child.name == 'Body')
     wheel_groups = [bpy.data.objects['Spinner_'+name] for name in ('FL', 'RL', 'FR', 'RR')]
     export_groups = [body, *wheel_groups, bpy.data.objects['Rear_Wing']]
+    export_groups.extend(bpy.data.objects[name] for name in ('Wing_Carriage', 'Lamp_Shutters') if name in bpy.data.objects)
     def owner(o):
         # The nearest export group above a part: the wing's parts aren't the body's.
         while o.parent not in export_groups: o = o.parent
@@ -33,7 +34,9 @@ def export_roadster(root, OUT, source_parts):
             bpy.ops.object.select_all(action='DESELECT')
             for o in parts: o.select_set(True)
             bpy.context.view_layer.objects.active = parts[0]
-            bpy.ops.object.join(); joined = bpy.context.object
+            if len(parts) > 1:
+                bpy.ops.object.join()
+            joined = bpy.context.object
             transform = joined.matrix_world.copy(); joined.parent = group; joined.matrix_world = transform
             # Bake the batch into its group's frame. It would otherwise keep its
             # first part's rotation, and a rotated box round the whole batch

@@ -62,7 +62,7 @@ python3 -m http.server 8000 --bind 127.0.0.1
 
 Then open [localhost:8000](http://localhost:8000). For development, `npm run dev` serves on port 8002 with caching disabled.
 
-You need a browser with WebGL and module workers. Everything else is bundled: Three.js 0.160.0 lives in `vendor/` with its license, and the game runs without any external connection (Google Fonts are optional, with system font fallbacks).
+You need a browser with WebGL, WebAssembly and module workers. Everything else is bundled: Three.js 0.160.0 lives in `vendor/` with its license (and its copy of the meshoptimizer decoder, which unpacks the models), and the game runs without any external connection (Google Fonts are optional, with system font fallbacks).
 
 ## Controls
 
@@ -198,7 +198,7 @@ The menu (or, on smaller screens, its Settings sheet) has these settings:
 | High | 1.7× (up to 2× on phones) | 2048 near, 1024 far | Full, within 78 m |
 | Auto (default) | Starts at Medium on phones and High on desktops, and adjusts to keep the frame rate up | | |
 
-Auto steps down after about 2 seconds of frames slower than 48 fps, or when more than 3% of the last 10 seconds of frames stuttered (took over one and a half display refreshes), which an average near 60 fps hides; stutters alone never take it below Medium. It steps back up (through an in-between Medium+ level) after 6 seconds of smooth driving. It ignores one-off hitches and pauses, doesn't retry a level that has failed twice, and remembers where it settled. Its first step down is motion blur, before resolution or shadows, unless you've set blur yourself in Settings. The button then reads **Motion blur: Off (Auto)** for the rest of the visit; pressing it turns blur back on for good. `?quality=low|medium|high|auto` overrides the setting.
+Auto steps down after about 2 seconds of frames slower than 48 fps, or when more than 3% of the last 10 seconds of frames stuttered (took over one and a half display refreshes), which an average near 60 fps hides; stutters alone never take it below Medium. It steps back up (through an in-between Medium+ level) after 6 seconds of smooth driving. It ignores one-off hitches and pauses, doesn't retry a level that has failed twice, and remembers where it settled. Where a link turned motion blur on (`?blur=1`), its first step down is to drop the blur, before resolution or shadows. The button then reads **Motion blur: Off (Auto)** for the rest of the visit; pressing it turns blur back on for good. Blur you turned on yourself in Settings is never dropped. `?quality=low|medium|high|auto` overrides the setting.
 
 **FPS meter** shows a debug overlay under the logo with:
 
@@ -214,7 +214,7 @@ A graph plots the last 120 frames against the 60 and 30 fps lines. Browsers usua
 
 **Vehicle** switches between the ATLAS and the Roadster where you are (so does V, or the ⇄ button while driving); from the air it sets the new car down on clear ground nearby. Trip records carry over, and the choice is remembered.
 
-**Motion blur** (on by default) blurs what moves fast across the screen, the way a camera would, so posts, trees and road lines rushing past at speed read as motion instead of a row of separate copies. The car or plane stays sharp. It costs about 1 ms of GPU time a frame at High on a MacBook Air M2.
+**Motion blur** (off by default on every device; turn it on in Settings) blurs what moves fast across the screen, the way a camera would, so posts, trees and road lines rushing past at speed read as motion instead of a row of separate copies. The car or plane stays sharp. It costs about 1 ms of GPU time a frame at High on a MacBook Air M2.
 
 ### Link options
 
@@ -224,7 +224,7 @@ A graph plots the last 120 frames against the 60 and 30 fps lines. Browsers usua
 | `?quality=low\|medium\|high\|auto` | Force a graphics level |
 | `?weather=rain\|snow\|snowstorm\|sandstorm\|clear` | Force the weather |
 | `?time=H` | Start at hour H (for example `18.5` for 18:30) |
-| `?blur=1\|0` | Turn motion blur on or off (test modes start with it off) |
+| `?blur=1\|0` | Turn motion blur on or off for this visit |
 | `?vehicle=atlas\|roadster` | Start in the ATLAS or the Roadster |
 | `?theme=synthwave\|normal` | Start in synth mode or the everyday look (without it, the one last chosen in the menu; see [Synthwave](#whats-in-the-world)) |
 | `?test=water` / `boat` / `fly` / `sea` | Start by the lake, afloat, in the air, or approaching the first sea |
@@ -294,6 +294,8 @@ Software-rendered FPS isn't representative of real GPU play.
 
 All geometry is original to this project. Builds were verified with Blender 5.2; substitute your Blender path on other platforms.
 
+After any export, run `npm run compress-models`. It packs the GLBs the game loads to about half their size (10.2 MB to 5.4 MB in all) with `EXT_meshopt_compression`, after rounding vertex data to a grid no coarser than 0.12 mm and dropping texture coordinates from models that have no textures. Nodes, materials, textures, animation and triangles are untouched, and vertices stay 32-bit floats. The game unpacks them with the decoder in `vendor/libs/`; the unit tests fail while a shipped model is uncompressed.
+
 ![Studio render of the ATLAS expedition car](assets/vehicles/atlas-preview.png)
 
 **The car.** The game loads `assets/vehicles/atlas-amphibious.glb`. Its source, `atlas-amphibious.blend`, has two NLA tracks, `Transform_To_Boat` and `Transform_To_Plane`; mute one to scrub the other. They animate separate nodes, so the game can play both at once. Car mode draws at most 72 meshes, and the whole car is about 65,000 triangles. The plane's wings, tail surfaces and propeller blades are lofted from NACA aerofoil sections, with their flaps, ailerons, rudders and elevators as separate surfaces. The original `atlas-expedition.blend` is the modeling base (803 named parts).
@@ -316,13 +318,15 @@ The rig uses X right, Y up and Z forward:
 - **Propeller:** `Propeller` is left unanimated so the game can spin it.
 - **Dimensions:** wheel radius 0.57 m, wheelbase 2.74 m, track 2.08 m.
 
-![Studio render of the Roadster from behind, showing its wing on swan-neck mounts, full-width taillight and the diffuser's four titanium nozzles over four suction fans](assets/vehicles/roadster-preview.png)
+![Rear three-quarter Blender render with the Roadster wing raised above its taillight and four diffuser nozzles](assets/vehicles/roadster-preview.png)
 
-**The Roadster.** The model is authored in Blender from the photographs on [Tesla's Roadster page](https://www.tesla.com/roadster): front, profile, top, rear, rear-deck, night and interior views. It follows their faceted wedge: flat, ruled panels, one shoulder crease from nose to tail, and a black lower body that rises behind the doors. White cheeks frame the black nose below a bonnet edge lit across its width, and triangular lamp pockets with four optical cells sit under the fender blades. Fine shut lines mark the bonnet, and black vents wrap the rear corners. The gold glass runs from a steeply raked windscreen over a long, flat roof and down the deck as the rear window. It is darkly tinted, so the white two-seat cockpit only just shows through. At the rear, a full-width taillight sits in a black band that wraps the corners, above a sculpted panel with a blank plate recess. Below it, the diffuser's four titanium nozzles and four swept-blade suction fans sit in real recesses. The wing has tall endplates and a light along its trailing edge, on flat swan-neck mounts, and still tilts into an air brake. Six thin black spokes carry the tyres, drilled brake discs and fixed calipers. The geometry is original; no downloaded models or photographic textures are bundled.
+**The Roadster.** The exterior follows Tesla’s October 2026 reveal photographs. A rising shoulder runs from the front fenders into the tapered rear quarters. The copper-tinted windshield continues over the roof and down between the painted rear sails. The six dark wheel spokes frame silver aero sectors. Inside the Rocket trim, the driver’s seat and yoke sit beside the passenger-side pressure vessel. [Tesla Roadster](https://www.tesla.com/roadster) · [Tesla exterior photo gallery](https://www.caranddriver.com/photos/a74152579/tesla-roadster-revealed-exterior-gallery/)
 
-`scripts/build-roadster.py` builds the editable `assets/vehicles/roadster-rocket.blend`, renders front and rear previews, then exports the game's `roadster-rocket.glb`. Revision 5 uses about 47,000 triangles; material batching keeps it under 40 draws, and each batch is baked into its group's frame so its bounding box stays honest. Exact counts are in `roadster-rocket.json`. The tests' size limits guard against accidental asset growth, rather than defining a hardware performance threshold. Each `Exhaust_*` empty retains its gas direction and plume attachment. The wheel pivots, tyre radii (0.343 m front, 0.367 m rear) and 2.82 m wheelbase retain the game's existing physics dimensions. The wing hinge is at `(0, 0.95, -1.98)` in game axes.
+The painted headlamp covers drop when the lights switch on. The rear wing forms the last section of the deck when parked. It rises on two posts for boost or lift and tilts into an air brake under braking. Four exhaust mouths sit above the four fan ducts. The wheel pivots, tyre radii (0.343 m front and 0.367 m rear) and 2.82 m wheelbase match the simulation.
 
-![Front view of the Roadster, showing the flat bonnet between its fender blades, the lit bonnet edge, the tinted gold glass and six-spoke wheels](assets/vehicles/roadster-front-preview.png)
+`scripts/build-roadster.py` builds the editable `assets/vehicles/roadster-rocket.blend`, renders both views and exports `roadster-rocket.glb`. The scene and game asset open in the parked pose. The accompanying `roadster-rocket.json` records mesh counts and plume attachment positions.
+
+![Front three-quarter Blender render with the bonnet light blade, flush headlamp covers and wing stowed](assets/vehicles/roadster-front-preview.png)
 
 ```sh
 # Rebuild the Roadster from scratch, with its preview, and export it

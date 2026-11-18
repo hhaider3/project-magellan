@@ -3,8 +3,8 @@ import { skimWorld, CYCLE_MAX_LEAN } from './cycle-motion.mjs?v=cycle-5';
 import { createTerrain } from './terrain.mjs?v=lightcycle-3';
 import { createWater } from './water.mjs?v=frost-1';
 import { FAR_SIZE, FAR_VIEW, NEAR_VIEW, ULTRA_SIZE, ULTRA_VIEW, ULTRA_BLEND_START, ULTRA_BLEND_END, farIndices, farCoverage, ultraIndices, ultraCoverage } from './streaming-layout.mjs?v=lightcycle-3';
-import { loadVehicleModel, VEHICLE_NAMES } from './vehicle-model.mjs?v=lightcycle-3';
-import { createShowroom } from './garage.mjs?v=lightcycle-4';
+import { loadVehicleModel, poseRoadsterWing, VEHICLE_NAMES } from './vehicle-model.mjs?v=roadster-6';
+import { createShowroom } from './garage.mjs?v=roadster-6';
 import { vehicleOrder, vehicleForTheme, VEHICLE_SPECS, PREVIEWS } from './vehicle-specs.mjs?v=lightcycle-4';
 import { createProfiler } from './profiling.mjs?v=timing-1';
 import { createDebris } from './debris.mjs?v=lightcycle-3';
@@ -14,8 +14,8 @@ import { ROADSTER, hoverWorld } from './roadster-motion.mjs?v=steer-1';
 import { createVehiclePresentation } from './vehicle-presentation.mjs?v=roadster-1';
 import { followTarget, followValue } from './camera-motion.mjs?v=grass-1';
 import { createTreeBreakage } from './tree-breakage.mjs?v=warm-1';
-import { loadNatureLibrary, palmMaterial } from './nature-models.mjs?v=lightcycle-3';
-import { keepCoverage } from './sakura-model.mjs?v=lightcycle-3';
+import { loadNatureLibrary, palmMaterial } from './nature-models.mjs?v=packed-1';
+import { keepCoverage } from './sakura-model.mjs?v=packed-1';
 import { createBreakAudio } from './break-audio.mjs?v=sound-2';
 import { createVehicleAudio } from './vehicle-audio.mjs?v=lightcycle-1';
 import { createMusic, volumeGain } from './music.mjs?v=synth-1';
@@ -129,13 +129,12 @@ if (!QUALITY_PRESETS.includes(settings.quality)) settings.quality = 'auto';
 settings.sensitivity = clamp(Number(settings.sensitivity) || 1, .5, 1.5);
 for (const key of ['musicVolume', 'sfxVolume']) settings[key] = clamp(Number.isFinite(Number(settings[key])) ? Number(settings[key]) : 1, 0, 1);
 settings.tilt = coarse && settings.tilt === true;
-// Motion blur: on by default, off in tests unless ?blur=1. Phones used to
-// default to off, and every save stored that, so a phone's saved "off" counts
-// only once the player has chosen it.
+// Motion blur: off on every device unless you turn it on in Settings (or a
+// link does, with ?blur=1). It used to default to on, and every save stored
+// that, so a saved "on" counts only if the player chose it.
 const blurParam = new URLSearchParams(location.search).get('blur');
 if (blurParam !== null) settings.motionBlur = blurParam === '1';
-else if (testMode) settings.motionBlur = false;
-else if (typeof settings.motionBlur !== 'boolean' || (coarse && !settings.motionBlurChosen)) settings.motionBlur = true;
+else settings.motionBlur = !testMode && settings.motionBlur === true && settings.motionBlurChosen === true;
 // Flight always starts on the full controls; T switches for this visit only
 // (an older build remembered simple controls).
 delete settings.simpleFlight;
@@ -146,9 +145,10 @@ perfMeter.setVisible(Boolean(settings.perfMeter));
 const saveSettings = () => { if (!testMode) try { localStorage.setItem('endless-drive-settings', JSON.stringify(settings)); } catch {} };
 const levels = qualityLevels(coarse);
 let auto = null, qualityLevel = 0;
-// Auto's first step down is motion blur (about 1 ms of GPU a frame at High,
-// more on large screens), before resolution or shadows: unless you turned it
-// on yourself in Settings. It stays off for this visit.
+// Where a link turned motion blur on (?blur=1), Auto's first step down is to
+// drop it (about 1 ms of GPU a frame at High, more on large screens), before
+// resolution or shadows. It stays off for this visit. Blur you turned on
+// yourself in Settings is never dropped.
 let blurShed = false;
 function shedBlur() {
   if (blurShed || !settings.motionBlur || settings.motionBlurChosen) return false;
@@ -1444,6 +1444,8 @@ function showVehicle(asset) {
   headlight.position.set(0, cycle ? 1.05 : roadster ? .5 : 1.5, cycle ? 1.65 : roadster ? 2.3 : 2);
   headlight.color.set(cycle ? '#95e7ff' : '#ffe4b1'); setHeadlights(lightsOn);
   contact.scale.set(cycle ? .28 : roadster ? .66 : 1, cycle ? .60 : roadster ? .82 : 1, 1);
+  airBrake = 0;
+  if (asset.wing) poseRoadsterWing(asset.wing, 0);
   plumes?.update({}, 1, 0); // idle until the thrusters next fire
 }
 function vehicleFailed(error) {
@@ -1463,7 +1465,12 @@ const lightTarget = new THREE.Object3D(); lightTarget.position.set(0, 0, 25); ca
 const headlightAt = new THREE.Vector3(), headlightAim = new THREE.Vector3();
 // Headlights come on by themselves at dusk and go off after sunrise, until you
 // choose with L for the rest of the visit.
-function setHeadlights(on) { headlight.intensity = on ? 75 : 0; headMat.emissiveIntensity = on ? 2 : .45; }
+function setHeadlights(on) {
+  headlight.intensity = on ? 75 : 0;
+  headMat.emissiveIntensity = on ? 2 : .45;
+  const shutters = shownAsset?.lampShutters;
+  if (shutters) shutters.rotation.x = on ? shutters.userData.openAngle : 0;
+}
 // Soft contact shadow makes the height of jumps easy to judge.
 const shadowCanvas = document.createElement('canvas'); shadowCanvas.width = shadowCanvas.height = 64;
 const shadowContext = shadowCanvas.getContext('2d'), shadowGradient = shadowContext.createRadialGradient(32, 32, 2, 32, 32, 32);
@@ -2375,7 +2382,10 @@ function render(dt) {
   if (transformation) profiler.measure('transformAnimation', () => { transformation.update(pose.transform); flightRig.update(pose.flight); });
   if (propeller) { propellerAngle += dt * pose.flight * (18 + Math.abs(pose.speed) * .45); propeller.rotation.z = propellerAngle; }
   // Braking, the Roadster's rear wing swings up about 55° as an air brake.
-  if (shownAsset?.wing) { airBrake += ((vehicle.airBrake ? 1 : 0) - airBrake) * (1 - Math.exp(-dt * 7)); shownAsset.wing.rotation.x = airBrake * .95; }
+  if (shownAsset?.wing) {
+    airBrake += ((vehicle.airBrake ? 1 : 0) - airBrake) * (1 - Math.exp(-dt * 7));
+    poseRoadsterWing(shownAsset.wing, airBrake, Math.max(vehicle.boost, vehicle.lift));
+  }
   // Skimming water, the corner nozzles idle at a third, holding the car up.
   if (plumes) plumes.update({ rear: vehicle.boost, lift: Math.max(vehicle.lift, vehicle.overWater && vehicle.grounded ? .3 : 0), yawL: Math.max(0, vehicle.yaw), yawR: Math.max(0, -vehicle.yaw) }, dt, pose.time);
   body.position.y = -pose.impact * .3 * (1 - pose.transform);
