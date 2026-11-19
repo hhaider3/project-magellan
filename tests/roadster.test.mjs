@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createWorld, createVehicle, stepVehicle, recoverVehicle, FIXED_DT, SPEED_LIMIT } from '../world.mjs';
-import { ROADSTER, SUCTION, AERO, AIR_BRAKE, MPH60, hoverWorld } from '../roadster-motion.mjs';
+import { ROADSTER, SUCTION, AERO, MPH60, hoverWorld, roadsterDrag } from '../roadster-motion.mjs';
 const flat = { surface: () => 0, gradient: () => ({ x: 0, z: 0 }), roadAt: (x, z) => ({ d: 0, x, z }), props: () => [] };
 const grass = { ...flat, roadAt: () => ({ d: 20 }) }, dirt = { ...flat, roadAt: () => ({ d: 0, kind: 'dirt' }) };
 const roadster = (world = flat, x = 0, z = 0, heading = 0) => createVehicle(world, x, z, heading, 'roadster');
@@ -182,13 +182,11 @@ test('braking tilts the wing into an air brake that adds drag', () => {
   const coast = input => { const car = roadster(); car.vz = 80; advance(car, input, flat, .5); return car; };
   const braked = coast({ down: true }), drifting = coast({ brake: true }), coasting = coast({});
   assert.equal(braked.airBrake, true); assert.equal(drifting.airBrake, true); assert.equal(coasting.airBrake, false);
-  assert.equal(AIR_BRAKE, 3);
-  // Same brakes, but the wing's drag on top: the air brake alone takes off more at speed.
-  const plain = roadster(); plain.vz = 80; plain.airBrake = false;
-  const flap = roadster(); flap.vz = 80;
-  stepVehicle(plain, {}, flat, []); const lostPlain = 80 - plain.vz;
-  flap.vz = 80; stepVehicle(flap, { down: true }, flat, []);
-  assert.ok(80 - flap.vz > lostPlain);
+  // Same brakes, with the wing's drag on top: at 288 km/h a step takes off about 4% more with it up.
+  // (The step sets airBrake itself, as above, so the wing is compared through the drag it feeds.)
+  const fast = roadster(); fast.vz = 80;
+  const lost = wing => 80 * (1 - roadsterDrag({ ...fast, airBrake: wing }, true, 1, FIXED_DT));
+  assert.ok(lost(true) > lost(false) * 1.03, `brakes alone ${lost(false)} m/s a step, with the wing ${lost(true)}`);
   // Stopped or reversing, the wing lies flat again.
   const slow = roadster(); advance(slow, { down: true }, flat, 1); assert.equal(slow.airBrake, false);
 });

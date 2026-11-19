@@ -6,10 +6,10 @@ on:
 permissions:
   contents: read
 jobs:
-  test:
+  unit:
+    name: Unit tests
     runs-on: ubuntu-latest
-    # Browser tests render on the CPU here (no GPU), at a few frames a second.
-    timeout-minutes: 20
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
@@ -18,12 +18,31 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run vendor && git diff --exit-code -- vendor/
+      - run: npm run test:unit
+  browser:
+    # The runners have no GPU: the game is drawn on the CPU, a frame or two a
+    # second, and a world takes half a minute to load. Three parts on three
+    # runners keep the wait to a few minutes.
+    name: Browser tests (${{ matrix.shard }}/3)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
       - run: npx playwright install --with-deps chromium
-      - run: npm test
-      - uses: actions/upload-artifact@v4
+      - run: npm run test:browser -- --shard=${{ matrix.shard }}/3
+      - uses: actions/upload-artifact@v7
         # Also when the job runs out of time, so the traces show where it stalled.
         if: failure() || cancelled()
         with:
-          name: browser-failure-traces
+          name: browser-failure-traces-${{ matrix.shard }}
           path: output/playwright/
           retention-days: 7

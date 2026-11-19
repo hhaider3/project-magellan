@@ -8,7 +8,9 @@ function advance(car, input, world, seconds, obstacles = []) { for (let t = 0; t
 test('same seed reproduces terrain, roads and props, independent of visit order', () => {
   const a = createWorld(483921), b = createWorld(483921);
   const coords = [[0, 0], [-500, 690], [1581, -731], [100000, -80000]];
-  for (const [x, z] of coords.reverse()) { assert.equal(a.surface(x, z), b.surface(x, z)); assert.deepEqual(a.roadAt(x, z), b.roadAt(x, z)); }
+  // One world visits the places in order, the other backwards.
+  const first = coords.map(([x, z]) => ({ surface: a.surface(x, z), road: a.roadAt(x, z) }));
+  for (const i of [...coords.keys()].reverse()) { const [x, z] = coords[i]; assert.equal(b.surface(x, z), first[i].surface); assert.deepEqual(b.roadAt(x, z), first[i].road); }
   assert.deepEqual(a.props(-7, 18), b.props(-7, 18));
   assert.notEqual(a.height(850, 300), createWorld(123456).height(850, 300));
 });
@@ -72,7 +74,7 @@ test('steep climbs slow the car, and faces steeper than about 47 degrees cannot 
   assert.ok(hard > 20 && hard < 80, `a 45° climb is a slow crawl: ${hard}`);
   assert.ok(wall.best < 30 && wall.final < 0, 'a 48° face cannot be climbed: the car slides back');
 });
-test('richer scenery leaves roads and ramp approaches clear and stays deterministic', () => {
+test('richer scenery leaves roads and ramp approaches clear', () => {
   const world = createWorld(483921); let count = 0;
   for (let cx = -12; cx < 12; cx++) for (let cz = -12; cz < 12; cz++) {
     const props = world.props(cx, cz); count += props.length;
@@ -175,9 +177,9 @@ test('long drives in all directions across multiple seeds keep progressing and s
     // Driving blind in a straight line can end against a cliff or mesa wall
     // (a face over about 52° stops the car: seed 483921 has mesas to the west),
     // but most directions run on.
-    const stopped = [];
+    const stopped = [], world = createWorld(seed);
     for (let direction = 0; direction < 8; direction++) {
-      const world = createWorld(seed), car = createVehicle(world, 0, 0, direction * Math.PI / 4);
+      const car = createVehicle(world, 0, 0, direction * Math.PI / 4);
       for (let i = 0; i < 7200; i++) {
         stepVehicle(car, { up: true, jump: i % 700 < 4 }, world, []);
         assert.ok(Number.isFinite(car.y + car.x + car.z));
@@ -206,10 +208,11 @@ test('sand regions are continuous, repeatable, and absent above the snow line', 
 });
 
 test('cacti grow on sand, preserve clear routes, and replace grassland vegetation', () => {
-  const world = createWorld(100003); let cacti = 0;
+  // (One second world for the comparison: a new one per chunk worked out its roads 121 times.)
+  const world = createWorld(100003), repeat = createWorld(100003); let cacti = 0;
   for (let cx = -5; cx <= 5; cx++) for (let cz = -5; cz <= 5; cz++) {
     const props = world.props(cx, cz);
-    assert.deepEqual(props, createWorld(100003).props(cx, cz));
+    assert.deepEqual(props, repeat.props(cx, cz));
     for (const prop of props) {
       if (prop.type === 'cactus') {
         cacti++;

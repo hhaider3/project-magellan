@@ -81,7 +81,9 @@ test('coarse coverage masks detect arrivals, removals and negative tiles with ju
       const hasFine = (x, z) => { reads++; return Boolean(mask & 1 << ((z - tz * 4) * 4 + x - tx * 4)); };
       assert.equal(farCoverage(tx, tz, hasFine), mask); assert.equal(reads, 16);
       const absent = 16 - mask.toString(2).replaceAll('0', '').length;
-      assert.equal(farIndices(tx, tz, hasFine).length, absent * 16 * 6);
+      const indices = farIndices(tx, tz, hasFine);
+      assert.equal(indices.length, absent * 16 * 6);
+      assert.ok(indices.every(index => index >= 0 && index < 289), 'inside the tile’s 17 × 17 grid');
     }
   }
 });

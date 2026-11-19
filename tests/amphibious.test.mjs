@@ -122,7 +122,7 @@ test('inland seas are large, irregular, deep, clear of ponds, and start a kilome
     // Revisited terrain and water are identical after the basin caches cycle.
     const before = world.surface(sea.x + 300, sea.z - 200);
     world.lakesNear(60000, -40000, 9000);
-    assert.equal(createWorld(seed).surface(sea.x + 300, sea.z - 200), before);
+    assert.equal(world.surface(sea.x + 300, sea.z - 200), before);
   }
 });
 
