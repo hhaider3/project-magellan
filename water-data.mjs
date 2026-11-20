@@ -11,8 +11,10 @@ export function buildWaterData(world, lake, terrain = null) {
   const nx = Math.ceil(hx * 2 / step) + 1, nz = Math.ceil(hz * 2 / step) + 1;
   const count = (nx + 1) * (nz + 1);
   const position = new Float32Array(count * 3), bedDepth = new Float32Array(count), lakeUV = new Float32Array(count * 2), groundY = new Float32Array(count * 2);
-  // 1 where the lake is frozen over (the Frostlands' lakes), for the shader.
-  const ice = new Float32Array(count).fill(world.frozen?.(lake) ? 1 : 0);
+  // Per vertex: 1 where the lake is frozen over (the Frostlands' lakes), and
+  // the lake's mean radius, how far off the far bank the water mirrors stands.
+  const ice = new Float32Array(count * 2), frozen = world.frozen?.(lake) ? 1 : 0, far = (lake.rx + lake.rz) / 2;
+  for (let i = 0; i < count; i++) ice.set([frozen, far], i * 2);
   const indices = [];
   for (let iz = 0; iz <= nz; iz++) for (let ix = 0; ix <= nx; ix++) {
     const i = iz * (nx + 1) + ix, x = x0 + ix * step, z = z0 + iz * step;
@@ -42,9 +44,9 @@ export function buildDistantWater(world, terrain, x, z) {
   const lakes = world.lakesNear(x, z, DISTANT_WATER_RADIUS);
   const position = [], bedDepth = [], lakeUV = [], groundY = [], ice = [], index = [], ranges = [];
   for (const lake of lakes) {
-    const base = position.length / 3, start = index.length, frozen = world.frozen?.(lake) ? 1 : 0;
+    const base = position.length / 3, start = index.length, frozen = world.frozen?.(lake) ? 1 : 0, reach = (lake.rx + lake.rz) / 2;
     const vertex = (px, pz, u, v) => {
-      position.push(px, lake.level + .012, pz); ice.push(frozen);
+      position.push(px, lake.level + .012, pz); ice.push(frozen, reach);
       bedDepth.push(Math.max(.3, lake.level - world.groundSurface(px, pz))); lakeUV.push(u, v);
       groundY.push(terrain.coarseSample(px, pz).height, terrain.ultraSample(px, pz).height);
     };
@@ -73,10 +75,28 @@ export function buildDistantWater(world, terrain, x, z) {
 // (every stride-th point); the shader shows each tier on its own side of a
 // fixed distance. Vertices beyond the banks have no depth and are discarded,
 // so the water ends where the carved bank rises out of it.
+// Downstream at about a metre a second, faster where the river falls.
+const riverSpeed = (r, q) => .9 + Math.min(2, (r.level[q] - r.level[Math.min(r.count - 1, q + 1)]) * 40);
+// How long the water takes to reach each point from the river's source, over
+// the whole river (so every tile and both tiers agree where they meet).
+const travelTimes = new WeakMap();
+function travelTime(r) {
+  let times = travelTimes.get(r);
+  if (!times) {
+    times = new Float32Array(r.count);
+    for (let k = 1; k < r.count; k++) {
+      const step = Math.hypot(r.points[k * 2] - r.points[k * 2 - 2], r.points[k * 2 + 1] - r.points[k * 2 - 1]);
+      times[k] = times[k - 1] + step * 2 / (riverSpeed(r, k - 1) + riverSpeed(r, k));
+    }
+    travelTimes.set(r, times);
+  }
+  return times;
+}
 export function buildRiverWater(world, terrain, x0, z0, size, tier, stride = 1) {
   const position = [], bedDepth = [], lakeUV = [], groundY = [], river = [], index = [];
   const ACROSS = [-1, -.55, 0, .55, 1];
   for (const r of world.riversNear(x0 + size / 2, z0 + size / 2, size)) {
+    const times = travelTime(r);
     let previous = -1;
     for (let k = 0; k < r.count; k += stride) {
       const next = Math.min(r.count - 1, k + stride);
@@ -89,10 +109,11 @@ export function buildRiverWater(world, terrain, x0, z0, size, tier, stride = 1) 
         const start = position.length / 3, half = r.width[q] / 2 + 2.5, x = r.points[q * 2], z = r.points[q * 2 + 1];
         for (const t of ACROSS) {
           const px = x + dz / len * t * half, pz = z - dx / len * t * half;
-          position.push(px, r.level[q] + .012, pz); bedDepth.push(r.level[q] - world.groundSurface(px, pz)); lakeUV.push(0, 0);
+          // lakeUV: flow coordinates, the travel time from the source (as
+          // metres at 1 m/s) and the distance across, for the ripples to drift along.
+          position.push(px, r.level[q] + .012, pz); bedDepth.push(r.level[q] - world.groundSurface(px, pz)); lakeUV.push(times[q], t * half);
           groundY.push(terrain.coarseSample(px, pz).height, terrain.ultraSample(px, pz).height);
-          // Downstream at about a metre a second, faster where the river falls.
-          const speed = .9 + Math.min(2, (r.level[q] - r.level[Math.min(r.count - 1, q + 1)]) * 40);
+          const speed = riverSpeed(r, q);
           river.push(dx / len * speed, dz / len * speed, tier);
         }
         return start;

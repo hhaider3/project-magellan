@@ -1,12 +1,15 @@
 import * as THREE from 'three';
-import { CHUNK, smoothstep } from './world.mjs?v=lightcycle-4';
+import { CHUNK, smoothstep } from './world.mjs?v=realism-1';
 
 // Quality presets change density, fade and range live: the worker always
 // supplies the full shuffled set, and lower densities draw a prefix of it.
 const SIMPLE_VERTICES = 15, FULL_VERTICES = 45;
 // How much of the tufts' contrast fades at full speed (see animate).
 export const CALM = .6;
-export function createGrass(center, quality = { density: 1, range: 78, fade: 38 }) {
+// look: the ground's weather uniforms (game.mjs), so tufts darken in the
+// rain and frost over under fallen snow as the ground beneath them does.
+export function createGrass(center, quality = { density: 1, range: 78, fade: 38 }, look = {}) {
+  const wet = look.uWet ?? { value: 0 }, snowCover = look.uSnowCover ?? { value: 0 };
   const fadeUniform = { value: 0 }, rangeUniform = { value: 0 }, densityUniform = { value: 1 };
   let density = 1, range = 78;
   let simple = false;
@@ -41,9 +44,9 @@ export function createGrass(center, quality = { density: 1, range: 78, fade: 38 
   const time = { value: 0 }, car = { value: new THREE.Vector3(1e6, 0, 1e6) }, wind = { value: new THREE.Vector2(.8, .6) }, rush = { value: 0 }, calm = { value: 0 };
   const material = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 1, side: THREE.DoubleSide });
   material.onBeforeCompile = shader => {
-    Object.assign(shader.uniforms, { uGrassCenter: center, uGrassFade: fadeUniform, uGrassRange: rangeUniform, uGrassTime: time, uGrassCar: car, uGrassWind: wind, uGrassDensity: densityUniform, uGrassRush: rush, uGrassCalm: calm });
+    Object.assign(shader.uniforms, { uGrassCenter: center, uGrassFade: fadeUniform, uGrassRange: rangeUniform, uGrassTime: time, uGrassCar: car, uGrassWind: wind, uGrassDensity: densityUniform, uGrassRush: rush, uGrassCalm: calm, uGrassWet: wet, uGrassSnow: snowCover });
     shader.vertexShader = `attribute vec3 grassRoot; attribute vec3 grassShape; attribute vec3 grassColor; attribute float grassRank;
-      uniform vec2 uGrassCenter, uGrassWind; uniform float uGrassFade, uGrassRange, uGrassTime, uGrassDensity, uGrassRush; uniform vec3 uGrassCar;
+      uniform vec2 uGrassCenter, uGrassWind; uniform float uGrassFade, uGrassRange, uGrassTime, uGrassDensity, uGrassRush, uGrassSnow; uniform vec3 uGrassCar;
       varying float vGrassHeight; varying float vGrassTint; varying vec3 vGrassColor;\n` + shader.vertexShader;
     shader.vertexShader = shader.vertexShader.replace('#include <beginnormal_vertex>', `
       #include <beginnormal_vertex>
@@ -61,6 +64,8 @@ export function createGrass(center, quality = { density: 1, range: 78, fade: 38 
       // At speed, tufts within a few metres of the camera rush past too fast
       // to read and only flicker: they shrink away.
       coverage *= 1.0 - uGrassRush * (1.0 - smoothstep(3.0, 8.0, distance(rootWorld, cameraPosition)));
+      // Fallen snow buries the lower part of each tuft.
+      coverage *= 1.0 - .3 * uGrassSnow;
       vec3 transformed = position;
       transformed.xz = mat2(c, s, -s, c) * transformed.xz;
       transformed *= grassShape.x * coverage;
@@ -78,7 +83,7 @@ export function createGrass(center, quality = { density: 1, range: 78, fade: 38 
       transformed += grassRoot;
       vGrassHeight = position.y; vGrassTint = grassShape.z; vGrassColor = grassColor;
     `);
-    shader.fragmentShader = 'varying float vGrassHeight; varying float vGrassTint; varying vec3 vGrassColor; uniform float uGrassCalm;\n' + shader.fragmentShader;
+    shader.fragmentShader = 'varying float vGrassHeight; varying float vGrassTint; varying vec3 vGrassColor; uniform float uGrassCalm, uGrassWet, uGrassSnow;\n' + shader.fragmentShader;
     // Treat thin blades as a soft canopy: both sides use an upward lighting
     // normal instead of alternating between bright faces and black slivers.
     shader.fragmentShader = shader.fragmentShader.replace('#include <normal_fragment_begin>', '#include <normal_fragment_begin>\nnormal = normalize(vNormal);');
@@ -89,9 +94,13 @@ export function createGrass(center, quality = { density: 1, range: 78, fade: 38 
       // At speed the tufts move further between frames than the eye can match
       // them up, so the field seems to stutter at any frame rate. Their light
       // and dark ease toward the ground colour, as motion blur would smear them.
-      diffuseColor.rgb *= mix(mix(vGrassColor * .62, grassTip, smoothstep(.0, 1.0, vGrassHeight)) * vGrassTint, vGrassColor, uGrassCalm);`);
+      diffuseColor.rgb *= mix(mix(vGrassColor * .62, grassTip, smoothstep(.0, 1.0, vGrassHeight)) * vGrassTint, vGrassColor, uGrassCalm);
+      // Rain darkens the blades as it does the ground; fallen snow frosts
+      // them as it whitens the ground, most toward the root, where it lies.
+      diffuseColor.rgb *= 1.0 - .2 * uGrassWet;
+      diffuseColor.rgb = mix(diffuseColor.rgb, vec3(.74, .77, .78), uGrassSnow * (.55 - .38 * smoothstep(.2, 1.0, vGrassHeight)));`);
   };
-  material.customProgramCacheKey = () => 'grass-v6';
+  material.customProgramCacheKey = () => 'grass-v7';
   function build(data) {
     const total = data.roots.length / 3;
     if (!total) return null;

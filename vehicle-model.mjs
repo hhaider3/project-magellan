@@ -115,7 +115,7 @@ export async function loadVehicleModel(renderer, kind = 'atlas', look = 'studio'
   // The Roadster's rear wing tilts on its pivot to brake (about model +X).
   const wing = roadster ? required('Rear_Wing') : null;
   const lampShutters = roadster ? required('Lamp_Shutters') : null;
-  const materials = new Map();
+  const materials = new Map(), reflective = new Set();
   let triangles = 0, meshes = 0;
   let reflections = bakeReflections(renderer, look);
   model.traverse(node => {
@@ -125,8 +125,8 @@ export async function loadVehicleModel(renderer, kind = 'atlas', look = 'studio'
     node.castShadow = true; node.receiveShadow = true;
     for (const material of Array.isArray(node.material) ? node.material : [node.material]) {
       material.envMap = reflections.texture;
-      material.envMapIntensity = /Glass/.test(material.name) ? .9 : .45;
-      materials.set(material.name, material);
+      material.envMapIntensity = material.userData.reflection = /Glass/.test(material.name) ? .9 : .45;
+      materials.set(material.name, material); reflective.add(material);
     }
   });
   const headMat = materials.get(cycle ? 'Ice white headlamp' : 'Headlamp');
@@ -141,6 +141,16 @@ export async function loadVehicleModel(renderer, kind = 'atlas', look = 'studio'
     reflections.dispose(); reflections = bakeReflections(renderer, look);
     for (const material of materials.values()) { material.envMap = reflections.texture; material.needsUpdate = true; }
   }
-  return { kind, model, clips: gltf.animations, body, relight, wheelPivots, wheelSpinners, headMat, brakeMat, meshes, triangles, transformation, flight, propeller, nozzles, wing, lampShutters,
+  // How strongly the paint and glass reflect, as a share of the studio's
+  // (1): the game dims it with the daylight and the weather, since the baked
+  // room is lit as for a showroom. (The garage's copy shares the materials,
+  // so it sets 1 again.)
+  let reflecting = 1;
+  function reflect(share) {
+    if (share === reflecting) return;
+    reflecting = share;
+    for (const material of reflective) material.envMapIntensity = material.userData.reflection * share;
+  }
+  return { kind, model, clips: gltf.animations, body, relight, reflect, wheelPivots, wheelSpinners, headMat, brakeMat, meshes, triangles, transformation, flight, propeller, nozzles, wing, lampShutters,
     batching: [body, ...wheelSpinners, ...(wing ? [wing, wing.parent, lampShutters] : [])].map(group => ({ before: group.userData.sourceParts, after: group.children.filter(o => o.isMesh).length })) };
 }

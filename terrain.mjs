@@ -1,5 +1,5 @@
 import * as THREE from './vendor/three.module.js';
-import { GRID, smoothstep, clamp, cellWeights, splitsAlongAD } from './world.mjs?v=lightcycle-4';
+import { GRID, smoothstep, clamp, cellWeights, splitsAlongAD } from './world.mjs?v=realism-1';
 // The horizon tier's grid: fine enough (48 m) to keep the ranges' shape, so
 // mountains barely change as they come nearer.
 export const ULTRA_GRID = 48;
@@ -55,7 +55,11 @@ export function createTerrain(world) {
     tmpColor.lerp(groundColors.lush, smoothstep(.4, 3, dip) * .35);
     tmpColor.lerp(groundColors.dry, smoothstep(.4, 3, -dip) * .14);
     tmpColor.lerp(groundColors.alpine, smoothstep(TREELINE - 25, TREELINE + 35, h) * .65);
-    tmpColor.lerp(groundColors.sand, desert);
+    // The desert's edge breaks up into tongues and islands of sand, reaching
+    // furthest across the dry patches and lingering in the hollows, rather
+    // than fading evenly (none where grass grows: desert at most .12).
+    const sandEdge = .88 - .62 * smoothstep(.25, .75, patches) - smoothstep(.4, 3, dip) * .06;
+    tmpColor.lerp(groundColors.sand, smoothstep(sandEdge - .1, sandEdge + .1, desert));
     // Loose rock on the high, moderately steep mountain slopes, and rubble
     // gathered at the foot of slopes in the ranges and under the mesas.
     const scree = mountain * smoothstep(.3, .5, slope) * smoothstep(TREELINE - 40, TREELINE + 20, h);
@@ -75,6 +79,11 @@ export function createTerrain(world) {
     // In the ranges rock shows through at gentler slopes, and more above the trees.
     const bare = smoothstep(.5 - .14 * mountain, .9 - .2 * mountain, slope) + mountain * smoothstep(TREELINE - 20, TREELINE + 50, h) * smoothstep(.15, .4, slope) * .6;
     tmpColor.lerp(rockColor, clamp(bare, 0, 1) * .9);
+    // The lie of the land as light: hollows and valley floors see less of
+    // the sky and are a little darker, rises and ridges a little lighter.
+    // Before the snow, which stays white; gentler on sand, which must stay
+    // pale enough for the shader to know it.
+    tmpColor.multiplyScalar(1 - smoothstep(.4, 4, dip) * .11 * (1 - desert * .6) + smoothstep(.4, 4, -dip) * .05);
     // Snow above a ragged line, lower on shady faces; the steepest faces shed it.
     const line = SNOW_LINE + (noise(x / 180, z / 180, seed + 21) - .5) * 50 + sunny * 25;
     tmpColor.lerp(groundColors.snow, smoothstep(line - 15, line + 25, h) * (1 - smoothstep(.85, 1.2, slope)) * .92);

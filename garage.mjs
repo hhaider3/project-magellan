@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import { createTransformation, poseRoadsterWing, thrusterNozzles } from './vehicle-model.mjs?v=roadster-6';
+import { createTransformation, poseRoadsterWing, thrusterNozzles } from './vehicle-model.mjs?v=realism-1';
 import { createThrusterPlumes } from './thrusters.mjs?v=roadster-1';
-import { createCycleTrail, TRAIL_LIFE } from './cycle-trail.mjs?v=ribbon-4';
+import { createCycleTrail, TRAIL_LIFE } from './cycle-trail.mjs?v=realism-1';
 
 // The garage's showroom: a car on a turntable in a dark studio, drawn by the
 // game's renderer in place of the world while the garage is open. Each car is

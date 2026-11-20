@@ -25,6 +25,37 @@ function noiseTexture(size = 256, cells = 32) {
   return texture;
 }
 
+// Aerial haze, for every material with fog (patched into three's fog chunk
+// once, before anything compiles). Fog used to be clear out to fogNear and
+// thicken from there to fogFar; distant land now also takes a thin haze that
+// starts at the camera and grows with distance, reaching the full fog at
+// fogFar exactly as before (the storm culling and the far tiers' swap rely on
+// it). Around sunrise and sunset the haze toward the sun takes the sun's
+// colour, as the sky's own glow there does, so the low sun lights up the air
+// in front of the hills as well as above them. A negative fogNear (its size is
+// the distance as before) turns both on: synthwave's fog stays as it was.
+// water.mjs and cycle-trail.mjs repeat the curve by hand: keep them the same.
+const AERIAL_HAZE = .15, SUN_HAZE = .018;
+const aerialFogGLSL = (near, far, depth) => `(smoothstep(abs(${near}),${far},${depth})+(1.0-smoothstep(abs(${near}),${far},${depth}))*(${near}<0.0?${AERIAL_HAZE.toFixed(2)}*${depth}/${far}:0.0))`;
+let hazeInstalled = false;
+export function installAerialHaze() {
+  if (hazeInstalled) return;
+  hazeInstalled = true;
+  const stock = 'float fogFactor = smoothstep( fogNear, fogFar, vFogDepth );', apply = 'gl_FragColor.rgb = mix( gl_FragColor.rgb, fogColor, fogFactor );';
+  if (!THREE.ShaderChunk.fog_fragment.includes(stock) || !THREE.ShaderChunk.fog_fragment.includes(apply)) throw new Error('Unexpected three.js fog chunk');
+  THREE.ShaderChunk.fog_fragment = THREE.ShaderChunk.fog_fragment.replace(stock, `float fogFactor = clamp(${aerialFogGLSL('fogNear', 'fogFar', 'vFogDepth')}, 0.0, 1.0);`).replace(apply, `vec3 hazeColor = fogColor;
+	#if defined( STANDARD ) && NUM_DIR_LIGHTS > 0
+	// The key light (directionalLights[0]) is the sun by day, warm only when
+	// low; the moon's blue never warms it.
+	if ( fogNear < 0.0 ) {
+		vec3 keyColor = directionalLights[ 0 ].color, keyDir = directionalLights[ 0 ].direction;
+		float toward = max( dot( normalize( - vViewPosition ), keyDir ), 0.0 ), low = smoothstep( .36, .06, dot( keyDir, viewMatrix[ 1 ].xyz ) );
+		hazeColor += mix( keyColor, vec3( keyColor.r ), .4 ) * ( max( keyColor.r - keyColor.b, 0.0 ) / max( keyColor.r, 1e-3 ) ) * ( pow( toward, 5.0 ) * .75 + toward * toward * .18 ) * low * ${SUN_HAZE.toFixed(3)};
+	}
+	#endif
+	gl_FragColor.rgb = mix( gl_FragColor.rgb, hazeColor, fogFactor );`);
+}
+
 export function createSky(scene) {
   const color = () => ({ value: new THREE.Color() }), vec = () => ({ value: new THREE.Vector3(0, 1, 0) });
   const uniforms = {
@@ -35,7 +66,10 @@ export function createSky(scene) {
   };
   const material = new THREE.ShaderMaterial({
     side: THREE.BackSide, depthWrite: false, uniforms,
-    vertexShader: 'varying vec3 vDir; void main(){ vDir=position; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }',
+    // On the far plane (z = w): drawn after the land (renderOrder below), it
+    // shades only the pixels nothing else covered, instead of the whole screen
+    // first, and land out past its radius still shows in front of it.
+    vertexShader: 'varying vec3 vDir; void main(){ vDir=position; gl_Position=(projectionMatrix*modelViewMatrix*vec4(position,1.0)).xyww; }',
     fragmentShader: `varying vec3 vDir;
       uniform vec3 uZenith, uHorizon, uSunColor, uCloudLit, uCloudShade, uSunDir, uMoonDir;
       uniform float uDay, uNight, uGlow, uCover, uClouds, uTime, uDust; uniform sampler2D uNoise;
@@ -119,20 +153,27 @@ export function createSky(scene) {
           return;
         }
         vec3 col=mix(uHorizon,uZenith,pow(up,.55));
+        // Haze where the sky meets the land, deep enough (about 15° up) that
+        // distant hills, which the fog turns the horizon's colour, stand
+        // against sky that is as pale as they are, not bluer and darker.
+        // (Under the sun's glow, which stays as bright on top of it.)
+        col=mix(col,uHorizon,(1.0-smoothstep(0.0,.38,up))*.85);
         col=mix(col,uHorizon*.75,smoothstep(0.0,-.25,y)); // below the horizon
         float cs=max(dot(ray,uSunDir),0.0);
         // Sunrise and sunset glow, strongest toward the sun and along the horizon.
         float band=exp(-up*4.5);
         col+=uSunColor*(pow(cs,5.0)*.75+cs*cs*.18)*band*uGlow;
-        // The sun's halo by day.
-        col+=uSunColor*pow(cs,220.0)*.8*uDay;
-        // Sun disc (not below the horizon), the moon and stars, behind the clouds.
-        vec3 lights=uSunColor*smoothstep(.99955,.99975,cs)*smoothstep(-.012,.008,y)*(7.0+5.0*uDay);
+        // The sun's halo by day: a bright core fading into a wide glow.
+        col+=uSunColor*(pow(cs,700.0)*.7+pow(cs,60.0)*.3)*uDay;
+        // Sun disc (about 0.8° in radius; not below the horizon), the moon and stars, behind the clouds.
+        vec3 lights=uSunColor*smoothstep(.99985,.99992,cs)*smoothstep(-.012,.008,y)*(7.0+5.0*uDay);
         float cm=dot(ray,uMoonDir);
         lights+=vec3(.86,.9,1.0)*(smoothstep(.99962,.9998,cm)*1.6+pow(max(cm,0.0),90.0)*.05)*uNight*smoothstep(-.01,.02,y);
-        vec3 cell=floor(ray*230.0), f=fract(ray*230.0)-.5; float h=starHash(cell);
-        float star=step(.9965,h)*smoothstep(.16,.0,length(f))*(.6+.4*sin(uTime*2.3+h*80.0));
-        lights+=vec3(.92,.95,1.0)*star*1.4*uNight*smoothstep(.02,.18,y);
+        if(uNight>0.0){ // (no stars to look up by day)
+          vec3 cell=floor(ray*230.0), f=fract(ray*230.0)-.5; float h=starHash(cell);
+          float star=step(.9965,h)*smoothstep(.16,.0,length(f))*(.6+.4*sin(uTime*2.3+h*80.0));
+          lights+=vec3(.92,.95,1.0)*star*1.4*uNight*smoothstep(.02,.18,y);
+        }
         // Clouds drift with the wind and slowly change shape: a slower noise
         // field, moving on its own, gently warps where the pattern is read, so
         // clouds swell, merge and tear apart as they go. uClouds (0 clear to 1
@@ -163,9 +204,13 @@ export function createSky(scene) {
         density=mix(density*smoothstep(.0,.14,y),1.0,deck*smoothstep(-.02,.02,y));
         // Lit from the sun's side: denser cloud toward the sun puts a point in
         // shade (heaped clouds shade strongly, wisps barely).
-        vec2 toSun=normalize(uSunDir.xz+vec2(1e-4))*.018;
-        float ahead=mix(fbm(p+toSun),fbm((p+toSun)*.45+vec2(.19,.83)),big);
-        float shade=clamp(.6+(mix(n,nw,wisp)-mix(ahead,nw,wisp))*mix(5.0,1.5,wisp),0.0,1.0);
+        // (Only where there is cloud: the open sky skips the eight reads.)
+        float shade=.6;
+        if(density>0.0){
+          vec2 toSun=normalize(uSunDir.xz+vec2(1e-4))*.018;
+          float ahead=mix(fbm(p+toSun),fbm((p+toSun)*.45+vec2(.19,.83)),big);
+          shade=clamp(.6+(mix(n,nw,wisp)-mix(ahead,nw,wisp))*mix(5.0,1.5,wisp),0.0,1.0);
+        }
         shade=mix(shade,.55,deck*.85); // an overcast is lit evenly from above
         vec3 cloud=mix(uCloudShade,uCloudLit,shade)+uSunColor*pow(cs,9.0)*(1.0-density)*.7*(uDay+uGlow);
         col+=lights*(1.0-density);
@@ -174,8 +219,10 @@ export function createSky(scene) {
         float fold=texture2D(uNoise,vec2(dot(p,vec2(.8,.6))*.09,dot(p,vec2(-.6,.8))*.35)+uTime*vec2(.0004,.0001)).r*.6+texture2D(uNoise,p*.21+.5).r*.4;
         cloud*=mix(1.0,.78+.42*fold,deck);
         col=mix(col,cloud,density*mix(.88,1.0,deck));
-        // Haze where the sky meets the land.
+        // Haze where the sky meets the land (as deep as the clear sky's, above,
+        // under a rain or snow deck that covers it).
         col=mix(col,uHorizon,(1.0-smoothstep(0.0,.07,abs(y)))*.55);
+        col=mix(col,uHorizon,(1.0-smoothstep(0.0,.38,up))*.85*deck);
         // Thick blowing sand: the sky is the dust itself, the horizon's colour
         // all the way round and up to well above the land, so fully fogged
         // hills and mountains leave no silhouette against it.
@@ -183,6 +230,9 @@ export function createSky(scene) {
         gl_FragColor=vec4(col,1.0);
         #include <tonemapping_fragment>
         #include <colorspace_fragment>
+        // A fixed sub-step dither (the same for a pixel every frame, so it
+        // never shimmers) breaks the smooth gradients' 8-bit bands.
+        gl_FragColor.rgb+=(fract(52.9829189*fract(dot(gl_FragCoord.xy,vec2(.06711056,.00583715))))-.5)/255.0;
       }`,
   });
   // Shooting stars, in the synthwave sky: every 4–12 seconds one streaks
@@ -217,7 +267,8 @@ export function createSky(scene) {
     state.set(head, Math.max(1e-4, Math.min(head, meteor.length * .5)), meteor.bright * fade);
   }
   const mesh = new THREE.Mesh(new THREE.SphereGeometry(6000, 32, 20), material);
-  mesh.name = 'Sky'; mesh.frustumCulled = false; scene.add(mesh);
+  // Drawn after the opaque land (see the vertex shader), before anything see-through.
+  mesh.name = 'Sky'; mesh.frustumCulled = false; mesh.renderOrder = 1; scene.add(mesh);
   return {
     mesh, uniforms,
     // light: daylight() output; sky: { zenith, horizon, cloudLit, cloudShade } after weather; cover 0–1.

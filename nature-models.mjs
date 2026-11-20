@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from './vendor/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from './vendor/libs/meshopt_decoder.module.js';
-import { assembleSakura, SAKURA_URL } from './sakura-model.mjs?v=packed-1';
+import { assembleSakura, SAKURA_URL } from './sakura-model.mjs?v=realism-1';
 
 export const NATURE_URL = new URL('./assets/nature/endless-nature.glb?v=packed-1', import.meta.url);
 export const PALM_URL = new URL('./assets/nature/palm-synthwave/palm-trees.glb?v=packed-1', import.meta.url);
@@ -37,9 +37,88 @@ function mergeParts(parts) {
   return result;
 }
 
+// Light that never reaches in, baked into the vertex colours at load (so the
+// breakable sections, made from the same parts, match): each prop darkens
+// toward where it meets the ground, and a tree's crown toward its trunk, the
+// low inner needles most. Crown normals also lean out and up from the trunk,
+// so a pine shades as one rounded mass rather than as separate flat fans
+// (trunks, stone and cacti stay faceted). Ground level is y = 0 (outcrops run
+// a metre or two below it). Returns the colour the prop shows from afar: its
+// plain average, as the far stand-ins have always had it, times how much the
+// visible surface darkened (the crown's outside counts, its hidden inside
+// hardly at all).
+const BASE_SHADE = { tree: [.62, 1.2], cactus: [.7, .8], rock: [.6, .35], boulder: [.58, .9], bush: [.62, .45], outcrop: [.62, 1.2], scree: [.85, .18] };
+const shadeStep = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+function bakeShade(parts, kind) {
+  const [darkest, reach] = BASE_SHADE[kind];
+  const tree = kind === 'tree', foliage = parts.map(part => {
+    const c = part.getAttribute('color'); let r = 0, g = 0;
+    for (let i = 0; i < c.count; i++) { r += c.getX(i); g += c.getY(i); }
+    return tree && g > r; // green needles; the trunk and a snag's bare limbs are brown
+  });
+  let top = 0, low = Infinity, high = -Infinity;
+  parts.forEach((part, k) => {
+    const p = part.getAttribute('position');
+    for (let i = 0; i < p.count; i++) { const y = p.getY(i); top = Math.max(top, y); if (foliage[k]) { low = Math.min(low, y); high = Math.max(high, y); } }
+  });
+  // The trunk's line (pines lean) and the crown's reach, per height band.
+  const BANDS = 24, band = y => Math.min(BANDS - 1, Math.max(0, Math.floor(y / top * BANDS)));
+  const axis = Array.from({ length: BANDS }, () => [0, 0, 0]), spread = new Float32Array(BANDS);
+  const crowned = foliage.some(Boolean);
+  if (crowned) {
+    parts.forEach((part, k) => {
+      if (foliage[k]) return;
+      const p = part.getAttribute('position');
+      for (let i = 0; i < p.count; i++) { const a = axis[band(p.getY(i))]; a[0] += p.getX(i); a[1] += p.getZ(i); a[2]++; }
+    });
+    let last = null;
+    for (const a of axis) if (a[2]) { a[0] /= a[2]; a[1] /= a[2]; last = a; } else if (last) { a[0] = last[0]; a[1] = last[1]; }
+    const first = axis.find(a => a[2]);
+    for (const a of axis) { if (a[2]) break; a[0] = first[0]; a[1] = first[1]; }
+    parts.forEach((part, k) => {
+      if (!foliage[k]) return;
+      const p = part.getAttribute('position');
+      for (let i = 0; i < p.count; i++) { const b = band(p.getY(i)), a = axis[b]; spread[b] = Math.max(spread[b], Math.hypot(p.getX(i) - a[0], p.getZ(i) - a[1])); }
+    });
+  }
+  const reachAt = b => Math.max(spread[b], spread[Math.max(0, b - 1)] * .85, spread[Math.min(BANDS - 1, b + 1)] * .85);
+  const floor = tree ? top * .3 : -Infinity, plain = [0, 0, 0];
+  let seen = 0, shadeSeen = 0, counted = 0;
+  parts.forEach((part, k) => {
+    const p = part.getAttribute('position'), n = part.getAttribute('normal'), c = part.getAttribute('color');
+    for (let i = 0; i < p.count; i++) {
+      const x = p.getX(i), y = p.getY(i), z = p.getZ(i);
+      if (y >= floor) { plain[0] += c.getX(i); plain[1] += c.getY(i); plain[2] += c.getZ(i); counted++; }
+      let shade = darkest + (1 - darkest) * shadeStep(0, reach, y), open = 1;
+      if (crowned) {
+        const b = band(y), a = axis[b], dx = x - a[0], dz = z - a[1], r = Math.hypot(dx, dz), out = reachAt(b);
+        if (y >= low && out > .05) {
+          // Inside the crown: dark by the trunk, open at the tips, and more
+          // open toward the top, which sees more of the sky.
+          open = Math.min(1, r / out);
+          const t = Math.min(1, Math.max(0, (y - low) / (high - low)));
+          shade *= 1 - (1 - (.5 + .5 * shadeStep(.1, .95, open))) * (1 - .45 * t);
+        } else if (y < low) shade *= .85; // the trunk beneath the canopy
+        if (foliage[k] && r > 1e-4) {
+          let nx = dx / r, ny = .55, nz = dz / r; const l = Math.hypot(nx, ny, nz);
+          nx = n.getX(i) * .4 + nx / l * .6; ny = n.getY(i) * .4 + ny / l * .6; nz = n.getZ(i) * .4 + nz / l * .6;
+          const m = Math.hypot(nx, ny, nz) || 1; n.setXYZ(i, nx / m, ny / m, nz / m);
+        }
+      }
+      c.setXYZ(i, c.getX(i) * shade, c.getY(i) * shade, c.getZ(i) * shade);
+      // Seen from afar: a crown's outside, and mostly the tops of stones and
+      // bushes (whose shaded feet are a thin line at that distance).
+      if (y >= floor && y > 0) { const up = (.5 + .5 * n.getY(i)) ** (crowned ? 2 : 4), w = open * open * up * (crowned ? 1 : (y / top) ** 2); seen += w; shadeSeen += shade * w; }
+    }
+  });
+  const dim = seen > 0 ? shadeSeen / seen : 1;
+  return new THREE.Color(plain[0] / counted * dim, plain[1] / counted * dim, plain[2] / counted * dim);
+}
+
 // One Blender asset from its root (at its ground contact): its meshes merged
-// into one geometry, and for a tree, each mesh as a breakable section.
-function assembleRoot(scene, name, kind) {
+// into one geometry, and for a tree, each mesh as a breakable section. With
+// shade, the everyday models get their baked shading (bakeShade) and a far colour.
+function assembleRoot(scene, name, kind, shade = false) {
   const root = scene.getObjectByName(name);
   if (!root) throw new Error(`Scenery asset is missing ${name}`);
   const inverse = root.matrixWorld.clone().invert(), parts = [];
@@ -51,6 +130,7 @@ function assembleRoot(scene, name, kind) {
     parts.push(geometry);
   });
   if (!parts.length) throw new Error(`${name} contains no geometry`);
+  const farColor = shade ? bakeShade(parts, kind) : null;
   const geometry = mergeParts(parts);
   const fragments = kind === 'tree' ? parts.map(part => {
     const geometry = mergeParts([part]); geometry.computeBoundingBox();
@@ -60,7 +140,7 @@ function assembleRoot(scene, name, kind) {
     return { geometry, center, half };
   }) : null;
   for (const part of parts) part.dispose();
-  return { geometry, fragments, sections: parts.length };
+  return { geometry, fragments, sections: parts.length, farColor };
 }
 const disposeScene = scene => scene.traverse(node => {
   if (!node.isMesh) return;
@@ -81,10 +161,10 @@ export function assembleNatureLibrary(scene, treeOverrides = new Map()) {
         stats.push({ name: replacement.name, kind, triangles: replacement.triangles, fragments: replacement.treeSource.fragments.length });
         return replacement;
       }
-      const { geometry, fragments, sections } = assembleRoot(scene, name, kind);
+      const { geometry, fragments, sections, farColor } = assembleRoot(scene, name, kind, true);
       if (fragments) treeSources.push({ fragments, color: '#ffffff', vertexColors: true, variant });
       stats.push({ name, kind, triangles: geometry.attributes.position.count / 3, fragments: fragments ? sections : 0 });
-      return { name, geometry, material };
+      return { name, geometry, material, farColor };
     });
   }
   // Layout transforms exist only for the Blender studio. Runtime instances use
@@ -119,7 +199,7 @@ export function palmMaterial(name = 'Palm_Glow') {
       totalEmissiveRadiance += vColor.rgb * smoothstep(${GLOW_FROM}, ${GLOW_FULL}, max(vColor.r, max(vColor.g, vColor.b))) * ${GLOW_GAIN};`);
   };
   material.onBeforeCompile = glow; material.customProgramCacheKey = () => 'palm-glow-1';
-  Object.assign(material.userData, { compile: glow, compileKey: 'palm-glow-1' });
+  Object.assign(material.userData, { compile: glow, compileKey: 'palm-glow-1', glow: true }); // (glow: no per-prop tint)
   return material;
 }
 // The palms join the trees as the variants after the rest (6–8), each with

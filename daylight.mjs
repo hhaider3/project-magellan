@@ -45,8 +45,10 @@ const hex = h => [0, 2, 4].map(i => { const c = parseInt(h.slice(1 + i, 3 + i), 
 const lerp3 = (a, b, t) => a.map((v, i) => mix(v, b[i], t));
 const PALETTE = {
   // [zenith, horizon, clouds lit, clouds shaded, hemisphere sky, hemisphere ground]
-  day: [hex('#5d93b3'), hex('#b9cdd0'), hex('#f4f6f2'), hex('#a9b3b8'), hex('#e4efed'), hex('#787257')],
-  golden: [hex('#5a7ea6'), hex('#e8b48a'), hex('#ffd2a6'), hex('#9a8a96'), hex('#ffd9b8'), hex('#6e5c48')],
+  // The hemisphere's sky is the fill in the shadows: the blue of the open sky
+  // by day (shadows a little blue), a cool grey-blue against the low sun.
+  day: [hex('#5d93b3'), hex('#b9cdd0'), hex('#f4f6f2'), hex('#a9b3b8'), hex('#b4cbe0'), hex('#787257')],
+  golden: [hex('#5a7ea6'), hex('#e8b48a'), hex('#ffd2a6'), hex('#9a8a96'), hex('#b8bccc'), hex('#6e5c48')],
   dusk: [hex('#2c3c66'), hex('#d47a5a'), hex('#f59a72'), hex('#5d5068'), hex('#b49aa8'), hex('#3c3434')],
   night: [hex('#04070f'), hex('#0e1626'), hex('#1b2232'), hex('#080b12'), hex('#5a6c96'), hex('#16181d')],
 };
@@ -64,24 +66,37 @@ export function daylight(hours) {
   let colors = PALETTE.day.map((c, i) => lerp3(c, PALETTE.golden[i], golden));
   colors = colors.map((c, i) => lerp3(c, PALETTE.dusk[i], dusk));
   colors = colors.map((c, i) => lerp3(c, PALETTE.night[i], night));
-  const [zenith, horizon, cloudLit, cloudShade, hemiSky, hemiGround] = colors;
+  // As the sun drops, the ground it lights gets a smaller share of it (on
+  // level ground about a tenth at 6°), and so does the fill, or shadows fade
+  // away. Eyes adapt: exposure lifts, up to double around sunset, and the sky's
+  // own colours (and the light on self-coloured surfaces) come down by as much,
+  // so the sky, the fog and the water look just as they did.
+  const lift = 1 + smoothstep(.32, .08, height) * smoothstep(-.1, 0, height);
+  const [zenith, horizon, cloudLit, cloudShade] = colors.slice(0, 4).map(c => c.map(v => v / lift)), [hemiSky, hemiGround] = colors.slice(4);
   // The key light is the sun by day and the moon by night. Both are almost
   // dark where they hand over (just below the horizon), so the swap is unseen.
   const sunUp = height > -.02;
   const keyDirection = sunUp ? normalize([sun[0], Math.max(sun[1], .05), sun[2]]) : normalize([moon[0], Math.max(moon[1], .12), moon[2]]);
   const sunWarmth = smoothstep(.0, .4, height);
   const sunColor = lerp3(hex('#ff8a4a'), hex('#fff0d2'), sunWarmth);
-  const keyColor = sunUp ? sunColor : hex('#9fb2ff');
-  const keyIntensity = sunUp ? 2.5 * smoothstep(-.02, .22, height) : .42 * smoothstep(-.02, -.18, height);
+  // The sunlight is a little brighter than the sun's colour (which the sky
+  // shows): with the weaker, bluer fill, sunlit ground stays as bright as it
+  // was. Its deep orange near the horizon is darker, so it gets a little more.
+  const keyColor = sunUp ? sunColor.map(c => c * 1.22 * (1 + .3 * (1 - sunWarmth))) : hex('#9fb2ff');
+  const keyIntensity = sunUp ? 2.5 * smoothstep(-.02, .14, height) : .42 * smoothstep(-.02, -.18, height);
   return {
-    hours, sun, moon, keyDirection, keyColor, keyIntensity, sunColor,
+    // sunColor: the sun as the sky shows it (its disc and glow).
+    hours, sun, moon, keyDirection, keyColor, keyIntensity, sunColor: sunColor.map(c => c / lift), lift,
     day, dusk, night, golden,
     zenith, horizon, cloudLit, cloudShade, hemiSky, hemiGround,
-    hemiIntensity: mix(.55, 1.6, day) * (1 - .15 * dusk),
-    // A little brighter exposure at night, as eyes adapt.
-    exposure: mix(1.05, 1.45, night),
+    // The fill falls with the sun, from 1.65 at noon to .7 at sunrise and
+    // sunset: sunlit to shaded level ground is about 3.3:1 at noon, 1.8:1 at
+    // 07:00 and 1.4:1 at 17:30 (it was 2.3, 1.3 and 1.1).
+    hemiIntensity: mix(.55, mix(.7, 1.65, smoothstep(-.05, .5, height)), day) * (1 - .15 * dusk),
+    // A little brighter exposure at night, as eyes adapt, and around sunset (lift).
+    exposure: mix(1.05, 1.45, night) * lift,
     // Light on self-coloured surfaces (water, rain, foam): 1 by day.
-    surfaceLight: lerp3(lerp3([1, 1, 1], hex('#ffc9a0'), Math.max(golden * .4, dusk * .8)), hex('#5a6a90'), night).map(c => c * mix(.6, 1, day)),
+    surfaceLight: lerp3(lerp3([1, 1, 1], hex('#ffc9a0'), Math.max(golden * .4, dusk * .8)), hex('#5a6a90'), night).map(c => c * mix(.6, 1, day) / lift),
     stars: night,
   };
 }

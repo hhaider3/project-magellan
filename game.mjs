@@ -1,44 +1,44 @@
-import { createCycleTrail, createWaterSpray } from './cycle-trail.mjs?v=ribbon-4';
+import { createCycleTrail, createWaterSpray } from './cycle-trail.mjs?v=realism-1';
 import { skimWorld, CYCLE_MAX_LEAN } from './cycle-motion.mjs?v=cycle-5';
-import { createTerrain } from './terrain.mjs?v=lightcycle-3';
-import { createWater } from './water.mjs?v=frost-1';
-import { FAR_SIZE, FAR_VIEW, NEAR_VIEW, ULTRA_SIZE, ULTRA_VIEW, ULTRA_BLEND_START, ULTRA_BLEND_END, farIndices, farCoverage, ultraIndices, ultraCoverage } from './streaming-layout.mjs?v=lightcycle-3';
-import { loadVehicleModel, poseRoadsterWing, VEHICLE_NAMES } from './vehicle-model.mjs?v=roadster-6';
-import { createShowroom } from './garage.mjs?v=roadster-6';
+import { createTerrain } from './terrain.mjs?v=realism-1';
+import { createWater } from './water.mjs?v=realism-1';
+import { FAR_SIZE, FAR_VIEW, NEAR_VIEW, ULTRA_SIZE, ULTRA_VIEW, ULTRA_BLEND_START, ULTRA_BLEND_END, farIndices, farCoverage, ultraIndices, ultraCoverage } from './streaming-layout.mjs?v=realism-1';
+import { loadVehicleModel, poseRoadsterWing, VEHICLE_NAMES } from './vehicle-model.mjs?v=realism-1';
+import { createShowroom } from './garage.mjs?v=realism-1';
 import { vehicleOrder, vehicleForTheme, VEHICLE_SPECS, PREVIEWS } from './vehicle-specs.mjs?v=lightcycle-4';
 import { createProfiler } from './profiling.mjs?v=timing-1';
-import { createDebris } from './debris.mjs?v=lightcycle-3';
+import { createDebris } from './debris.mjs?v=realism-1';
 import { createDust } from './dust.mjs?v=lightcycle-3';
 import { createThrusterPlumes, createVapour } from './thrusters.mjs?v=roadster-1';
 import { ROADSTER, hoverWorld } from './roadster-motion.mjs?v=steer-1';
 import { createVehiclePresentation } from './vehicle-presentation.mjs?v=roadster-1';
 import { followTarget, followValue } from './camera-motion.mjs?v=grass-1';
-import { createTreeBreakage } from './tree-breakage.mjs?v=warm-1';
-import { loadNatureLibrary, palmMaterial } from './nature-models.mjs?v=packed-1';
-import { keepCoverage } from './sakura-model.mjs?v=packed-1';
+import { createTreeBreakage } from './tree-breakage.mjs?v=realism-1';
+import { loadNatureLibrary, palmMaterial } from './nature-models.mjs?v=realism-1';
+import { keepCoverage } from './sakura-model.mjs?v=realism-1';
 import { createBreakAudio } from './break-audio.mjs?v=sound-2';
 import { createVehicleAudio } from './vehicle-audio.mjs?v=lightcycle-1';
 import { createMusic, volumeGain } from './music.mjs?v=synth-1';
 import { installSunShadowFade, separateVehicleShadow } from './shadow-fade.mjs?v=shadow-2';
-import { createGrass } from './grass.mjs?v=lightcycle-3';
+import { createGrass } from './grass.mjs?v=realism-1';
 import { createPerfMeter, createGpuTimer } from './perf-meter.mjs?v=perf-2';
 import { QUALITY_PRESETS, qualityLevels, presetLevel, autoStartLevel, createAutoQuality } from './quality.mjs?v=blur-1';
 import { controlAxis, steerAxis } from './controls.mjs?v=slider-1';
 import { readTilt, tiltAxes } from './tilt.mjs?v=tilt-1';
 import { toggleFlight, flightAxes, TAKEOFF_SPEED, STALL_SPEED } from './flight-motion.mjs?v=lightcycle-3';
-import { createClouds } from './clouds.mjs?v=lightcycle-3';
-import { weatherAt } from './weather.mjs?v=lightcycle-3';
-import { createSky } from './sky.mjs?v=synth-2';
+import { createClouds } from './clouds.mjs?v=realism-1';
+import { weatherAt, regionWeights } from './weather.mjs?v=realism-1';
+import { createSky, installAerialHaze } from './sky.mjs?v=realism-1';
 import { SYNTHWAVE, GRID_CELL, GRID_LINE, SYNTH_GRID_GLSL, synthwaveLight } from './synthwave.mjs?v=synth-1';
-import { daylight, advanceClock, clockLabel, startHour } from './daylight.mjs?v=day-3';
+import { daylight, advanceClock, clockLabel, startHour } from './daylight.mjs?v=realism-1';
 import { createWeatherEffects, toneMappedHorizon } from './weather-effects.mjs?v=pedals-1';
 import { createLightning, createThunder } from './storm.mjs?v=storm-2';
 import { createPetals, TREES as PETAL_TREES } from './petals.mjs?v=warm-1';
 import * as THREE from 'three';
-import { CHUNK, GRID, ROAD_HALF, FIXED_DT, featurePoint, clamp, mix, smoothstep, hash, createWorld, createVehicle, stepVehicle, recoverVehicle, groundAt, VARIANT, SAKURA_HEIGHT } from './world.mjs?v=lightcycle-4';
+import { CHUNK, GRID, ROAD_HALF, FIXED_DT, featurePoint, clamp, mix, smoothstep, hash, createWorld, createVehicle, stepVehicle, recoverVehicle, groundAt, VARIANT, SAKURA_HEIGHT } from './world.mjs?v=realism-1';
 import { SNOW_LINE } from './landforms.mjs?v=climate-1';
 import { ROAD_MAP } from './roads.mjs?v=open-start-1';
-import { buildLandmark, cloneOwnedGeometry, landmarkStandinSteps, landmarkSwapDistance } from './scenery.mjs?v=lightcycle-3';
+import { buildLandmark, cloneOwnedGeometry, landmarkStandinSteps, landmarkSwapDistance } from './scenery.mjs?v=realism-1';
 import { createMotionBlur } from './motion-blur.mjs?v=blur-3';
 
 const $ = id => document.getElementById(id);
@@ -171,6 +171,7 @@ const flightKeys = {
 const flightTouch = { throttleUp: 'up', throttleDown: 'down', pitchUp: 'jump', pitchDown: 'brake', rollLeft: 'left', rollRight: 'right' };
 
 installSunShadowFade();
+installAerialHaze();
 // On computers the scene is multisampled in the motion blur's target (see
 // motion-blur.mjs), so the screen needn't be; phones draw straight to it.
 const renderer = new THREE.WebGLRenderer({ antialias: coarse, powerPreference: 'high-performance' });
@@ -213,7 +214,7 @@ for (const color of [scene.fog.color, skyColor]) {
   color.getRGB = (target, colorSpace) => getRGB(target, motionBlur.drawing ? THREE.SRGBColorSpace : colorSpace);
 }
 let drawStats = renderer.info.render; // the scene's draw calls and triangles this frame
-const hemisphere = new THREE.HemisphereLight('#e4efed', '#787257', 1.6);
+const hemisphere = new THREE.HemisphereLight('#b4cbe0', '#787257', 1.5);
 scene.add(hemisphere);
 const sun = new THREE.DirectionalLight('#fff0d2', 2.5);
 sun.castShadow = true;
@@ -241,8 +242,14 @@ const vehicleSun = new THREE.DirectionalLight('#fff0d2', 0);
 Object.assign(vehicleSun.shadow.camera, { left: -VEHICLE_SHADOW, right: VEHICLE_SHADOW, top: VEHICLE_SHADOW, bottom: -VEHICLE_SHADOW, near: 1, far: 320 });
 vehicleSun.shadow.mapSize.setScalar(1024); vehicleSun.shadow.bias = -.0002; vehicleSun.shadow.normalBias = .02;
 const vehicleShadow = separateVehicleShadow(vehicleSun.shadow.camera);
+// The wide map is drawn every third frame (or at once if it has to move far,
+// as when the camera swings round): it covers what the sharp map doesn't, out
+// past 100 m, where shadows barely move between frames.
+farSun.shadow.autoUpdate = false;
+const farShadowAt = new THREE.Vector3(Infinity, 0, 0);
+let farShadowFrames = 0;
 function setFarShadow(size) {
-  farSun.castShadow = size > 0;
+  farSun.castShadow = size > 0; farSun.shadow.needsUpdate = true;
   vehicleSun.castShadow = vehicleShadow.active = size > 0;
   if (size && farSun.shadow.mapSize.x !== size) { farSun.shadow.mapSize.setScalar(size); farSun.shadow.map?.dispose(); farSun.shadow.map = null; }
 }
@@ -304,6 +311,12 @@ const SKY = {
   sand: { top: new THREE.Color('#ad8a60'), bottom: new THREE.Color('#c29a6a') },
   blizzard: { top: new THREE.Color('#b7c1c8'), bottom: new THREE.Color('#ccd3d8') },
 };
+// The ground's colour in the fill light, by region, relative to the meadow
+// olive the time of day's colours (daylight.mjs) are made for.
+const BOUNCE = Object.fromEntries(Object.entries({ meadow: '#747552', woods: '#626a48', desert: '#a68a62', snow: '#c9ced2', frost: '#b4bcc2' }).map(([region, hex]) => {
+  const color = new THREE.Color(hex), base = new THREE.Color('#787257');
+  return [region, color.setRGB(color.r / base.r, color.g / base.g, color.b / base.b)];
+})), bounce = { check: 0, target: new THREE.Color(1, 1, 1), color: new THREE.Color(1, 1, 1) };
 // The blowing sand itself, a little deeper than the sky it hides, and the
 // blowing snow, brighter than the whiteout it drives through.
 const SAND_GRAIN = new THREE.Color('#b78c5c'), SNOW_DRIFT = new THREE.Color('#e6ecf0'), driftColor = new THREE.Color();
@@ -323,6 +336,8 @@ const roadLook = { uWet: { value: 0 }, uSnowCover: { value: 0 }, uCalm: { value:
 const synthwave = { on: false };
 const synthLook = { uSynth: { value: 0 }, ...Object.fromEntries(['floor', 'road', 'gridLow', 'gridHigh', 'roadEdge', 'roadCentre'].map(name => [`uSw_${name}`, { value: new THREE.Color(SYNTHWAVE[name]) }])) };
 const SYNTH_FOG = new THREE.Color(SYNTHWAVE.fog), SYNTH_WATER = [new THREE.Color(SYNTHWAVE.shallow), new THREE.Color(SYNTHWAVE.deep)];
+// The far bank as the water mirrors it: woods, desert sand or snow.
+const WATER_BANK = { woods: new THREE.Color('#34432c'), sand: new THREE.Color('#a08660'), snow: new THREE.Color('#c3ccd2') }, waterBank = new THREE.Color();
 function setSynthwave(on) {
   // Pines and palms are chosen as the land is built: switching once it has
   // begun to be rebuilds it around the car.
@@ -406,11 +421,11 @@ function updateWeather(dt) {
   // Time of day: the clear sky's colours, then the overcast dimmed to match
   // (a grey day by daylight, near black at night, warmed at sunrise and sunset).
   clock.hours = advanceClock(clock.hours, step); clock.seconds += step;
-  const light = synthwave.on ? synthwaveLight(world.startHeading) : daylight(clock.hours), dim = .06 + .94 * light.day;
+  const light = synthwave.on ? synthwaveLight(world.startHeading) : daylight(clock.hours), lift = light.lift ?? 1, dim = (.06 + .94 * light.day) / lift;
   for (const part of ['top', 'bottom', 'cloud']) overcast[part].multiplyScalar(dim).lerp(dayColor.setRGB(...light.horizon), .25 * (light.golden + light.dusk));
   // In a sandstorm the sky is the sand: a dim brown haze, redder at sunrise
   // and sunset. In a snowstorm it's a whiteout: pale grey all round.
-  for (const part of ['top', 'bottom']) duststorm[part].copy(SKY.sand[part]).lerp(SKY.blizzard[part], snowDrift).multiplyScalar(.04 + .96 * light.day).lerp(dayColor.setRGB(...light.horizon), .2 * (light.golden + light.dusk));
+  for (const part of ['top', 'bottom']) duststorm[part].copy(SKY.sand[part]).lerp(SKY.blizzard[part], snowDrift).multiplyScalar((.04 + .96 * light.day) / lift).lerp(dayColor.setRGB(...light.horizon), .2 * (light.golden + light.dusk));
   skyColor.setRGB(...light.horizon).lerp(overcast.bottom, cover).lerp(duststorm.bottom, haze);
   skyTop.setRGB(...light.zenith).lerp(overcast.top, cover).lerp(duststorm.top, haze);
   // A flash lights the whole murk, sky and fog alike, a cold violet-white.
@@ -437,13 +452,28 @@ function updateWeather(dt) {
   sunDirection.set(...light.keyDirection);
   // Sand in the air dims the sun hard and stains all the light it scatters
   // brown; blowing snow dims it as hard, to a flat, shadowless cold grey.
-  sun.color.setRGB(...light.keyColor).lerp(dayColor.copy(SKY.sand.bottom).lerp(SKY.blizzard.bottom, snowDrift).multiplyScalar(1.3), haze * .5); sun.intensity = light.keyIntensity * (1 - .72 * cover) * (1 - .78 * haze);
-  hemisphere.color.setRGB(...light.hemiSky).lerp(overcast.top, cover * .5).lerp(duststorm.bottom, haze * .6); hemisphere.groundColor.setRGB(...light.hemiGround);
-  hemisphere.intensity = light.hemiIntensity * (1 + .12 * cover) * (1 + .1 * haze);
+  sun.color.setRGB(...light.keyColor).lerp(dayColor.copy(SKY.sand.bottom).lerp(SKY.blizzard.bottom, snowDrift).multiplyScalar(1.3), haze * .5); sun.intensity = light.keyIntensity * (1 - .8 * cover) * (1 - .78 * haze);
+  // Under an overcast the whole grey sky is the light: the fill turns grey
+  // and strengthens as the sun fades behind it, so shadows go soft.
+  // (By day; a rainy night keeps its old, dim fill.)
+  hemisphere.color.setRGB(...light.hemiSky).lerp(overcast.top, cover * (.5 + .35 * light.day)).lerp(duststorm.bottom, haze * .6);
+  hemisphere.intensity = light.hemiIntensity * (1 + cover * (.12 + 1.08 * light.day)) * (1 + .1 * haze);
+  // The light thrown back up from the ground takes its colour: bright and
+  // neutral off snow, warm off sand, green-olive off meadows (weather.mjs's
+  // regions under the car, rechecked twice a second and eased between).
+  if ((bounce.check -= step) <= 0 || !started) {
+    bounce.check = .5; const weights = regionWeights(world, vehicle.x, vehicle.z); bounce.target.setRGB(0, 0, 0);
+    for (const region in BOUNCE) bounce.target.add(dayColor.copy(BOUNCE[region]).multiplyScalar(weights[region] ?? 0));
+  }
+  bounce.color.lerp(bounce.target, !started ? 1 : 1 - Math.exp(-dt / 1.5));
+  hemisphere.groundColor.setRGB(...light.hemiGround); if (!synthwave.on) hemisphere.groundColor.multiply(bounce.color);
   surfaceLight.setRGB(...light.surfaceLight).multiplyScalar((1 - .25 * cover) * (1 - .3 * haze));
   // And the land and the rain in it, from the whole sky at once.
   hemisphere.color.lerp(FLASH, flash); hemisphere.intensity += flash * 2.2; surfaceLight.lerp(FLASH, flash * .6);
   waterSystem.setSky(skyTop, skyColor, (1 - .85 * veiled) * Math.min(1, light.keyIntensity / 2.5 + light.night * .3), sunDirection, sun.color, skyPalette.cloudLit, surfaceLight);
+  // The sky's glow and clouds, the land around and rain and wind on the water.
+  waterBank.copy(WATER_BANK.woods).lerp(WATER_BANK.sand, world.desertAt(camera.position.x, camera.position.z)).lerp(WATER_BANK.snow, Math.max(world.frostAt(camera.position.x, camera.position.z), roadLook.uSnowCover.value) * .8);
+  waterSystem.setWeather(sky.uniforms, synthwave.on ? 0 : 1, waterBank, Math.min(1, rain * .8 + smoothstep(3, 14, Math.hypot(weather.gust.x, weather.gust.z))));
   weatherFx.setLight(surfaceLight); petals.setLight(surfaceLight); dust.setLight(surfaceLight); vapour.setLight(surfaceLight);
   dayLight = light;
   // Rain and snow drift with a little wind, relative to the moving camera.
@@ -470,7 +500,7 @@ function updateWeather(dt) {
 // worker; its material holds those textures, and every tile shares one
 // shader program.
 const streamUniforms = { uStreamCenter: streamCenterUniform };
-const grass = createGrass(streamUniforms.uStreamCenter, levels[qualityLevel].grass);
+const grass = createGrass(streamUniforms.uStreamCenter, levels[qualityLevel].grass, roadLook);
 const roadTexture = data => {
   const texture = new THREE.DataTexture(data, ROAD_MAP, ROAD_MAP, THREE.RGBAFormat);
   // No mipmaps: averaging distances would erase thin distant roads (the
@@ -484,7 +514,7 @@ function terrainSurface(roadMap, size, roadInfo = null) {
   const texture = roadTexture(roadMap), detail = roadInfo ? roadTexture(roadInfo) : blankRoadInfo;
   const material = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, metalness: 0 });
   material.onBeforeCompile = shader => { compileTerrain(shader); Object.assign(shader.uniforms, { uRoadMap: { value: texture }, uRoadInfo: { value: detail }, uRoadSize: { value: size } }); };
-  material.customProgramCacheKey = () => 'terrain-roads-3';
+  material.customProgramCacheKey = () => 'terrain-roads-4';
   material.userData.roadMaps = roadInfo ? [texture, detail] : [texture];
   return material;
 }
@@ -513,10 +543,17 @@ function compileTerrain(shader) {
     uniform float uSynth; uniform vec3 uSw_floor, uSw_road, uSw_gridLow, uSw_gridHigh, uSw_roadEdge, uSw_roadCentre;
     ${headlightGlsl}
     ${SYNTH_GRID_GLSL}
-    float terrainRough=1.0, terrainMirror=0.0;
+    float terrainRough=1.0, terrainMirror=0.0, terrainBump=0.0;
     float grain(vec2 p){return fract(sin(dot(p,vec2(12.9898,78.233)))*43758.5453);}
     float smoothGrain(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.0-2.0*f);return mix(mix(grain(i),grain(i+vec2(1,0)),f.x),mix(grain(i+vec2(0,1)),grain(i+vec2(1,1)),f.x),f.y);}
+    // Soft 1D noise up a rock face: its beds, sharper-edged where there are pixels enough to show it.
+    float rockBed(float s,float k,float span){float i=floor(s),w=clamp(.12+span*2.0,.12,.5);return mix(grain(vec2(i,k)),grain(vec2(i+1.0,k)),smoothstep(.5-w,.5+w,fract(s)));}
   ` + shader.fragmentShader;
+  // The ground's relief (terrainBump, metres): its surface gradient from
+  // screen-space derivatives bends the shading normal (no extra samples).
+  shader.fragmentShader = shader.fragmentShader.replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
+    {vec3 sx=dFdx(-vViewPosition),sy=dFdy(-vViewPosition),r1=cross(sy,normal),r2=cross(normal,sx);float det=dot(sx,r1);det=abs(det)<1e-10?1e-10:det;
+    vec3 rise=(dFdx(terrainBump)*r1+dFdy(terrainBump)*r2)/det;normal=normalize(normal-rise*min(1.0,.4/max(length(rise),1e-6)));}`);
   shader.fragmentShader = shader.fragmentShader.replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor=terrainRough;');
   shader.fragmentShader = shader.fragmentShader.replace('#include <opaque_fragment>', `
     // Wet roads mirror the sky, most at grazing angles.
@@ -542,7 +579,7 @@ function compileTerrain(shader) {
     // Ground metres per pixel. Detail finer than about two pixels can't be
     // shown: sampled anyway, each frame lands on different grains and the
     // ground crawls as you move. So each pattern fades to its average there.
-    vec2 fp=fwidth(p);float foot=max(fp.x,fp.y), fine=1.0-smoothstep(.04,.12,foot);
+    vec2 fp=fwidth(p);float foot=max(fp.x,fp.y), fine=1.0-smoothstep(.04,.12,foot); float bedSpan=fwidth(vGroundWorld.y);
     float shoulder=0.0;
     // For synthwave: how much is road here, and its edge and centre lines.
     float synthRoad=0.0, synthEdge=0.0, synthCentre=0.0;
@@ -627,23 +664,54 @@ function compileTerrain(shader) {
       terrainRough=mix(terrainRough,.05,puddle);
       terrainMirror=min(1.0,asphalt*uWet*(.32+.25*tracks)+puddle*.7);
     }
-    // Meadow ground (green, off the road): fine grass speckle that fades out
-    // with distance and where pixels outgrow it, and broad lush and dry
-    // blotches as far as they can be shown, so the land past the grass tufts
-    // doesn't read as a flat carpet.
-    // Only on ground that faces up: laid out by map position, these patterns
-    // would stretch into streaks down a steep face.
-    float facingUp=smoothstep(.55,.8,abs(normalize((vec4(vNormal,0.0)*viewMatrix).xyz).y));
-    float meadow=smoothstep(.015,.07,diffuseColor.g-max(diffuseColor.r,diffuseColor.b)*.9)*(1.0-shoulder)*facingUp;
-    if(meadow>0.0){
-      float seen=distance(cameraPosition,vGroundWorld);
-      // The fine speckle has faded out by 140 m: only work it out closer.
-      float close=1.0-smoothstep(35.0,140.0,seen);
-      // Each octave by its own size: 56 cm and 24 cm, then 18 m and 7.7 m.
-      float fine=close>0.0?.5+(smoothGrain(p*1.8)-.5)*.6*(1.0-smoothstep(.15,.4,foot))+(smoothGrain(p*4.1+7.0)-.5)*.4*(1.0-smoothstep(.07,.18,foot)):.5;
-      float blotch=.5+(smoothGrain(p*.055)-.5)*.65*(1.0-smoothstep(5.0,13.0,foot))+(smoothGrain(p*.13+3.0)-.5)*.35*(1.0-smoothstep(2.0,5.5,foot));
-      diffuseColor.rgb*=1.0+meadow*((fine-.5)*.2*close+(blotch-.5)*.16);
-      diffuseColor.rgb=mix(diffuseColor.rgb,diffuseColor.rgb*vec3(1.1,1.05,.82),meadow*smoothstep(.58,.8,blotch)*.55);
+    // The land off the road, by its region (read from the baked colour,
+    // before rain darkens it): meadow, sand, snow, and the rest (dry ground,
+    // scree and bare rock), each with its own small-scale texture so no
+    // region reads as a smooth 4 m gradient. Every pattern fades to its
+    // average where pixels outgrow it, so none can shimmer in the distance.
+    vec3 land=vColor.rgb;
+    float landSnow=max(smoothstep(.45,.6,min(land.r,min(land.g,land.b))),uSnowCover*.8);
+    float landSand=smoothstep(.26,.4,land.r-land.b)*smoothstep(.3,.42,land.g)*(1.0-landSnow);
+    float landGreen=smoothstep(.02,.14,(land.g-max(land.r,land.b))/max(land.g,.01))*smoothstep(.3,.5,(land.g-land.b)/max(land.g,.01))*(1.0-landSnow);
+    float landRock=max(0.0,1.0-landSand-landSnow-landGreen), offRoad=1.0-shoulder;
+    // Map-laid patterns only on ground that faces up: on a steep face they
+    // would stretch into streaks (rock faces get strata below instead).
+    float upright=abs(normalize((vec4(vNormal,0.0)*viewMatrix).xyz).y), facingUp=smoothstep(.55,.8,upright);
+    float seen=distance(cameraPosition,vGroundWorld);
+    // Broad lush and dry blotches (18 m and 7.7 m) as far as they can be shown.
+    float blotch=.5+(smoothGrain(p*.055)-.5)*.65*(1.0-smoothstep(5.0,13.0,foot))+(smoothGrain(p*.13+3.0)-.5)*.35*(1.0-smoothstep(2.0,5.5,foot));
+    // Fine speckle (56 cm and 24 cm), faded out by 140 m: only worked out closer.
+    float close=1.0-smoothstep(35.0,140.0,seen), speckA=0.0, speckB=0.0;
+    if(close>0.0){speckA=(smoothGrain(p*1.8)-.5)*(1.0-smoothstep(.15,.4,foot))*close;speckB=(smoothGrain(p*4.1+7.0)-.5)*(1.0-smoothstep(.07,.18,foot))*close;}
+    // Wind ripples on sand, 1.3 m apart, curving with the blotches and
+    // lying in patches; softened at speed (uCalm), where stripes this
+    // regular would strobe.
+    float ripple=sin(dot(p,vec2(3.86,2.9))+blotch*9.0)*(1.0-smoothstep(.08,.25,foot))*smoothstep(.3,.6,blotch)*(1.0-uCalm);
+    // Rock faces (steep, bare): strata below take over from the map-laid patterns.
+    float cliff=(1.0-smoothstep(.7,.92,upright))*landRock*offRoad, laidFlat=facingUp*offRoad*(1.0-.75*cliff);
+    // Meadow: grass speckle; sand: fine grain and ripples; snow: soft
+    // drifts; dry ground, scree and rock: coarser mottling.
+    float tone=landGreen*((speckA*.6+speckB*.4)*.2+(blotch-.5)*.16)
+      +landSand*((speckA*.3+speckB*.7)*.1+ripple*.035+(blotch-.5)*.12)
+      +landSnow*((speckA*.5+speckB*.5)*.05+(blotch-.5)*.08)
+      +landRock*((speckA*.7+speckB*.3)*.3+(blotch-.5)*.16);
+    diffuseColor.rgb*=1.0+laidFlat*tone;
+    // Dry, yellowed patches in the meadows.
+    diffuseColor.rgb=mix(diffuseColor.rgb,diffuseColor.rgb*vec3(1.1,1.05,.82),laidFlat*landGreen*smoothstep(.58,.8,blotch)*.55);
+    // The same texture as relief (metres), lit after the shading normal is
+    // bent by it: a low sun picks out ripples, drifts and rough ground.
+    terrainBump=laidFlat*(landGreen*((speckA*.6+speckB*.4)*.03+(blotch-.5)*.12)
+      +landSand*(ripple*.012+(speckA*.3+speckB*.7)*.008+(blotch-.5)*.2)
+      +landSnow*((blotch-.5)*.3+(speckA*.5+speckB*.5)*.02)
+      +landRock*((speckA*.7+speckB*.3)*.05+(blotch-.5)*.15));
+    // Rock faces: beds of harder and softer rock, level across the face and
+    // gently warped, 6.5 m and 1.9 m thick. Each fades where a pixel spans
+    // much of a bed, and the thin ones before the far terrain's morph.
+    if(cliff>0.0){
+      float bedY=vGroundWorld.y+(blotch-.5)*2.5, broad=1.0-smoothstep(.15,.45,bedSpan/6.5), thin=(1.0-smoothstep(.15,.45,bedSpan/1.9))*(1.0-smoothstep(150.0,210.0,seen));
+      float beds=(rockBed(bedY/6.5,3.0,bedSpan/6.5)-.5)*.6*broad+(rockBed(bedY/1.9,11.0,bedSpan/1.9)-.5)*.4*thin;
+      diffuseColor.rgb*=1.0+beds*.65*cliff;
+      terrainBump+=beds*cliff*.35;
     }
     // Sunlight focused by the waves dances over the bed of the lake nearest
     // the camera (xy centre, z reach, w surface level; reach 0 turns it off).
@@ -716,19 +784,22 @@ function softenScenery(mat, mode = 'fade') {
   const swap = mode !== 'fade', landmark = mode === 'landmark';
   if (fadingMaterials.has(mat)) return;
   fadingMaterials.add(mat);
+  // Each prop its own shade (propTint), except the glowing synthwave ones.
+  const tint = mode === 'swap' && !mat.userData.glow;
   // Use stable multisample coverage instead of screen-space noise, which
   // sparkles during motion and on browsers with different pixel ratios.
-  // Keep alpha in the output (transparent), but retain opaque depth and
-  // blending when MSAA is available. Fall back to ordinary alpha blending.
+  // With MSAA they're drawn with the opaque scenery (no blending, so three.js
+  // keeps the alpha that sets the coverage, and no sorting, nor a second pass
+  // for double-sided ones). Fall back to ordinary, sorted alpha blending.
   const multisampled = screenMultisampled || renderer.capabilities.maxSamples >= 4;
-  mat.transparent = true;
+  mat.transparent = !multisampled;
   mat.alphaToCoverage = multisampled;
   mat.blending = multisampled ? THREE.NoBlending : THREE.NormalBlending;
   mat.depthWrite = multisampled;
   const own = mat.userData.compile; // a material's own additions (roadside reflectors)
   mat.onBeforeCompile = shader => {
-    Object.assign(shader.uniforms, streamUniforms, { uStandins: standinUniform });
-    shader.vertexShader = `attribute float groundDelta; ${swap ? 'attribute float swapAt; uniform float uStandins;' : ''} ${landmark ? 'attribute vec2 swapCenter;' : ''} uniform vec2 uStreamCenter; varying vec2 vSceneryXZ; varying float vSceneryCover;\n` + shader.vertexShader;
+    Object.assign(shader.uniforms, streamUniforms, { uStandins: standinUniform }, tint ? { uSynth: synthLook.uSynth } : {});
+    shader.vertexShader = `attribute float groundDelta; ${swap ? 'attribute float swapAt; uniform float uStandins;' : ''} ${landmark ? 'attribute vec2 swapCenter;' : ''} ${tint ? 'uniform float uSynth; varying vec3 vSceneryTint;' : ''} uniform vec2 uStreamCenter; varying vec2 vSceneryXZ; varying float vSceneryCover;\n` + shader.vertexShader;
     shader.vertexShader = shader.vertexShader.replace('#include <project_vertex>', `
       vec4 sceneryPosition=vec4(transformed,1.0);
       vec4 sceneryOrigin=vec4(0.0,0.0,0.0,1.0);
@@ -746,17 +817,18 @@ function softenScenery(mat, mode = 'fade') {
       // as its stand-in measures it), then gone. Without a swapAt (0), always drawn.
       float sceneryDistance=distance(${landmark ? 'swapCenter' : '(modelMatrix*sceneryOrigin).xz'},uStreamCenter);
       if(uStandins>.5){ vSceneryCover=3.0; if(swapAt>0.0&&sceneryDistance>swapAt) gl_Position=vec4(2.0,2.0,2.0,1.0); }
-      else vSceneryCover=3.0-smoothstep(220.0,350.0,sceneryDistance);` : ''}`);
-    shader.fragmentShader = 'uniform vec2 uStreamCenter; varying vec2 vSceneryXZ; varying float vSceneryCover;\n' + shader.fragmentShader;
+      else vSceneryCover=3.0-smoothstep(220.0,350.0,sceneryDistance);` : ''}
+      ${tint ? `vSceneryTint=swapAt>0.0?mix(${PROP_TINT_GLSL},vec3(1.0),uSynth):vec3(1.0);` : ''}`);
+    shader.fragmentShader = `uniform vec2 uStreamCenter; varying vec2 vSceneryXZ; varying float vSceneryCover; ${tint ? 'varying vec3 vSceneryTint;' : ''}\n` + shader.fragmentShader;
     shader.fragmentShader = shader.fragmentShader.replace('#include <alphatest_fragment>', `
       #include <alphatest_fragment>
       // A per-prop cover arrives as 2 + cover; otherwise fade per pixel.
       float coverage=vSceneryCover>1.5?vSceneryCover-2.0:1.0-smoothstep(220.0,350.0,distance(vSceneryXZ,uStreamCenter));
       if(coverage<=0.001) discard;
-      diffuseColor.a*=coverage;`);
+      diffuseColor.a*=coverage;${tint ? ' diffuseColor.rgb*=vSceneryTint;' : ''}`);
     own?.(shader);
   };
-  mat.customProgramCacheKey = () => `scenery-${mode}-v2${own ? '-' + mat.userData.compileKey : ''}`;
+  mat.customProgramCacheKey = () => `scenery-${mode}-v3${own ? '-' + mat.userData.compileKey : ''}${tint ? '-tint' : ''}`;
   mat.needsUpdate = true;
 }
 const chunks = new Map();
@@ -895,7 +967,7 @@ function processBreakage() {
     const standin = farTiles.get(`${Math.floor(prop.x / FAR_SIZE)},${Math.floor(prop.z / FAR_SIZE)}`)?.userData.impostors?.ids.get(prop.id);
     if (standin) { standin.mesh.getMatrixAt(standin.index, matrix); matrix.scale(scaleVec.set(0, 0, 0)); standin.mesh.setMatrixAt(standin.index, matrix); standin.mesh.instanceMatrix.needsUpdate = true; }
     debris.burst(prop, synthwave.on);
-    if (prop.type === 'tree') treeBreakage.burst({ ...prop, variant: variantOf(prop) });
+    if (prop.type === 'tree') treeBreakage.burst({ ...prop, variant: variantOf(prop), tint: propTint(Math.fround(swapDistance(prop)), new THREE.Color(1, 1, 1)) });
     if (prop.type === 'tree' && prop.variant === VARIANT.tree.sakura) {
       petals.setTrees(blossomNearby()); petalCheck = .5;
     }
@@ -919,6 +991,19 @@ function disposeChunk(chunk) {
 // fitted to their real model's bounds and coloured like it. Skipped on Low,
 // where real props fade out over 220–350 m instead.
 const swapDistance = p => 260 + 80 * hash(Math.round(p.x * 4), Math.round(p.z * 4), 9137);
+// No two trees (or stones, or cacti) quite alike: each prop's colour is a
+// little lighter or darker, warmer or cooler (up to 9% and 5%), stable per
+// prop since it comes from its swap distance (a seeded hash of its place),
+// which its model's shader (softenScenery), its far stand-in and its broken
+// pieces all have. Smooth in that value, so the shader's 32-bit copy of it
+// and the stand-in's agree. Not in synthwave.
+const PROP_TINT_GLSL = '(1.0+.09*sin((swapAt-260.0)/80.0*61.0+1.3))*vec3(1.0+.05*sin((swapAt-260.0)/80.0*37.0+4.1),1.0,1.0-.05*sin((swapAt-260.0)/80.0*37.0+4.1))';
+function propTint(swap, color) {
+  if (synthwave.on) return color;
+  const h = (swap - 260) / 80, bright = 1 + .09 * Math.sin(h * 61 + 1.3), warm = .05 * Math.sin(h * 37 + 4.1);
+  return color.setRGB(color.r * bright * (1 + warm), color.g * bright, color.b * bright * (1 - warm));
+}
+const tintColor = new THREE.Color();
 const standinUniform = { value: qualityLevel > 0 ? 1 : 0 };
 const STANDIN_TYPES = ['tree', 'cactus', 'rock', 'boulder', 'bush', 'outcrop'];
 // Unit shapes: x and z in [-.5, .5], y in [0, 1]; each is scaled to its model.
@@ -966,14 +1051,15 @@ const FAR_LIGHT = { rock: .46, boulder: .34, cactus: .31 };
 // the foliage's), so a stand-in matches the model it replaces.
 function natureLooks(library) {
   const looks = {};
-  for (const type of STANDIN_TYPES) looks[type] = (library.variants[type] ?? []).map(({ geometry, bounds, standinColor, standinGlow }) => {
+  for (const type of STANDIN_TYPES) looks[type] = (library.variants[type] ?? []).map(({ geometry, bounds, standinColor, standinGlow, farColor }) => {
     if (bounds) return { min: bounds.min.clone(), size: bounds.getSize(new THREE.Vector3()), color: standinColor.clone().multiplyScalar(FAR_LIGHT[type] ?? 1), glow: standinGlow?.clone().multiplyScalar(FAR_LIGHT[type] ?? 1) };
     geometry.computeBoundingBox();
     const box = geometry.boundingBox, colors = geometry.getAttribute('color'), positions = geometry.getAttribute('position'), sum = [0, 0, 0];
     const floor = type === 'tree' ? box.min.y + (box.max.y - box.min.y) * .3 : -Infinity;
     let n = 0;
     for (let i = 0; i < colors.count; i++) if (positions.getY(i) >= floor) { sum[0] += colors.getX(i); sum[1] += colors.getY(i); sum[2] += colors.getZ(i); n++; }
-    return { min: box.min.clone(), size: box.getSize(new THREE.Vector3()), color: new THREE.Color(sum[0] / n, sum[1] / n, sum[2] / n) };
+    // (A baked model's far colour discounts the shade inside its crown, which can't be seen from afar.)
+    return { min: box.min.clone(), size: box.getSize(new THREE.Vector3()), color: farColor?.clone() ?? new THREE.Color(sum[0] / n, sum[1] / n, sum[2] / n) };
   });
   return looks;
 }
@@ -1101,8 +1187,9 @@ function buildImpostors(tile, props) {
       if (glow && look.glow) glow.set([look.glow.r, look.glow.g, look.glow.b], k * 3);
       pointVec.set(props.x[i] - tile.position.x, look.min.y * size, props.z[i] - tile.position.z); quaternion.setFromAxisAngle(upAxis, props.turn[i]);
       scaleVec.copy(look.size).multiplyScalar(size); matrix.compose(pointVec, quaternion, scaleVec); mesh.setMatrixAt(k, matrix);
-      mesh.setColorAt(k, look.color);
-      groundY.set([props.fineY[i] - .08, props.coarseY[i] - .08, props.ultraY[i] - .08], k * 3); swap[k] = swapDistance(p);
+      swap[k] = swapDistance(p);
+      mesh.setColorAt(k, palm || look.glow ? look.color : propTint(swap[k], tintColor.copy(look.color)));
+      groundY.set([props.fineY[i] - .08, props.coarseY[i] - .08, props.ultraY[i] - .08], k * 3);
       ids.set(props.id[i], { mesh, index: k });
       minX = Math.min(minX, pointVec.x); maxX = Math.max(maxX, pointVec.x); minZ = Math.min(minZ, pointVec.z); maxZ = Math.max(maxZ, pointVec.z);
       minY = Math.min(minY, props.fineY[i], props.coarseY[i], props.ultraY[i]); maxY = Math.max(maxY, props.fineY[i], props.coarseY[i], props.ultraY[i] + scaleVec.y);
@@ -1392,7 +1479,7 @@ function beginWorldLoad(continueDriving = false) {
   for (const tile of ultraTiles.values()) disposeTile(tile); ultraTiles.clear();
   terrain = createTerrain(world);
   waterSystem.clear(); distantAt = { x: Infinity, z: Infinity }; distantReady = false;
-  workers = [0, 1].map(() => new Worker(new URL('./world-worker.mjs?v=lightcycle-3', import.meta.url), { type: 'module' }));
+  workers = [0, 1].map(() => new Worker(new URL('./world-worker.mjs?v=realism-1', import.meta.url), { type: 'module' }));
   const failed = message => { streamError = message; running = false; $('loadError').hidden = false; $('startBtn').firstElementChild.textContent = 'Unable to prepare the world'; };
   const received = ({ data }) => {
     if (data.generation !== generation) return;
@@ -1423,11 +1510,12 @@ let transformation = null, flightRig = null, propeller = null, propellerAngle = 
 let shownAsset = null, plumes = null, trailEmitter = null, airBrake = 0, bikeLean = 0, lastFans = true; // the fans stay as you left them across swaps
 // Each vehicle's model loads the first time it's chosen and is kept, so
 // switching back is instant. The Roadster's thruster plumes are made with it.
-const vehicleAssets = new Map();
+const vehicleAssets = new Map(), loadedVehicles = new Set();
 function loadVehicle(kind) {
   if (!vehicleAssets.has(kind)) vehicleAssets.set(kind, loadVehicleModel(renderer, kind, synthwave.on ? 'synthwave' : 'studio').then(asset => {
     if (asset.nozzles) asset.plumes = createThrusterPlumes(asset.nozzles);
     asset.model.traverse(o => { o.userData.vehicle = true; }); // into its own shadow map
+    loadedVehicles.add(asset);
     return asset;
   }).catch(error => { vehicleAssets.delete(kind); throw error; }));
   return vehicleAssets.get(kind);
@@ -1797,6 +1885,9 @@ const drawPlain = (target, view) => { if (screenMultisampled) { renderer.render(
 function renderGarage() {
   const now = performance.now(), dt = Math.min(.1, (now - garage.last) / 1000);
   garage.last = now;
+  // The showroom has its own lights: not the sunset's exposure lift (daylight.mjs).
+  renderer.toneMappingExposure = dayLight.exposure / (dayLight.lift ?? 1);
+  for (const asset of loadedVehicles) asset.reflect(1); // the showroom's own light
   showroom.render(drawPlain, dt, { width: innerWidth, height: innerHeight, pixels: renderer.domElement.height }, stage.getBoundingClientRect());
 }
 function syncGaragePreview() {
@@ -2406,6 +2497,11 @@ function render(dt) {
   wheelSpinners.forEach((w, i) => w.rotation.x = pose.wheelAngle * (vehicle.kind === 'lightcycle' ? .604 / (i === 0 ? .594 : .614) : 1));
   wheelPivots.forEach(p => { if (p.name.startsWith('Wheel_F')) p.rotation.y = pose.steer * .4 * (1 - pose.transform); });
   brakeMat.emissiveIntensity = throttle < -.05 || (input.brake && !wingsActive) ? 2 : .25;
+  // The room the paint and glass reflect is lit as a showroom is: out here
+  // it dims with the daylight (to a floor at night, so the paint isn't dead)
+  // and as rain, snow or blowing sand dim the sun (as of the last frame).
+  // Synthwave's own sky reflects in full.
+  shownAsset?.reflect(synthwave.on ? 1 : mix(.2, 1, dayLight.day) * mix(.55, 1, dayLight.keyIntensity > .01 ? Math.min(1, sun.intensity / dayLight.keyIntensity) : 1) / (dayLight.lift ?? 1)); // (not the sunset's exposure lift)
   car.visible = cameraMode !== 2 || !running;
   // The soft shadow lies on the ground's own slope, both ways (as the wheels
   // meet it): tilted only fore and aft, on a sideways slope half of it sank
@@ -2442,7 +2538,8 @@ function render(dt) {
   const cover = updateWeather(dt), murk = 1 - .5 * cover, haze = weather.haze, stormFar = 65 + 230 * (1 - Math.min(1, Math.max(weather.sand, weather.blizzard)));
   // Synthwave keeps the far mountains in view, fading into pink only at the horizon.
   const clearNear = synthwave.on ? 500 + aloft * 900 : (350 + aloft * 900) * murk, clearFar = synthwave.on ? 4200 + aloft * 300 : (1450 + aloft * 2900) * (1 - .35 * cover);
-  scene.fog.near = fogUniforms.uFogNear.value = clearNear * (1.5 / clearNear) ** haze;
+  // (Negative: with the aerial haze and the low sun's warmth in it, see sky.mjs; not in synthwave.)
+  scene.fog.near = fogUniforms.uFogNear.value = (synthwave.on ? 1 : -1) * clearNear * (1.5 / clearNear) ** haze;
   scene.fog.far = fogUniforms.uFogFar.value = clearFar * (stormFar / clearFar) ** haze;
   const near = cameraMode === 2 && running ? .1 : .1 + aloft * 1.4;
   // Inside a thick sandstorm or snowstorm nothing past the fog can be seen,
@@ -2472,6 +2569,7 @@ function render(dt) {
     farAhead.normalize().multiplyScalar(FAR_SHADOW_AHEAD).add(car.position);
     snapToTexels(farAhead, FAR_SHADOW * 2, farSun.shadow.mapSize.x);
     farSun.target.position.copy(farAhead); farSun.position.copy(farAhead).addScaledVector(sunDirection, SUN_REACH); farSun.target.updateMatrixWorld();
+    if (++farShadowFrames >= 3 || farAhead.distanceToSquared(farShadowAt) > 36) { farSun.shadow.needsUpdate = true; farShadowFrames = 0; farShadowAt.copy(farAhead); }
   }
   // The water feels the Roadster's air cushion as if its hull were in it.
   const waterPose = vehicle.kind === 'roadster' && vehicle.overWater ? Object.assign(hoverPose, pose, { y: pose.y - ROADSTER.waterGap - .1 }) : pose;

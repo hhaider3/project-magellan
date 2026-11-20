@@ -25,7 +25,7 @@ export const SNOW = { grip: .35, traction: .2 };
 // Scenery models the world picks by place, in the nature library's order.
 // Cherries stand twice a pine's height of trunk and crown, along the shores.
 export const SAKURA_HEIGHT = 10.2;
-export const VARIANT = { tree: { snow: 2, stunted: 3, dead: 4, sakura: 5 }, bush: { meadow: 0, desert: 1, juniper: 2 }, outcrop: { granite: 0, sandstone: 1, slab: 2 } };
+export const VARIANT = { tree: { snow: 2, stunted: 3, dead: 4, sakura: 5 }, bush: { meadow: 0, desert: 1, juniper: 2 }, outcrop: { granite: 0, sandstone: 1, slab: 2 }, rock: { granite: 0, shale: 1 }, boulder: { granite: 0, sandstone: 1 } };
 // Each terrain grid square is split along the diagonal whose two corners are
 // nearer in height (a–d or b–c, for corners a (0,0), b (1,0), c (0,1),
 // d (1,1)), so ridges, gullies and cliff rims follow triangle edges instead
@@ -374,9 +374,20 @@ export function createWorld(seed) {
     }
     return list;
   }
+  // Stone of the country it lies in, as the outcrops are: sandstone boulders
+  // in the desert, granite ones elsewhere; granite stones in the ranges,
+  // shale in the desert and a mix of the two in the lowlands (blended across
+  // each border by a seeded roll). Synthwave's own stones keep their old
+  // choice (by place, in nature-models.mjs).
+  function stoneAt({ type, x, z }) {
+    if (synthwave) return undefined;
+    const roll = hash(Math.round(x * 4), Math.round(z * 4), seed + 157), sand = smoothstep(.15, .45, desertAt(x, z));
+    if (type === 'boulder') return roll < sand ? VARIANT.boulder.sandstone : VARIANT.boulder.granite;
+    return roll < mix(.35, 1, smoothstep(.1, .35, mountainAt(x, z))) * (1 - sand) ? VARIANT.rock.granite : VARIANT.rock.shale;
+  }
   function props(cx, cz) {
     const rng = random((hash(cx, cz, seed + 101) * 4294967296) >>> 0), list = [];
-    const add = p => { if (seated(p)) list.push(p); };
+    const add = p => { if (!seated(p)) return; if (p.type === 'rock' || p.type === 'boulder') p.variant = stoneAt(p); list.push(p); };
     // Fixed candidates and clearances make revisited chunks identical.
     for (let i = 0; i < 30; i++) {
       const x = cx * CHUNK + 9 + rng() * (CHUNK - 18), z = cz * CHUNK + 9 + rng() * (CHUNK - 18);

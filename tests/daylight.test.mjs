@@ -47,6 +47,23 @@ test('light follows the sun: bright day, warm golden hour and dusk, a dim moonli
   }
 });
 
+test('sunlit ground stands clear of the shade, from noon to the low sun, and the lift keeps the sky as it was', () => {
+  const lum = c => .2126 * c[0] + .7152 * c[1] + .0722 * c[2];
+  // Level ground: the sun's share (its height) plus the sky's fill, against the fill alone.
+  const ratio = d => (lum(d.keyColor) * d.keyIntensity * d.keyDirection[1] + lum(d.hemiSky) * d.hemiIntensity) / (lum(d.hemiSky) * d.hemiIntensity);
+  assert.ok(ratio(daylight(12)) > 3, `noon ${ratio(daylight(12))}`);
+  assert.ok(ratio(daylight(7)) > 1.6, `07:00 ${ratio(daylight(7))}`);
+  assert.ok(ratio(daylight(17.5)) > 1.3, `17:30 ${ratio(daylight(17.5))}`);
+  // Shadows by day are filled by the blue sky.
+  const fill = daylight(12).hemiSky; assert.ok(fill[2] > fill[0] * 1.4, 'a blue fill');
+  // Exposure lifts around sunset, and the sky's colours come down to match.
+  for (const h of [12, 17.5, 18.2, 22]) {
+    const d = daylight(h);
+    assert.ok(Math.abs(d.exposure / d.lift - (1.05 + .4 * d.night)) < 1e-9 && d.lift >= 1 && d.lift <= 2);
+  }
+  assert.equal(daylight(12).lift, 1); assert.equal(daylight(23).lift, 1); assert.ok(daylight(17.9).lift > 1.8);
+});
+
 test('the clock label reads hours and minutes', () => {
   assert.equal(clockLabel(6.5), '06:30'); assert.equal(clockLabel(18.25), '18:15'); assert.equal(clockLabel(0), '00:00');
 });

@@ -69,7 +69,7 @@ const vertexShader = /* glsl */ `
     // The glow on the ground and in the air opens out from the bike, not all at once.
     float behind = uHead - aAlong;
     if (aLayer < 1.5) near *= smoothstep(0., aLayer < .5 ? 10. : 4., behind);
-    vFade = near * (1. - smoothstep(fogNear, fogFar, -view.z));
+    vFade = near * (1. - (smoothstep(abs(fogNear),fogFar,-view.z)+(1.0-smoothstep(abs(fogNear),fogFar,-view.z))*(fogNear<0.0?0.15*-view.z/fogFar:0.0))); // sky.mjs's aerial haze
     vUv = vec2(aSide, aSide * .5 + .5);
     vAlong = aAlong; vAge = age; vLife = life; vBoost = aBoost; vStrength = aStrength; vLayer = aLayer;
     vLift = 1. - smoothstep(.4, 3.5, aBase.y - aGround); // the pool goes as the ribbon leaves the ground

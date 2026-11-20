@@ -53,6 +53,7 @@ function splitGeometry(source) {
   return fragments;
 }
 
+const WHITE = new THREE.Color(1, 1, 1);
 export function createTreeBreakage(scene, sources, capacity = 8) {
   const fragments = sources.flatMap(({ geometry, color, fragments: authored, vertexColors = false, variant, material: sourceMaterial }) => {
     const material = sourceMaterial || (authored?.every(part => part.material) ? null : new THREE.MeshStandardMaterial({ color, vertexColors, roughness: .94 }));
@@ -65,7 +66,9 @@ export function createTreeBreakage(scene, sources, capacity = 8) {
       // A shader finishes setting up on its first draw (tens of milliseconds
       // for the textured cherry), so draw each piece once now, as one
       // zero-size instance, rather than in the frame of the first impact.
-      mesh.setMatrixAt(0, new THREE.Matrix4().makeScale(0, 0, 0));
+      // Each piece takes its tree's own shade (tint, from the game), so the
+      // colour is set up for that draw too.
+      mesh.setMatrixAt(0, new THREE.Matrix4().makeScale(0, 0, 0)); mesh.setColorAt(0, WHITE);
       mesh.count = 1; mesh.castShadow = true; mesh.receiveShadow = true; mesh.frustumCulled = false; scene.add(mesh);
       return { ...part, mesh, variant };
     });
@@ -99,10 +102,11 @@ export function createTreeBreakage(scene, sources, capacity = 8) {
         dummy.scale.setScalar(tree.size * Math.min(1, (2.8 - t) / .65)); dummy.updateMatrix();
         const e = dummy.matrix.elements, extentY = Math.abs(e[1]) * half.x + Math.abs(e[5]) * half.y + Math.abs(e[9]) * half.z;
         dummy.position.y = Math.max(dummy.position.y, world.surface(dummy.position.x, dummy.position.z) + extentY);
-        dummy.updateMatrix(); mesh.setMatrixAt(mesh.count++, dummy.matrix);
+        dummy.updateMatrix(); mesh.setColorAt(mesh.count, tree.tint ?? WHITE); mesh.setMatrixAt(mesh.count++, dummy.matrix);
       });
     });
-    for (const { mesh } of fragments) mesh.instanceMatrix.needsUpdate = true;
+    // Pieces with nothing to show are left out of the draw and shadow lists.
+    for (const { mesh } of fragments) { mesh.visible = mesh.count > 0; if (mesh.visible) mesh.instanceMatrix.needsUpdate = mesh.instanceColor.needsUpdate = true; }
   }
-  return { burst, update, clear() { trees.length = 0; for (const { mesh } of fragments) mesh.count = 0; }, get count() { return trees.length; } };
+  return { burst, update, clear() { trees.length = 0; for (const { mesh } of fragments) { mesh.count = 0; mesh.visible = false; } }, get count() { return trees.length; } };
 }

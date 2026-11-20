@@ -3,7 +3,7 @@ import { waterWave, lakeExtent } from './lakes.mjs?v=open-start-1';
 
 // A small tileable wave texture, generated once (no download): R/G hold the
 // surface slope from a sum of periodic waves, B a soft noise used to break up
-// foam. Power-of-two with mipmaps, so detail filters out cleanly with distance
+// foam, A a broader noise for the reflected clouds. Power-of-two with mipmaps, so detail filters out cleanly with distance
 // instead of shimmering.
 function waveTexture(size = 128) {
   const data = new Uint8Array(size * size * 4), waves = [];
@@ -25,20 +25,23 @@ function waveTexture(size = 128) {
     slopes.set([sx, sz], (y * size + x) * 2); peak = Math.max(peak, Math.abs(sx), Math.abs(sz));
   }
   // Periodic value noise for the foam mask.
-  const cells = 8, lattice = Array.from({ length: cells * cells }, random);
-  const noise = (u, v) => {
+  const lattices = {}, noise = (u, v, cells = 8) => {
+    const lattice = lattices[cells] ??= Array.from({ length: cells * cells }, random);
     const fx = u * cells, fz = v * cells, ix = Math.floor(fx), iz = Math.floor(fz), tx = fx - ix, tz = fz - iz;
     const at = (a, b) => lattice[((iz + b) % cells) * cells + (ix + a) % cells];
     const sx = tx * tx * (3 - 2 * tx), sz = tz * tz * (3 - 2 * tz);
     return (at(0, 0) * (1 - sx) + at(1, 0) * sx) * (1 - sz) + (at(0, 1) * (1 - sx) + at(1, 1) * sx) * sz;
   };
+  // Clouds: three octaves of a coarser noise, stretched to fill 0–1.
+  const clouds = new Float32Array(size * size); let low = Infinity, high = -Infinity;
   for (let i = 0; i < size * size; i++) {
     const u = (i % size) / size, v = Math.floor(i / size) / size;
     data[i * 4] = Math.round((slopes[i * 2] / peak * .5 + .5) * 255);
     data[i * 4 + 1] = Math.round((slopes[i * 2 + 1] / peak * .5 + .5) * 255);
     data[i * 4 + 2] = Math.round((noise(u, v) * .65 + noise(u * 2 % 1, v * 2 % 1) * .35) * 255);
-    data[i * 4 + 3] = 255;
+    clouds[i] = noise(u, v, 4) * .55 + noise(u, v, 8) * .3 + noise(u, v, 16) * .15; low = Math.min(low, clouds[i]); high = Math.max(high, clouds[i]);
   }
+  for (let i = 0; i < size * size; i++) data[i * 4 + 3] = Math.round((clouds[i] - low) / (high - low) * 255);
   const texture = new THREE.DataTexture(data, size, size);
   texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
   texture.magFilter = THREE.LinearFilter; texture.minFilter = THREE.LinearMipmapLinearFilter;
@@ -46,18 +49,24 @@ function waveTexture(size = 128) {
   return texture;
 }
 
-// Sky gradient and clouds as the sky dome draws them (cloud edges a little
-// softer, as a rippled reflection blurs them), so the water reflects the sky
-// it sits under.
+// Sky gradient, sunset glow and clouds as the sky dome draws them (cloud
+// edges a little softer, as a rippled reflection blurs them), so the water
+// reflects the sky it sits under. The clouds are read from the wave
+// texture's cloud channel, as many as the sky has, drifting as its clouds do.
 const skyFunctions = `
-  float hashSky(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
-  float noiseSky(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.0-2.0*f);return mix(mix(hashSky(i),hashSky(i+vec2(1,0)),f.x),mix(hashSky(i+vec2(0,1)),hashSky(i+vec2(1,1)),f.x),f.y);}
   vec3 skyAt(vec3 ray, bool clouds){
     float t=pow(max(ray.y,0.0),.65); vec3 c=mix(uSkyBottom,uSkyTop,t);
+    // Sunrise and sunset glow, strongest toward the sun and along the horizon (sky.mjs).
+    float cs=max(dot(ray,uGlowDir),0.0);
+    c+=uGlow*(pow(cs,5.0)*.75+cs*cs*.18)*exp(-max(ray.y,0.0)*4.5);
     if(clouds){
-      vec2 p=ray.xz/max(ray.y,.05)*1.3;
-      float n=noiseSky(p)*.5+noiseSky(p*2.1)*.25+noiseSky(p*4.2)*.125;
-      c=mix(c,uCloudTone,smoothstep(.44,.74,n)*smoothstep(.025,.14,ray.y)*(1.0-smoothstep(.7,.95,ray.y))*.62);
+      vec2 p=ray.xz/(max(ray.y,0.0)+.12)*.4+uTime*vec2(.0065,.004);
+      // (A sharper mip than the rippled reflection's derivatives would pick:
+      // the ripples scatter it, as they scatter the clouds on real water.)
+      float n=texture2D(uWaves,p,-1.).a*.7+texture2D(uWaves,p*2.3+.37,-1.).a*.3;
+      float lo=mix(.72,.18,uCloudCover.x);
+      float density=smoothstep(lo,lo+.2,n)*smoothstep(.025,.14,ray.y);
+      c=mix(c,uCloudTone,mix(density*.8,1.0,uCloudCover.y));
     }
     return c;
   }`;
@@ -71,15 +80,20 @@ export function createWater(scene, fog = { uFogNear: { value: 350 }, uFogFar: { 
   const material = new THREE.ShaderMaterial({
     transparent: true, depthWrite: false, side: THREE.FrontSide,
     uniforms: { uTime: time, uStreamCenter: streamCenter, uFogNear: fog.uFogNear, uFogFar: fog.uFogFar, uDetail: detail, uWaves: waves,
-      uShallow: { value: new THREE.Color('#4fb0a2') }, uDeep: { value: new THREE.Color('#1c4a5e') }, uSky: { value: new THREE.Color('#b9cdd0') },
+      uShallow: { value: new THREE.Color('#59aba0') }, uDeep: { value: new THREE.Color('#21485a') }, uSky: { value: new THREE.Color('#b9cdd0') },
       uSkyTop: { value: new THREE.Color(light.skyTop ?? '#729eaf') }, uSkyBottom: { value: new THREE.Color(light.skyBottom ?? '#b9cdd0') },
-      uSunDir: { value: (light.sunDirection ?? new THREE.Vector3(-.52, .8, .36)).clone().normalize() }, uSunColor: { value: new THREE.Color(light.sunColor ?? '#fff0d2') }, uCloudTone: { value: new THREE.Color(.87, .9, .87) }, uLight: ambient },
+      uSunDir: { value: (light.sunDirection ?? new THREE.Vector3(-.52, .8, .36)).clone().normalize() }, uSunColor: { value: new THREE.Color(light.sunColor ?? '#fff0d2') }, uCloudTone: { value: new THREE.Color(.87, .9, .87) }, uLight: ambient,
+      // Set by setWeather: the sky's sunset glow (colour, true sun direction),
+      // cloud cover (amount, overcast deck), the far bank's tone (w: 1 in the
+      // real world, 0 in synth mode) and how rough rain and wind make the surface.
+      uGlow: { value: new THREE.Color(0, 0, 0) }, uGlowDir: { value: new THREE.Vector3(0, 1, 0) }, uCloudCover: { value: new THREE.Vector2(.38, 0) },
+      uBank: { value: new THREE.Vector4(0, 0, 0, 0) }, uRough: { value: 0 } },
     vertexShader: `attribute float bedDepth; attribute vec2 lakeUV;
       uniform float uTime; varying vec3 vWorld; varying float vDepth; varying vec2 vLake; varying float vIce;
       #ifdef RIVER
       attribute vec3 river; varying vec3 vRiver;
       #else
-      attribute float ice;
+      attribute vec2 ice; varying float vReach;
       #endif
       attribute vec2 groundY; uniform vec2 uStreamCenter;
       void main(){
@@ -87,7 +101,7 @@ export function createWater(scene, fog = { uFogNear: { value: 350 }, uFogFar: { 
         #ifdef RIVER
         vIce=0.;
         #else
-        vIce=ice;
+        vIce=ice.x; vReach=ice.y;
         #endif
         float wave=sin(p.x*.11+p.z*.07+uTime*1.6)*.045+sin(p.x*-.06+p.z*.14-uTime*1.2)*.025;
         p.y+=wave*smoothstep(0.,1.,bedDepth)*(1.-vIce);
@@ -102,15 +116,22 @@ export function createWater(scene, fog = { uFogNear: { value: 350 }, uFogFar: { 
         #endif
         gl_Position=projectionMatrix*modelViewMatrix*vec4(p,1.);
       }`,
-    fragmentShader: `uniform float uTime,uFogNear,uFogFar,uDetail; uniform sampler2D uWaves; uniform vec2 uStreamCenter;
+    fragmentShader: `uniform float uTime,uFogNear,uFogFar,uDetail,uRough; uniform sampler2D uWaves; uniform vec2 uStreamCenter,uCloudCover;
       #ifdef RIVER
       varying vec3 vRiver;
+      #else
+      varying float vReach;
       #endif
-      uniform vec3 uShallow,uDeep,uSky,uSkyTop,uSkyBottom,uSunDir,uSunColor,uCloudTone,uLight;
+      uniform vec3 uShallow,uDeep,uSky,uSkyTop,uSkyBottom,uSunDir,uSunColor,uCloudTone,uLight,uGlow,uGlowDir; uniform vec4 uBank;
       varying vec3 vWorld; varying float vDepth; varying vec2 vLake; varying float vIce;
       ${skyFunctions}
       void main(){
+        // (A river's lakeUV is its flow coordinates, not a place in a lake.)
+        #ifdef RIVER
+        if(vDepth<.015)discard;
+        #else
         if(vDepth<.015||length(vLake)>1.02)discard;
+        #endif
         if(vIce>.5){
           // Ice: a frozen lake, still and polished. Pale and cloudy where it's
           // thick over deep water, clearer toward the shore; drifts of snow
@@ -131,19 +152,24 @@ export function createWater(scene, fog = { uFogNear: { value: 350 }, uFogFar: { 
           vec3 color=mix(iceBody*uLight,skyAt(normalize(r),uDetail>.5),clamp(fresnel*1.1,0.,1.));
           vec3 h=normalize(view+uSunDir); float nh=max(dot(n,h),0.);
           color+=uSunColor*(pow(nh,90.)*.25+pow(nh,600.)*1.4*near)*(1.-drift*.8);
-          color=mix(color,uSky,smoothstep(uFogNear,uFogFar,far));
+          color=mix(color,uSky,(smoothstep(abs(uFogNear),uFogFar,far)+(1.0-smoothstep(abs(uFogNear),uFogFar,far))*(uFogNear<0.0?0.15*far/uFogFar:0.0))); // sky.mjs's aerial haze
           gl_FragColor=vec4(color,mix(.82,1.,smoothstep(0.,.7,vDepth)));
           #include <tonemapping_fragment>
           #include <colorspace_fragment>
           return;
         }
-        vec2 p=vWorld.xz, drift=vec2(0.);
+        vec2 p=vWorld.xz, q=p+uTime*vec2(.017*34.,.011*34.);
         #ifdef RIVER
         // Rivers come in two tiers, near chunks and far tiles, switching at a
-        // fixed distance so they never overlap; their ripples drift downstream.
+        // fixed distance so they never overlap. Their ripples drift downstream:
+        // lakeUV holds the travel time from the source (as metres at 1 m/s)
+        // and the distance across, so the pattern flows with the water, faster
+        // where it falls, without shearing apart; slopes read in that frame
+        // are turned back to the world by the flow direction.
         float tierEdge=distance(p,uStreamCenter)-370.;
         if(vRiver.z<.5?tierEdge>0.:tierEdge<=0.)discard;
-        drift=vRiver.xy*uTime;
+        vec2 flow=normalize(vRiver.xy); mat2 toWorld=mat2(flow,vec2(flow.y,-flow.x));
+        q=vec2(vLake.x-uTime,vLake.y);
         #endif
         float far=distance(cameraPosition,vWorld);
         // A broad swell plus two drifting wave-texture layers. Fine detail
@@ -153,43 +179,70 @@ export function createWater(scene, fog = { uFogNear: { value: 350 }, uFogFar: { 
         vec2 slope=vec2(-.045*cos(a)+.028*cos(b),-.03*cos(a)-.06*cos(b))*(1.-smoothstep(80.,380.,far)*.85);
         float near=1.-smoothstep(60.,480.,far), foamNoise=.5;
         if(far<900.){
-          vec4 w1=texture2D(uWaves,(p-drift)*(1./34.)+uTime*vec2(.017,.011));
-          slope+=(w1.xy*2.-1.)*.16*(.3+.7*near); foamNoise=w1.z;
+          // Rain and wind (uRough) roughen the ripples, not the swell.
+          vec4 w1=texture2D(uWaves,q*(1./34.));
+          vec2 ripple=(w1.xy*2.-1.)*.16*(.3+.7*near); foamNoise=w1.z;
           if(uDetail>.5){
-            vec4 w2=texture2D(uWaves,mat2(.8,-.6,.6,.8)*(p-drift)*(1./11.)+uTime*vec2(-.031,.024));
-            slope+=(w2.xy*2.-1.)*.09*near; foamNoise=mix(foamNoise,w2.z,.5);
+            #ifdef RIVER
+            vec4 w2=texture2D(uWaves,mat2(.8,-.6,.6,.8)*q*(1./11.));
+            #else
+            vec4 w2=texture2D(uWaves,mat2(.8,-.6,.6,.8)*p*(1./11.)+uTime*vec2(-.031,.024));
+            #endif
+            ripple+=(w2.xy*2.-1.)*.09*near; foamNoise=mix(foamNoise,w2.z,.5);
           }
+          #ifdef RIVER
+          ripple=toWorld*ripple;
+          #endif
+          slope+=ripple*(1.+uRough*.6);
         }
         vec3 n=normalize(vec3(slope.x,1.,slope.y));
         vec3 view=normalize(cameraPosition-vWorld);
         // Reflection of the real sky, weighted by Schlick's Fresnel (water F0 ≈ 0.02).
         vec3 r=reflect(-view,n); r.y=max(r.y,.02);
         vec3 sky=skyAt(normalize(r),uDetail>.5);
+        // Low reflections mirror the far bank, not the sky. It rises about 14 m
+        // (land and trees); the further away it is, the lower it stands and
+        // the more the haze hides it, so a sea's distant shore never shows.
+        #ifdef RIVER
+        float reach=20.;
+        #else
+        float reach=vReach;
+        #endif
+        float bank=uBank.w*(1.-smoothstep(0.,clamp(14./reach,.01,.08),r.y))*(1.-smoothstep(abs(uFogNear),uFogFar,far+reach));
+        sky=mix(sky,uBank.rgb*uLight,bank);
         float fresnel=.02+.98*pow(1.-max(dot(n,view),0.),5.);
         // Light is absorbed with depth: clear turquoise edges, deep blue centre.
         // The water's own colour is lit by the scene: dim at night, warm at dusk.
         vec3 body=mix(uShallow,uDeep,1.-exp(-vDepth*.32))*uLight;
         vec3 color=mix(body,sky,clamp(fresnel*1.15,0.,1.));
-        // Sun glitter from the scene's actual sun: a broad sheen plus fine sparkle.
+        // Sun glitter from the scene's actual sun: a broad sheen plus fine
+        // sparkle. Ripples too small to draw far off (and rain and wind) still
+        // tilt the surface, so the sparkle spreads with distance, keeping its
+        // total light: a low sun lays a long path of light across the water.
         vec3 h=normalize(view+uSunDir); float nh=max(dot(n,h),0.);
-        color+=uSunColor*(pow(nh,48.)*.1+pow(nh,320.)*(1.2+1.8*uDetail)*(.35+.65*near));
+        // (Synth mode, uBank.w 0, keeps its sparkle as it was.)
+        float glint=320./(1.+smoothstep(60.,1200.,far)*9.*uBank.w+uRough*2.);
+        color+=uSunColor*(pow(nh,48.)*.1+pow(nh,glint)*(1.2+1.8*uDetail)*mix(.35+.65*near,(glint+2.)/322.,uBank.w));
         // Shoreline foam: broken up by noise, lapping in and out over the shallows.
         float shore=1.-smoothstep(.05,.75,vDepth), lap=.5+.5*sin(uTime*1.3-vDepth*7.+foamNoise*4.);
         float foam=shore*smoothstep(.52,.78,foamNoise*.75+lap*.45)*near;
         color=mix(color,vec3(.93,.96,.94)*uLight,foam*.85);
-        color=mix(color,uSky,smoothstep(uFogNear,uFogFar,far));
+        color=mix(color,uSky,(smoothstep(abs(uFogNear),uFogFar,far)+(1.0-smoothstep(abs(uFogNear),uFogFar,far))*(uFogNear<0.0?0.15*far/uFogFar:0.0))); // sky.mjs's aerial haze
         // Close up, shallows show the bed. Further away the terrain beneath is
         // a coarse tier just under the surface (sand-coloured near shores), so
         // the water turns opaque instead of revealing it.
+        // The waterline fades in past the foam, rather than ending in a hard edge.
         float alpha=mix(.3,.97,1.-exp(-vDepth*.6));
-        gl_FragColor=vec4(color,mix(max(alpha,foam),1.,smoothstep(200.,400.,far)));
+        gl_FragColor=vec4(color,mix(max(alpha,foam)*mix(1.,smoothstep(.015,.09,vDepth),uBank.w),1.,smoothstep(200.,400.,far)));
         #include <tonemapping_fragment>
         #include <colorspace_fragment>
       }`
   });
-  // Rivers share the lakes' look and settings (one set of uniforms), with
-  // ripples that drift downstream.
-  const riverMaterial = new THREE.ShaderMaterial({ transparent: true, depthWrite: false, side: THREE.FrontSide, uniforms: material.uniforms,
+  // Rivers share the lakes' look and settings (the same uniforms), with their
+  // own colour, a greener, cloudier water than the lakes' clear turquoise,
+  // and ripples that drift downstream.
+  const riverMaterial = new THREE.ShaderMaterial({ transparent: true, depthWrite: false, side: THREE.FrontSide,
+    uniforms: { ...material.uniforms, uShallow: { value: new THREE.Color('#62907c') }, uDeep: { value: new THREE.Color('#23454a') } },
     vertexShader: '#define RIVER\n' + material.vertexShader, fragmentShader: '#define RIVER\n' + material.fragmentShader });
   function riverMesh(data) {
     const geometry = new THREE.BufferGeometry();
@@ -207,7 +260,7 @@ export function createWater(scene, fog = { uFogNear: { value: 350 }, uFogFar: { 
     geometry.setAttribute('bedDepth', new THREE.BufferAttribute(data.bedDepth, 1));
     geometry.setAttribute('lakeUV', new THREE.BufferAttribute(data.lakeUV, 2));
     geometry.setAttribute('groundY', new THREE.BufferAttribute(data.groundY, 2));
-    geometry.setAttribute('ice', new THREE.BufferAttribute(data.ice, 1));
+    geometry.setAttribute('ice', new THREE.BufferAttribute(data.ice, 2));
     geometry.setIndex(new THREE.BufferAttribute(data.index, 1)); geometry.computeBoundingSphere();
     const mesh = new THREE.Mesh(geometry, material); mesh.name = lake.name; mesh.renderOrder = 1;
     scene.add(mesh); patches.set(lake.id, mesh); refreshDistant();
@@ -242,7 +295,7 @@ export function createWater(scene, fog = { uFogNear: { value: 350 }, uFogFar: { 
     geometry.setAttribute('bedDepth', new THREE.BufferAttribute(data.bedDepth, 1));
     geometry.setAttribute('lakeUV', new THREE.BufferAttribute(data.lakeUV, 2));
     geometry.setAttribute('groundY', new THREE.BufferAttribute(data.groundY, 2));
-    geometry.setAttribute('ice', new THREE.BufferAttribute(data.ice, 1));
+    geometry.setAttribute('ice', new THREE.BufferAttribute(data.ice, 2));
     distant.geometry.dispose(); distant.geometry = geometry;
     distantRanges = ranges; distantIndex = data.index;
     refreshDistant();
@@ -361,9 +414,24 @@ export function createWater(scene, fog = { uFogNear: { value: 350 }, uFogFar: { 
     if (clouds) u.uCloudTone.value.copy(clouds);
   }
   const setDetail = on => { detail.value = on ? 1 : 0; causticCheck = 0; if (!on) caustic.value.z = 0; };
-  // The water's own colour, shallows and depths; with none, its usual turquoise.
-  const baseShallow = material.uniforms.uShallow.value.clone(), baseDeep = material.uniforms.uDeep.value.clone();
-  function setColors(shallow = baseShallow, deep = baseDeep) { material.uniforms.uShallow.value.copy(shallow); material.uniforms.uDeep.value.copy(deep); }
-  return { sync, install, update, clear, installDistant, setDetail, setSky, setColors, riverMesh, riverWarmup: new THREE.Mesh(new THREE.BufferGeometry(), riverMaterial), drainSplashes: () => splashes.splice(0), causticUniforms: { uTime: time, uCausticLake: caustic }, get distantCount() { return distantCount; }, wants: id => wanted.has(id), get ready() { return patches.size === wanted.size; },
+  // The water's own colour, shallows and depths, for lakes and rivers alike;
+  // with none, each its usual colour.
+  const bases = [material, riverMaterial].map(m => [m.uniforms.uShallow.value.clone(), m.uniforms.uDeep.value.clone()]);
+  function setColors(shallow, deep) {
+    [material, riverMaterial].forEach((m, i) => { m.uniforms.uShallow.value.copy(shallow ?? bases[i][0]); m.uniforms.uDeep.value.copy(deep ?? bases[i][1]); });
+  }
+  // The rest of the weather on the water, each frame. sky: the sky dome's
+  // uniforms, for its sunset glow and cloud cover; real: 0 in synth mode,
+  // whose sky has neither glow nor far banks to mirror; bank: the far bank's
+  // tone (woods, sand or snow), lit on the water by the scene's light;
+  // rough: 0 calm to 1, from rain and wind.
+  function setWeather(sky, real, bank, rough) {
+    const u = material.uniforms;
+    u.uGlow.value.copy(sky.uSunColor.value).multiplyScalar(sky.uGlow.value * real); u.uGlowDir.value.copy(sky.uSunDir.value);
+    const cover = sky.uCover.value, deck = Math.min(1, Math.max(0, (cover - .12) / .33));
+    u.uCloudCover.value.set(Math.min(1, Math.max(sky.uClouds.value, cover)), deck * deck * (3 - 2 * deck));
+    u.uBank.value.set(bank.r, bank.g, bank.b, real); u.uRough.value = rough * real;
+  }
+  return { sync, install, update, clear, installDistant, setDetail, setSky, setColors, setWeather, riverMesh, riverWarmup: new THREE.Mesh(new THREE.BufferGeometry(), riverMaterial), drainSplashes: () => splashes.splice(0), causticUniforms: { uTime: time, uCausticLake: caustic }, get distantCount() { return distantCount; }, wants: id => wanted.has(id), get ready() { return patches.size === wanted.size; },
     get count() { return patches.size; }, get wakeCount() { return ripples.length; } };
 }
