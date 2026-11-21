@@ -288,7 +288,7 @@ export function createVehicleAudio(context, output, capacity = 10) {
     set(neonA.frequency, drive.pitch * 2, .07); set(neonB.frequency, drive.pitch * 3.01, .07);
     const neonLevel = neon ? .0105 : 0;
     set(neonGain.gain, neonLevel, neon ? .05 : .12); set(neonDepth.gain, neonLevel * .3, .05); set(neonAirGain.gain, neon ? .03 : 0, neon ? .08 : .2);
-    set(wallGain.gain, cycle * smooth(2, 14, v) * (neon ? .0028 : .0018), .2);
+    set(wallGain.gain, cycle * (s.flying ? 0 : 1) * smooth(2, 14, v) * (neon ? .0028 : .0018), .2); // the wall's hum: no wall in the air
     set(wallA.frequency, 880 + v * .9, .15); set(wallB.frequency, 886 + v * .9, .15);
     if (cycle) {
       if (neon && !lastNeon) { play('neonOn', .2, 0, 1, .35); duck(.3); }
