@@ -8,11 +8,38 @@ export const STALL_SPEED = 26; // m/s; level flight is impossible below this
 export const MAX_AIRSPEED = 95; // m/s, about 340 km/h: full throttle in level flight
 export const CEILING = 650; // metres above sea level: thin air above this
 // Aerodynamics per unit mass (m/s²). Lift = LIFT·ρ·v²·CL(α) at right angles to
-// the airflow, toward the plane's own "up"; drag = (DRAG + INDUCED·CL²)·ρ·v².
-// Tuned so full throttle levels out near 95 m/s with thrust a little under
-// the plane's weight, and the wing stalls past 16° (below ~26 m/s level).
-const LIFT = .0085, CL0 = .25, CL_SLOPE = 5, STALL_ANGLE = .28, DRAG = .001, INDUCED = .0006, SIDE = .003;
-const MAX_THRUST = 9, MAX_LOAD = 50, NEVER_EXCEED = 140;
+// the airflow, toward the plane's own "up"; drag = (DRAG + INDUCED·CL² +
+// SEPARATED·sin²α past the stall)·ρ·v². All of it is measured against the air,
+// which itself moves (airMotion). Tuned so full throttle levels out near
+// 95 m/s, and the wing stalls past 16° (below ~26 m/s level).
+const LIFT = .0085, CL0 = .25, CL_SLOPE = 5, STALL_ANGLE = .28, DRAG = .00071, INDUCED = .0006, SIDE = .003;
+const SEPARATED = .012, AIR_BRAKE = 3.6, MAX_LOAD = 50, NEVER_EXCEED = 140;
+// The propeller pulls hardest standing still (just under the plane's weight,
+// so it can never hang on it) and less the faster the air already arrives:
+// two thirds of that at top speed. The engine takes a moment to spool up, and
+// a little less to run down.
+const STATIC_THRUST = 9.5, THRUST_FADE = 200, SPOOL_UP = .5, SPOOL_DOWN = .3;
+export const propThrust = (power, speed, rho = 1) => STATIC_THRUST * power * rho / (1 + Math.max(0, speed) / THRUST_FADE);
+function spool(car, throttle, dt) {
+  const power = car.power || 0, wanted = clamp(throttle, 0, 1);
+  return car.power = power + (wanted - power) * (1 - Math.exp(-dt / (wanted > power ? SPOOL_UP : SPOOL_DOWN)));
+}
+// Controls. The surfaces work on the air passing over them: nothing standing
+// still (but for the propeller's wash over the tail), firm from CONTROL_SPEED
+// up. Full stick swings the wing at most PITCH_SWING from its trimmed angle of
+// attack: fast, that is a 5 g pull on the edge of the buffet; slow, where the
+// trim is already near the stall, it stalls the wing.
+const CONTROL_SPEED = 36, PROP_WASH = 18, PITCH_SWING = .25;
+// A wing held in the stall rarely lets go evenly. The lower wing drops (the
+// rudder, or the propeller's torque under power, picks a side when level),
+// the nose swings after it, and the ailerons lose most of their bite: held
+// there, it falls away in a steepening spiral. Letting go of the stick ends
+// it: only a pilot holding the wing stalled drops one. The simple controls
+// catch it for them, and the first seconds of a take-off are spared it.
+const WING_DROP = 1.4, SPIN_YAW = .5, TORQUE = .12;
+const WINGSPAN = 7.5, WING_HEIGHT = 1.2; // metres; the wing above the wheels
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+const smoothstep = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
 export function liftCoefficient(alpha) {
   const peak = CL0 + CL_SLOPE * STALL_ANGLE, trough = CL0 - CL_SLOPE * STALL_ANGLE;
   if (alpha > STALL_ANGLE) return Math.max(.3, peak * (1 - (alpha - STALL_ANGLE) * 2.5));
@@ -23,13 +50,35 @@ export function liftCoefficient(alpha) {
 export const airDensity = y => 1 - .65 * smoothstep(450, 750, y) - .3 * smoothstep(650, 900, y);
 const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+
+// The air's own motion at a point, in m/s: [x, y, z]. world.wind is the wind
+// aloft ({ x, z } in m/s) and how rough the weather makes it (turbulence,
+// 0–1); without one the air is still. Near the ground the wind is about half
+// as strong. Blowing up a slope it rises with the land (and sinks down the lee
+// side), less with height: a ridge facing the wind carries a plane up. Gusts
+// are a fixed pattern in space and time, so the same flight meets the same air.
+const STILL = [0, 0, 0];
+const GUSTS = [[.045, .013, .031, .31, 0], [.021, .1, -.097, .73, 2.1], [-.19, .07, .17, 1.3, 4.4]]; // waves: per metre x, y, z; per second; phase
+const gust = (x, y, z, t, turn) => GUSTS.reduce((sum, [a, b, c, f, phase], k) => sum + Math.sin(a * x + b * y + c * z + f * t + phase + turn * (k + 1.7)), 0) / 1.8;
+export function airMotion(world, x, y, z, time = 0, height = Infinity) {
+  const wind = world.wind;
+  if (!wind || !(wind.x || wind.z || wind.turbulence)) return STILL;
+  const layer = .5 + .5 * smoothstep(0, 60, height), wx = wind.x * layer, wz = wind.z * layer, speed = Math.hypot(wx, wz);
+  const slope = speed > .5 ? world.gradient?.(x, z) : null;
+  const rising = slope ? clamp(wx * slope.x + wz * slope.z, -5, 5) * Math.exp(-Math.max(0, height) / 90) : 0;
+  // Rough air: the weather's own, and what the wind makes tumbling over the land.
+  const rough = (wind.turbulence || 0) * 2.5 + speed * .07 * (1 - smoothstep(60, 300, height));
+  return [wx + rough * gust(x, y, z, time, 0), rising + rough * gust(z, y, x, time, 2) * smoothstep(0, 12, height), wz + rough * gust(y, x, z, time, 4)];
+}
+// Close to the ground or the water the wing rides on the air trapped beneath
+// it: the drag that comes with lift falls away (by a third on the wheels, a
+// tenth a couple of metres up) and it floats along before it settles.
+const groundEffect = height => Math.exp(-2.48 * (2 * (Math.max(0, height) + WING_HEIGHT) / WINGSPAN) ** .768);
 export const SAFE_ALTITUDE = 35; // hands-off climb-out height above the ground
 // For this long after leaving the ground or water, a tail, nose or wingtip
 // touching down is part of the take-off, not a crash.
 export const TAKEOFF_GRACE = 3; // seconds
 const BOAT_TRANSFORM_SECONDS = 2.4;
-const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
-const smoothstep = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
 export const PITCH_RATE = 1.1, ROLL_RATE = 2.2, YAW_RATE = .35; // rad/s at full authority
 
 // F toggles the request; the transformation and lift follow in fixed steps.
@@ -89,7 +138,8 @@ function setAttitude(car, q) {
 // the arcade scheme from before three-axis flight. Left/right bank the plane
 // to turn and level the wings when released; climb/dive set the flight path,
 // held level hands off; W/S (or ↑/↓) are the throttle. They fly through the
-// same pitch and roll controls a pilot would, so the physics are unchanged.
+// same pitch and roll controls a pilot would, so the physics are unchanged
+// (but for a stalled wing dropping, which they catch).
 // Turning also swings the flight path around the vertical, as the old arcade
 // turn did, so a full turn takes about ten seconds even at top speed.
 const SIMPLE_BANK = .75, SIMPLE_CLIMB = .45, SIMPLE_TURN = .5; // radians, radians, rad/s
@@ -149,8 +199,15 @@ function taxi(car, input, world, dt, groundAt) {
   const fx = Math.sin(car.heading), fz = Math.cos(car.heading);
   const oldX = car.x, oldZ = car.z;
   let speed = car.vx * fx + car.vz * fz;
-  speed += (throttle > 0 ? 16 * throttle : throttle < 0 ? 20 * throttle : 0) * dt;
-  speed = clamp(speed * Math.exp(-(onWater ? .14 : .05) * dt), -6, MAX_AIRSPEED);
+  // The propeller pulls it along (S brakes, then backs up); the air, the tyres
+  // or the hull hold it back. A wind on the nose is airspeed it already has.
+  const air = airMotion(world, car.x, car.y, car.z, car.time, 0), headwind = -(air[0] * fx + air[2] * fz), flow = speed + headwind;
+  const step = smoothstep(.55, 1, Math.abs(speed) / TAKEOFF_SPEED); // a hull up on its step drags less
+  const push = propThrust(spool(car, throttle, dt), flow, airDensity(car.y)) + (throttle < 0 ? 20 * throttle : 0) - DRAG * flow * Math.abs(flow);
+  // Parked, the tyres (or the hull's grip on the water) hold it against the
+  // wind, and against an engine still running down.
+  if (throttle || Math.abs(speed) > .3 || Math.abs(push) > 1.5) speed += push * dt; else speed = 0;
+  speed = clamp(speed * Math.exp(-(onWater ? .14 - .05 * step : .05) * dt), -6, MAX_AIRSPEED);
   car.steer += (turn - car.steer) * (1 - Math.exp(-8 * dt));
   car.heading += car.steer * .9 * Math.min(Math.abs(speed) / 6, 1) / (1 + Math.abs(speed) * .02) * Math.sign(speed || 1) * dt;
   const hx = Math.sin(car.heading), hz = Math.cos(car.heading);
@@ -167,18 +224,19 @@ function taxi(car, input, world, dt, groundAt) {
   car.waterDepth = water?.depth ?? 0; car.waterLevel = water?.level ?? null;
   car.pitch += ((onWater ? 0 : g.pitch) - car.pitch) * (1 - Math.exp(-10 * dt));
   car.roll += ((onWater ? 0 : g.roll) - car.roll) * (1 - Math.exp(-10 * dt));
-  car.speed = speed; car.airspeed = Math.abs(speed); car.time += dt;
+  car.speed = speed; car.airspeed = Math.abs(speed + headwind); car.time += dt;
   car.distance += Math.hypot(car.x - oldX, car.z - oldZ);
   retractHulls(car, dt);
   // Rotate at lift-off speed (holding Climb a little sooner): the nose comes
   // up to a flying angle of attack, and the wings take the weight.
   // Pushing the nose down keeps it rolling on its wheels, however fast.
-  if (climbInput >= 0 && speed > TAKEOFF_SPEED - (climbInput > 0 ? 4 : 0)) {
+  if (climbInput >= 0 && speed > 0 && speed + headwind > TAKEOFF_SPEED - (climbInput > 0 ? 4 : 0)) {
     // Taxiing follows the rising ground without storing its vertical speed.
     // Carry that motion into flight before rotating, so an uphill launch
     // neither points into the slope nor immediately falls back onto it.
     car.vy = 1 + (onWater ? 0 : Math.max(0, -Math.tan(g.pitch) * speed));
     startFlying(car, Math.atan2(car.vy, speed));
+    car.airspeed = Math.hypot(speed + headwind, car.vy);
     rotateNose(car, -.16); car.climbOut = true;
   }
   return true;
@@ -252,33 +310,52 @@ function fly(car, input, world, dt, groundAt) {
   const wings = car.flight, oldX = car.x, oldZ = car.z;
   let q = [car.qx, car.qy, car.qz, car.qw];
   const nose = rotate(q, [0, 0, 1]), mast = rotate(q, [0, 1, 0]), wing = rotate(q, [1, 0, 0]);
-  const v = [car.vx, car.vy, car.vz], speed = Math.hypot(...v), dir = speed > 1e-3 ? v.map(c => c / speed) : nose;
+  // Everything aerodynamic works on the plane's motion through the air, which
+  // the wind carries along: `flow` is that motion, `v` the motion over the ground.
+  const height = car.y - below.y, air = airMotion(world, car.x, car.y, car.z, car.time, height);
+  const v = [car.vx, car.vy, car.vz], flow = v.map((c, k) => c - air[k]), speed = Math.hypot(...flow), dir = speed > 1e-3 ? flow.map(c => c / speed) : nose;
   // Airflow in the plane's frame: angle of attack (nose above the flight path
   // is positive) and sideslip.
-  const along = Math.max(dot(v, nose), 1e-3), alpha = Math.atan2(-dot(v, mast), along), beta = Math.atan2(dot(v, wing), along);
+  const along = Math.max(dot(flow, nose), 1e-3), alpha = Math.atan2(-dot(flow, mast), along), beta = Math.atan2(dot(flow, wing), along);
   const rho = airDensity(car.y), pressure = rho * speed * speed;
-  const cl = liftCoefficient(alpha) * wings; // folded wings give no lift
+  const surface = car.waterDepth > 0 && car.waterLevel != null ? Math.max(below.y, car.waterLevel) : below.y, cushion = groundEffect(car.y - surface) * wings;
+  const cl = liftCoefficient(alpha) * wings * (1 + .1 * cushion); // folded wings give no lift
+  // Past the stall the air breaks away from the wing: lift falls, the drag
+  // climbs steeply with the angle, and the wing shakes just before it lets go.
+  const stalled = smoothstep(STALL_ANGLE, STALL_ANGLE + .06, Math.abs(alpha)) * wings * smoothstep(6, 14, speed);
+  const separated = smoothstep(STALL_ANGLE - .02, STALL_ANGLE + .2, Math.abs(alpha)) * Math.sin(alpha) ** 2 * wings;
+  car.buffet = smoothstep(STALL_ANGLE - .07, STALL_ANGLE + .05, Math.abs(alpha)) * wings * smoothstep(10, 22, speed);
   // Lift at right angles to the airflow, toward the plane's "up": upside down
   // it pulls toward the ground. Loads are limited to about 5 g.
   const across = mast.map((c, k) => c - dir[k] * dot(mast, dir)), length = Math.hypot(...across) || 1;
   const lift = clamp(LIFT * pressure * cl, -MAX_LOAD, MAX_LOAD);
-  // Thrust only while W is held; S opens air brakes. Hands off, it glides.
-  // Both stow with the wings: a folded car in the air has neither.
-  const power = throttle * (car.flightMode ? 1 : wings);
-  const thrust = MAX_THRUST * Math.max(0, power) * rho * (.4 + .6 * wings);
-  const drag = (DRAG * (1 + 2.5 * Math.max(0, -power)) + INDUCED * cl * cl) * pressure, slip = SIDE * pressure * beta;
+  car.load = lift / 9.8; // g, felt through the seat
+  // Thrust only while W is held (the engine spools up to it, and runs down
+  // when it is released); S opens air brakes. Hands off, it glides. Both stow
+  // with the wings: a folded car in the air has neither.
+  const stowed = car.flightMode ? 1 : wings, power = spool(car, throttle * stowed, dt);
+  const thrust = propThrust(power, along, rho) * (.4 + .6 * wings);
+  const drag = (DRAG * (1 + AIR_BRAKE * Math.max(0, -throttle * stowed)) + INDUCED * cl * cl * (1 - cushion) + SEPARATED * separated) * pressure, slip = SIDE * pressure * beta;
   for (let k = 0; k < 3; k++) v[k] += (nose[k] * thrust + across[k] / length * lift - dir[k] * drag - wing[k] * slip + (k === 1 ? -9.8 : 0)) * dt;
   const fast = Math.hypot(...v); if (fast > NEVER_EXCEED) for (let k = 0; k < 3; k++) v[k] *= NEVER_EXCEED / fast;
-  // Controls: body-axis rates. Their bite grows with airspeed and air density,
-  // and goes as the wings fold: a folded car has nothing to steer the air with.
-  const authority = (.35 + .65 * wings) * (car.flightMode ? 1 : wings) * clamp(speed / 30, .3, 1) * Math.sqrt(rho);
+  // Controls: body-axis rates. Their bite comes from the air over them (and
+  // the propeller's wash): mushy near the stall, firm when fast, thinner with
+  // height. It goes as the wings fold: a folded car has nothing to steer the
+  // air with.
+  const authority = (.35 + .65 * wings) * stowed * clamp(rho * (speed * speed + PROP_WASH * PROP_WASH * power) / (CONTROL_SPEED * CONTROL_SPEED), 0, 1);
+  // How firmly the tail holds the nose to its trimmed angle (see below), which
+  // is also what the elevator works against.
+  const stability = 2.2 * clamp(speed / 30, .3, 2) * (.5 + .5 * wings) * rho, pitchLimit = Math.min(PITCH_RATE, PITCH_SWING * stability);
   const bank = Math.atan2(wing[1], mast[1]); // 0 level, + right wing down, ±π inverted
-  let pitchRate = pitch * PITCH_RATE, rollRate = -roll * ROLL_RATE, yawRate = yaw * YAW_RATE;
+  let pitchRate = pitch * pitchLimit, rollRate = -roll * ROLL_RATE * (1 - .6 * stalled), yawRate = yaw * YAW_RATE;
+  // The stalled wing's own motion (+ drops the right wing).
+  const held = simple || car.takeoff > 0 ? 0 : clamp(pitch * Math.sign(alpha) * 2, 0, 1);
+  const lean = stalled && held ? clamp(Math.sin(bank) * 1.5 - yaw * .8 - TORQUE * power, -1, 1) * stalled * held * clamp(speed / 30, .2, 1) : 0;
   // Released controls leave the attitude alone: no wing levelling, no pull
   // up. The only exception is the climb-out right after a take-off from the
   // ground or water: hands off, the nose comes up to about 35 m and levels.
   // Any pitch input, or reaching that height, ends it for the rest of the flight.
-  const height = car.y - below.y, pathAngle = Math.asin(clamp(dir[1], -1, 1));
+  const pathAngle = Math.asin(clamp(dir[1], -1, 1));
   // (The simple controls run their own climb-out.)
   if (!simple) {
     if (pitch || mast[1] < .5) car.climbOut = false;
@@ -290,18 +367,19 @@ function fly(car, input, world, dt, groundAt) {
       if (Math.abs(pathAngle) < .02) car.climbOut = false;
     } else car.climbOut = false;
   }
+  pitchRate = clamp(pitchRate, -pitchLimit, pitchLimit);
   // Folded, the body drifts upright slowly, as any car does in the air.
   const righting = car.flightMode ? 0 : -bank * .5 * (1 - wings);
-  q = qMul(q, qAxis(-pitchRate * authority * dt, yawRate * authority * dt, (rollRate * authority + righting) * dt));
+  q = qMul(q, qAxis(-pitchRate * authority * dt, (yawRate * authority - SPIN_YAW * lean) * dt, (rollRate * authority + righting + WING_DROP * lean) * dt));
   // Rudder: the nose yaws about the plane's own up axis, and on the full
   // controls the flight path swings round with it (a flat, skidding turn that
   // bleeds a little speed). Left to the aerodynamics alone, the tail would
   // weathervane the nose straight back and the plane would only crab.
   if (yawRate && authority && !simple) {
-    const swing = yawRate * authority * dt, [mx, my, mz] = mast, c = Math.cos(swing), sn = Math.sin(swing), along = v[0] * mx + v[1] * my + v[2] * mz;
-    const [vx, vy, vz] = v, cx = my * vz - mz * vy, cy = mz * vx - mx * vz, cz = mx * vy - my * vx;
-    v[0] = vx * c + cx * sn + mx * along * (1 - c); v[1] = vy * c + cy * sn + my * along * (1 - c); v[2] = vz * c + cz * sn + mz * along * (1 - c);
-    const bleed = 1 - .12 * Math.abs(yaw) * dt; for (let k = 0; k < 3; k++) v[k] *= bleed;
+    const swing = yawRate * authority * dt, [mx, my, mz] = mast, c = Math.cos(swing), sn = Math.sin(swing);
+    const [vx, vy, vz] = v.map((component, k) => component - air[k]), up = vx * mx + vy * my + vz * mz, cx = my * vz - mz * vy, cy = mz * vx - mx * vz, cz = mx * vy - my * vx;
+    const bleed = 1 - .12 * Math.abs(yaw) * dt;
+    v[0] = air[0] + (vx * c + cx * sn + mx * up * (1 - c)) * bleed; v[1] = air[1] + (vy * c + cy * sn + my * up * (1 - c)) * bleed; v[2] = air[2] + (vz * c + cz * sn + mz * up * (1 - c)) * bleed;
   }
   // Stability and trim: the tail swings the nose back toward the angle of
   // attack at which lift balances weight on the current flight path (and,
@@ -316,21 +394,22 @@ function fly(car, input, world, dt, groundAt) {
     const target = dir.map((c, k) => c * Math.cos(trim) + unitAcross[k] * Math.sin(trim));
     const axis = cross(nose, target), sine = Math.hypot(...axis);
     if (sine > 1e-6) {
-      const angle = Math.atan2(sine, dot(nose, target)), stability = 2.2 * clamp(speed / 30, .3, 2) * (.5 + .5 * wings) * rho;
+      const angle = Math.atan2(sine, dot(nose, target));
       const step = angle * Math.min(1, stability * dt) / sine;
       q = qMul(qAxis(axis[0] * step, axis[1] * step, axis[2] * step), q);
     }
   }
   if (arcadeTurn) {
     const swing = arcadeTurn * SIMPLE_TURN * authority * dt, c = Math.cos(swing), sn = Math.sin(swing);
-    [v[0], v[2]] = [v[0] * c + v[2] * sn, -v[0] * sn + v[2] * c];
+    const fx = v[0] - air[0], fz = v[2] - air[2];
+    [v[0], v[2]] = [air[0] + fx * c + fz * sn, air[2] - fx * sn + fz * c];
     q = qMul(qAxis(0, swing, 0), q);
   }
   setAttitude(car, q);
   [car.vx, car.vy, car.vz] = v;
   car.x += v[0] * dt; car.y += v[1] * dt; car.z += v[2] * dt;
-  car.airspeed = Math.hypot(...v); car.speed = Math.hypot(v[0], v[2]); car.alpha = alpha;
-  car.climb = Math.asin(clamp(v[1] / (car.airspeed || 1), -1, 1));
+  car.airspeed = Math.hypot(v[0] - air[0], v[1] - air[1], v[2] - air[2]); car.speed = Math.hypot(v[0], v[2]); car.alpha = alpha;
+  car.climb = Math.asin(clamp(v[1] / (Math.hypot(...v) || 1), -1, 1));
   car.steer += (0 - car.steer) * (1 - Math.exp(-8 * dt)); car.time += dt;
   const travelled = Math.hypot(car.x - oldX, car.z - oldZ);
   car.distance += travelled; car.flightDistance += travelled; car.airtime += dt;
@@ -406,6 +485,10 @@ export function stepFlight(car, input, world, dt, groundAt) {
   car.flight = clamp(car.flight + (car.flightMode ? dt : -dt * (car.crashFold ? 3.5 : 1)) / FLIGHT_TRANSFORM_SECONDS, 0, 1);
   if (car.flight === 0 || car.flightMode) car.crashFold = false;
   if (!car.flying) {
+    // No stall to feel on the ground. The engine winds up as the wings lock
+    // out (and down as they stow), ready for the take-off run.
+    car.buffet = 0; car.load = 1;
+    if (!(car.flightMode && car.flight === 1)) spool(car, car.flightMode && car.flight > .5 ? flightAxes(input).throttle : 0, dt);
     // A jumping car with its wings half out starts to glide. A bump that
     // barely lifts the wheels is still driving: only a real jump (well clear
     // of the ground, or in the air a while) becomes flight, so the hop's

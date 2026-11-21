@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createWorld, createVehicle, stepVehicle, FIXED_DT } from '../world.mjs';
-import { toggleFlight, rotate, attitudeFromEuler, wingClearance, liftCoefficient, airDensity, TAKEOFF_SPEED, STALL_SPEED, CEILING, FLIGHT_TRANSFORM_SECONDS } from '../flight-motion.mjs';
+import { toggleFlight, rotate, attitudeFromEuler, wingClearance, liftCoefficient, airDensity, propThrust, airMotion, TAKEOFF_SPEED, STALL_SPEED, CEILING, FLIGHT_TRANSFORM_SECONDS } from '../flight-motion.mjs';
 
 const world = createWorld(3);
 function run(car, input, seconds, each) {
@@ -498,4 +498,131 @@ test('Q and E yaw the plane: the flight path turns with the nose, both ways, wit
     assert.ok(Math.abs(car.heading - Math.atan2(car.vx, car.vz)) < .1, 'nose and path agree: no crabbing');
     assert.ok(Math.abs(bankOf(car)) < .05); assert.ok(Math.abs(car.y - y) < 20); assert.equal(car.flying, true);
   }
+});
+
+// A level plain (or a slope facing +z) with its own wind, for the weather's effect on flight.
+function plain(wind, rise = 0) {
+  return { surface: (x, z) => z * rise, gradient: () => ({ x: 0, z: rise }), roadAt: () => ({ d: 0 }), wind: { x: 0, z: 0, turbulence: 0, ...wind } };
+}
+// Flying north (+z) at `speed` through the air, `height` above the plain.
+function cruising(land, speed = 60, height = 320) {
+  const car = createVehicle(land), wind = airMotion(land, 0, height, 0, 0, height);
+  Object.assign(car, { flightMode: true, flight: 1, flying: true, grounded: false, power: 0, y: height, vx: wind[0], vy: 0, vz: speed + wind[2], airspeed: speed });
+  return car;
+}
+const fly = (land, car, input, seconds, each) => { for (let i = 0; i < Math.round(seconds / FIXED_DT); i++) { stepVehicle(car, input, land, []); each?.(car); } return car; };
+
+test('the propeller pulls hardest standing still, never as hard as the plane weighs, and the engine takes a moment to spool', () => {
+  assert.ok(propThrust(1, 0) < 9.8 && propThrust(1, 0) > 9, `static thrust ${propThrust(1, 0)}`);
+  assert.ok(propThrust(1, 95) < propThrust(1, 30) * .85 && propThrust(1, 95) > propThrust(1, 0) * .6, 'less at speed, but still pulling');
+  assert.equal(propThrust(.5, 40), propThrust(1, 40) / 2); assert.ok(propThrust(1, 40, .5) < propThrust(1, 40));
+  const car = high(airborne(), 60); car.power = 0;
+  run(car, { up: true }, .25); const early = car.power;
+  assert.ok(early > .2 && early < .6, `a quarter of a second in: ${early}`);
+  run(car, { up: true }, 2); assert.ok(car.power > .97, `spooled up: ${car.power}`);
+  run(car, {}, .3); assert.ok(car.power < .45 && car.power > .2, `running down: ${car.power}`);
+  run(car, {}, 2); assert.ok(car.power < .01);
+  // On the ground it winds up as the wings lock out, and the take-off run takes a few seconds.
+  const runway = createVehicle(world); toggleFlight(runway);
+  run(runway, { up: true }, FLIGHT_TRANSFORM_SECONDS * .4); assert.equal(runway.power, 0);
+  run(runway, {}, FLIGHT_TRANSFORM_SECONDS); runway.vx = runway.vz = runway.speed = 0;
+  let seconds = 0; while (!runway.flying && seconds < 12) { run(runway, { throttleUp: true }, FIXED_DT); seconds += FIXED_DT; }
+  assert.ok(seconds > 3 && seconds < 7, `a take-off run of ${seconds} s`);
+});
+
+test('past the stall the wing shakes, drags hard, and a wing held there drops', () => {
+  const cruise = high(airborne(), 70); run(cruise, { up: true }, 1);
+  assert.equal(cruise.buffet, 0); assert.ok(Math.abs(cruise.load - 1) < .3, `1 g in level flight: ${cruise.load}`);
+  // A full pull at speed loads the wing to its limit without stalling it.
+  const fast = high(airborne(), 90); let peak = 0, load = 0;
+  run(fast, { up: true, pitchUp: true }, 1.5, c => { peak = Math.max(peak, c.alpha); load = Math.max(load, c.load); });
+  assert.ok(peak < .28 && load > 4.5 && load < 5.2, `alpha ${peak}, ${load} g`);
+  // Slow and without power, the same pull stalls it: buffet first, then the drag.
+  const slow = high(airborne(), 36), free = high(airborne(), 36); slow.power = free.power = 0; let warned = null, shaken = 0;
+  run(slow, { pitchUp: true }, 2.5, c => { shaken = Math.max(shaken, c.buffet); if (warned === null && c.buffet > .15) warned = c.alpha; });
+  run(free, {}, 2.5);
+  assert.ok(warned < .28, `the buffet starts before the stall: ${warned}`); assert.ok(shaken > .9);
+  assert.ok(slow.airspeed < free.airspeed - 6, `the stalled wing drags: ${slow.airspeed} vs ${free.airspeed} m/s`);
+  // Banked a little, the lower wing lets go; releasing the stick stops it.
+  const dropped = high(airborne(), 32); dropped.power = 0;
+  [dropped.qx, dropped.qy, dropped.qz, dropped.qw] = attitudeFromEuler(dropped.heading, 0, .25);
+  const before = bankOf(dropped);
+  run(dropped, { pitchUp: true }, 2);
+  const after = bankOf(dropped);
+  assert.ok(Math.sign(after) === Math.sign(before) && Math.abs(after) > Math.abs(before) + .6, `the low wing dropped: ${before} -> ${after}`);
+  run(dropped, {}, 2);
+  assert.ok(Math.abs(bankOf(dropped)) < Math.abs(after) + .1, `and no further once the stick is released: ${bankOf(dropped)}`);
+  assert.equal(dropped.buffet, 0, 'the wing flies again');
+  // The rudder picks the side from wings level; hands off, a stalled wing drops nothing.
+  for (const [key, sign] of [['yawLeft', -1], ['yawRight', 1]]) {
+    const spun = high(airborne(), 40); spun.power = 0;
+    run(spun, { pitchUp: true, [key]: true }, 2.5);
+    assert.ok(bankOf(spun) * sign > .25, `${key}: ${bankOf(spun)}`);
+  }
+  const left = high(airborne(), 30); left.power = 0;
+  [left.qx, left.qy, left.qz, left.qw] = attitudeFromEuler(left.heading, -.5, .2);
+  const held = bankOf(left); let deepest = 0;
+  run(left, {}, 1.5, c => { deepest = Math.max(deepest, Math.abs(c.alpha)); });
+  assert.ok(deepest > .3, `stalled hands off: ${deepest}`); assert.ok(Math.abs(bankOf(left) - held) < .12, `no wing drop: ${held} -> ${bankOf(left)}`);
+  // The simple controls keep the wings level through it.
+  const easy = high(airborne(), 40); easy.power = 0; let tipped = 0;
+  run(easy, { simpleFlight: true, jump: true }, 5, c => { tipped = Math.max(tipped, Math.abs(bankOf(c))); });
+  assert.ok(tipped < .05, `simple controls: ${tipped}`);
+});
+
+test('the controls bite with the air over them: nothing standing still, the propeller wash a little, firm at speed', () => {
+  const rolled = (speed, input) => { const car = high(airborne(), speed); car.power = input.up ? 1 : 0; run(car, { rollRight: true, ...input }, .3); return Math.abs(bankOf(car)); };
+  const still = rolled(.5, {}), washed = rolled(.5, { up: true }), slow = rolled(20, {}), fast = rolled(60, {}), faster = rolled(90, {});
+  assert.ok(still < .01, `no air, no roll: ${still}`);
+  assert.ok(washed > still + .05 && washed < fast * .5, `propeller wash: ${washed}`);
+  assert.ok(slow > .1 && slow < fast * .5, `mushy when slow: ${slow} vs ${fast}`);
+  assert.ok(Math.abs(fast - faster) < .02 && fast > .6, `firm from cruise up: ${fast}, ${faster}`);
+});
+
+test('the plane flies in the wind: it is carried along, weathervanes into it, and takes off sooner against it', () => {
+  // Still air unless the world has a wind.
+  assert.deepEqual(airMotion(world, 10, 80, 20, 3, 80), [0, 0, 0]);
+  const calm = plain(), tail = plain({ z: 12 }), cross = plain({ x: 12 });
+  // The wind is weaker near the ground.
+  assert.ok(Math.abs(airMotion(tail, 0, 300, 0, 0, 300)[2] - 12) < 1e-9); assert.ok(Math.abs(airMotion(tail, 0, 0, 0, 0, 0)[2] - 6) < .5);
+  const still = fly(calm, cruising(calm), { up: true }, 6), carried = fly(tail, cruising(tail), { up: true }, 6);
+  assert.ok(Math.abs(carried.airspeed - still.airspeed) < .01, `the same speed through the air: ${carried.airspeed} vs ${still.airspeed}`);
+  assert.ok(Math.abs(carried.vz - still.vz - 12) < .05, `12 m/s faster over the ground: ${carried.vz - still.vz}`);
+  assert.ok(Math.abs(carried.y - still.y) < .5);
+  // A crosswind carries it sideways with its nose still pointing where it flies through the air.
+  const drifted = fly(cross, cruising(cross), { up: true }, 6);
+  assert.ok(Math.abs(drifted.vx - 12) < .3, `drifting at ${drifted.vx} m/s`); assert.ok(Math.abs(drifted.heading) < .01, `no weathervaning from a steady wind: ${drifted.heading}`);
+  // Flying into a wind that was not there a moment ago, the nose swings into it.
+  const gusted = fly(calm, cruising(calm), { up: true }, 2); const swung = fly(cross, gusted, { up: true }, .5);
+  assert.ok(swung.heading < -.03, `nose into the wind: ${swung.heading}`);
+  // Taking off into the wind: airborne at a lower ground speed, after a shorter run.
+  const takeOff = land => { const car = createVehicle(land); toggleFlight(car); fly(land, car, {}, FLIGHT_TRANSFORM_SECONDS + .1); const from = car.z; let ground = null;
+    fly(land, car, { up: true }, 9, c => { if (c.flying && ground === null) ground = { speed: Math.hypot(c.vx, c.vz), run: c.z - from, airspeed: c.airspeed }; }); return ground; };
+  const noWind = takeOff(calm), headwind = takeOff(plain({ z: -16 }));
+  assert.ok(headwind.speed < noWind.speed - 6 && headwind.run < noWind.run * .7, `${headwind.speed} m/s after ${headwind.run} m, against ${noWind.speed} m/s after ${noWind.run} m`);
+  assert.ok(Math.abs(headwind.airspeed - noWind.airspeed) < 1.5, 'at the same airspeed');
+});
+
+test('wind blowing up a slope lifts the plane, rough air shakes it, and the same flight meets the same air', () => {
+  const flat = plain({ z: 14 }), ridge = plain({ z: 14 }, .35);
+  const level = fly(flat, cruising(flat, 50, 40), {}, 4), lifted = cruising(ridge, 50, 40); lifted.y = 40; fly(ridge, lifted, {}, 4);
+  const gained = lifted.y - ridge.surface(lifted.x, lifted.z) - 40 + lifted.z * .35; // against the same glide over level ground
+  assert.ok(airMotion(ridge, 0, 20, 0, 0, 20)[1] > 1.5 && airMotion(ridge, 0, 400, 0, 0, 400)[1] < .1, 'rising air near the slope, none high above it');
+  assert.ok(lifted.y - level.y > 8, `carried up ${lifted.y - level.y} m`);
+  const rough = plain({ turbulence: 1 }), bumps = [];
+  const shaken = fly(rough, cruising(rough), { up: true }, 6, c => bumps.push(c.load)), again = fly(rough, cruising(rough), { up: true }, 6);
+  const smooth = []; fly(plain(), cruising(plain()), { up: true }, 6, c => smooth.push(c.load));
+  const spread = list => Math.max(...list.slice(120)) - Math.min(...list.slice(120));
+  assert.ok(spread(bumps) > .5 && spread(bumps) < 3, `bumps of ${spread(bumps)} g`); assert.ok(spread(smooth) < .1, `smooth air: ${spread(smooth)} g`);
+  assert.equal(shaken.flying, true);
+  assert.deepEqual([shaken.x, shaken.y, shaken.z, shaken.qw], [again.x, again.y, again.z, again.qw]);
+});
+
+test('close to the ground the wing floats: it keeps more speed and sinks less than the same glide high up', () => {
+  const land = plain(), low = cruising(land, 38, .5), up = cruising(land, 38, 150);
+  for (const car of [low, up]) [car.qx, car.qy, car.qz, car.qw] = attitudeFromEuler(0, -.11, 0); // trimmed for level flight
+  fly(land, low, {}, .5); fly(land, up, {}, .5);
+  assert.equal(low.flying, true);
+  assert.ok(low.airspeed > up.airspeed + .02, `${low.airspeed} m/s in ground effect, ${up.airspeed} m/s above it`);
+  assert.ok(low.vy > up.vy + .05, `sinking at ${-low.vy} m/s, against ${-up.vy} m/s`);
 });

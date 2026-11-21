@@ -177,6 +177,10 @@ export function createVehicleAudio(context, output, capacity = 10) {
   const windTone = filter('lowpass', 300, .5), windGain = gainNode(0), gust = osc('sine', .17), gustDepth = gainNode(0);
   noise(0).connect(windTone).connect(windGain).connect(output); gust.connect(gustDepth).connect(windGain.gain);
 
+  // Stall buffet: the wing shaking in broken air, a low fluttering rumble.
+  const buffetTone = filter('lowpass', 120, .7), buffetGain = gainNode(0), flutter = osc('sine', 13), flutterDepth = gainNode(0);
+  noise(1.3).connect(buffetTone).connect(buffetGain).connect(output); flutter.connect(flutterDepth).connect(buffetGain.gain);
+
   // Tyres: a smooth roar on tarmac, an uneven crunch on dirt and sand, and a
   // squeal when the tyres slide.
   const roadTone = filter('lowpass', 500), roadGain = gainNode(0);
@@ -262,13 +266,16 @@ export function createVehicleAudio(context, output, capacity = 10) {
   function update(s, dt) {
     const car = (1 - s.transform) * (1 - s.flight), boat = s.transform * (1 - s.flight), plane = s.flight;
     const v = Math.abs(s.speed), air = s.flying ? s.airspeed : v, load = Math.max(0, s.throttle);
+    // The plane's engine is heard as it actually runs: spooling up to the
+    // throttle and winding down after it, not snapping with the key.
+    const pull = s.power ?? load;
     gear = shiftGear(gear, s.speed);
     const carRpm = engineRpm(gear, s.speed, s.throttle, s.grounded || s.floating);
-    const boatRpm = 1000 + smooth(0, 26, v) * 3600 + load * 600, planeRpm = 1900 + load * 650 + air * 2.5;
+    const boatRpm = 1000 + smooth(0, 26, v) * 3600 + load * 600, planeRpm = 1700 + pull * 850 + air * 2.5;
     const rpm = carRpm * car + boatRpm * boat + planeRpm * plane;
     set(engine.playbackRate, rpm / ENGINE_BASE_RPM, .05);
     const electric = s.electric ? 1 : 0, cycle = s.cycle ? 1 : 0, combustion = 1 - electric - cycle;
-    set(engineGain.gain, combustion * (car * (.055 + load * .04) + boat * (.07 + load * .04) + plane * (.06 + load * .04)), .1);
+    set(engineGain.gain, combustion * (car * (.055 + load * .04) + boat * (.07 + load * .04) + plane * (.06 + pull * .04)), .1);
     set(whineGain.gain, electric * (.006 + load * .014) * (.3 + .7 * smooth(.5, 12, v)), .1);
     set(whine.frequency, 70 + v * 19, .06); set(whine2.frequency, 105 + v * 28.5, .06); set(whineTone.frequency, 500 + v * 22, .08);
     const thrust = s.thrust ?? 0;
@@ -290,7 +297,7 @@ export function createVehicleAudio(context, output, capacity = 10) {
     }
     lastNeon = Boolean(neon); lastJumps = s.jumps ?? 0;
     set(gasGain.gain, thrust * .045, .04); set(gasRoar.gain, thrust * .07, .05); set(gasTone.frequency, 800 + thrust * 700, .1);
-    const tone = car * (320 + rpm * .12 + load * 450) + boat * (240 + rpm * .05) + plane * (420 + load * 300);
+    const tone = car * (320 + rpm * .12 + load * 450) + boat * (240 + rpm * .05) + plane * (420 + pull * 300);
     set(engineTone.frequency, tone, .08); set(engineTone2.frequency, tone * 1.4, .08);
     // Lifting off after a long pull at high revs pops a few times; quick
     // throttle taps stay quiet.
@@ -299,13 +306,15 @@ export function createVehicleAudio(context, output, capacity = 10) {
     if (burble > 0 && Math.random() < dt * 6) play('pop', .03 + Math.random() * .03, (Math.random() - .5) * .3, .8 + Math.random() * .4, .1);
 
     // A direct-drive three-blade propeller: blade pass is three times the revs.
-    const blade = planeRpm / 60 * 3, prop = plane * (.012 + load * .02 + smooth(20, 90, air) * .012);
+    const blade = planeRpm / 60 * 3, prop = plane * (.012 + pull * .02 + smooth(20, 90, air) * .012);
     set(propChop.frequency, blade, .08); set(thrum.frequency, blade, .08);
     set(propGain.gain, prop, .12); set(propDepth.gain, prop * .8, .12); set(thrumGain.gain, prop * .9, .12);
 
     // Wind and tyre noise stay dark and soft: bright hiss reads as radio static.
     const wind = smooth(8, 95, air) ** 1.5 * (s.flying ? .12 : .035) + (s.grounded || s.floating ? 0 : smooth(5, 30, v) * .02);
     set(windGain.gain, wind, .15); set(gustDepth.gain, wind * .3, .2); set(windTone.frequency, 200 + air * 6, .15);
+    const shudder = s.flying ? (s.buffet ?? 0) * .1 : 0;
+    set(buffetGain.gain, shudder, .06); set(flutterDepth.gain, shudder * .8, .06);
 
     // The bike's tyres are thin, and over water they aren't touching anything.
     const rolling = (s.grounded && !(cycle && s.skimming) ? 1 : 0) * car * smooth(.5, 28, v) * (cycle ? .55 : 1);
@@ -343,7 +352,7 @@ export function createVehicleAudio(context, output, capacity = 10) {
   function clear() {
     for (const voice of [...voices]) voice.stop();
     burble = 0; held = 0; lastTransform = null; gear = 0; lastThump = 0; lastNeon = false; lastJumps = null;
-    for (const g of [engineGain, propGain, thrumGain, rainGain, snowGain, galeGain, gritGain, windGain, roadGain, dirtGain, squealGain, jetGain, lapGain, motorGain, whineGain, gasGain, gasRoar, humGain, hubDepth, singGain, neonGain, neonDepth, neonAirGain, wallGain]) { g.gain.cancelScheduledValues(now()); g.gain.setValueAtTime(0, now()); }
+    for (const g of [engineGain, propGain, thrumGain, buffetGain, flutterDepth, rainGain, snowGain, galeGain, gritGain, windGain, roadGain, dirtGain, squealGain, jetGain, lapGain, motorGain, whineGain, gasGain, gasRoar, humGain, hubDepth, singGain, neonGain, neonDepth, neonAirGain, wallGain]) { g.gain.cancelScheduledValues(now()); g.gain.setValueAtTime(0, now()); }
   }
   return { update, ...effects, clear, echo, get played() { return played; }, get playedBy() { return { ...playedBy }; }, get active() { return voices.size; }, get gear() { return gear; } };
 }

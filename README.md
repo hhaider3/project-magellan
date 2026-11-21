@@ -134,7 +134,7 @@ The game pauses when the window loses focus. If the browser drops the graphics (
 
 **Frozen lakes.** In the Frostlands every pond, lake and sea is frozen over (rivers keep running): polished blue-grey ice, clearer toward the shore, with snow drifts, pressure cracks, the sky mirrored at a glance and a hard glint of sun. The ice is solid ground, so the ATLAS drives across on its wheels instead of turning into a boat, and the Roadster drives on it rather than skimming. It is very slippery: the tyres put down a fifth of their drive and braking, side grip is a small fraction of tarmac's, so the car slides wide through any turn, and it barely slows when you lift off. The HUD names the lake with · ICE, reads ON THIN ICE, and the lake pointer says FROZEN LAKE · SLIPPERY.
 
-**Flying.** Press F from the car, the boat, or mid-jump. Over 1.6 seconds the tapered wings telescope out of the doors (7.5 m span) and fold their winglets up, twin tail booms slide out of the rear corners and raise an H tail, and a propeller pushes out through the grille and unfolds its blades. On the ground or water the plane taxis and lifts off at about 115 km/h. A jump with the wings half out turns into a glide. It's a real physics model: lift, drag, stalls, a ceiling near 650 m, and a top speed of about 340 km/h. Touch down below flying speed and you land as the car (or as the boat on deep water). Wingtips that touch the ground end the flight, and the wings smash trees and rocks they hit. See [Flight model](#flight-model) for the details.
+**Flying.** Press F from the car, the boat, or mid-jump. Over 1.6 seconds the tapered wings telescope out of the doors (7.5 m span) and fold their winglets up, twin tail booms slide out of the rear corners and raise an H tail, and a propeller pushes out through the grille and unfolds its blades. On the ground or water the plane taxis and lifts off at about 115 km/h. A jump with the wings half out turns into a glide. It's a real physics model: lift, drag, stalls that shake the wing and drop it, wind and rough air, a ceiling near 650 m, and a top speed of about 340 km/h. Touch down below flying speed and you land as the car (or as the boat on deep water). Wingtips that touch the ground end the flight, and the wings smash trees and rocks they hit. See [Flight model](#flight-model) for the details.
 
 **The Roadster.** Settings → **Vehicle** swaps the ATLAS for a second car where you are. It's an original low-poly study of the Rocket trim of Tesla's 2026 Roadster, with no badges, built to its published size: a 2.825 m wheelbase, 2 m wide and 1.1 m tall. Its handling comes from the published figures:
 
@@ -170,7 +170,7 @@ Cloud cover follows the region too: desert skies are nearly clear, meadows about
 
 **Scenery and destruction.** Pines, shrubs, cacti, rocks, boulders, roadside markers, cabins and lookout towers, all modeled in Blender. Flowering cherries (sakura), 10 m tall, ring stretches of lowland shore round the ponds, lakes and seas (never the rivers); their petals flutter down on the breeze and settle on the grass or float on the water. The scenery follows the land: snow-dusted pines on the cold upper slopes and all through the Frostlands, small wind-bent pines at the treeline, low junipers and boulders above it, dead snags and dry scrub at the desert's edge, granite crags on steep mountain ground, sandstone ledges on the mesas, and scree on the high slopes. Outcrops are solid and never break. Trees, cacti and small rocks shatter if you hit them above 65 km/h (boulders need 94 km/h); trees split into falling sections, and broken props stay broken for the rest of your visit. Clearances keep scenery off roads and ramp approaches.
 
-**Sound.** Five music tracks (Synth, synthwave's own, plays most of the time in that look and now and then otherwise), chosen to suit the drive and crossfading from one to the next, over effects all synthesized in the browser: a V8 engine with gears and exhaust pops, the Light Cycle's neon hum and boost, boat jets, a propeller, wind, tyre roar and squeal, rain, transformation motors, and impacts, splashes and breaking scenery placed left or right of the camera.
+**Sound.** Five music tracks (Synth, synthwave's own, plays most of the time in that look and now and then otherwise), chosen to suit the drive and crossfading from one to the next, over effects all synthesized in the browser: a V8 engine with gears and exhaust pops, the Light Cycle's neon hum and boost, boat jets, a propeller that follows the engine as it spools, wind, the rumble of a wing near the stall, tyre roar and squeal, rain, transformation motors, and impacts, splashes and breaking scenery placed left or right of the camera.
 
 ## The menu
 
@@ -389,7 +389,29 @@ Each step sums:
 - a side force against sideslip;
 - lift at right angles to the airflow, proportional to speed squared and the wing's angle of attack.
 
-Past about 16° the wing stalls, pulls are limited to about 5 g, and thin air above 450 m weakens lift, thrust and control.
+All of it is measured against the air, and the air moves (see **Wind** below). Pulls are limited to about 5 g, and thin air above 450 m weakens lift, thrust and control.
+
+**Engine and propeller.** Thrust is strongest standing still (just under the plane's weight, so it can't hang on the propeller) and falls to two thirds of that at top speed. The engine takes about half a second to spool up and a little less to run down, and it winds up as the wings lock out. A take-off from a standstill takes about 5 seconds and 75 m.
+
+**The stall.** Past about 16° the wing stalls:
+
+- **Buffet.** The wing shakes just before it lets go: the view trembles, a low rumble comes in and the HUD warns.
+- **Drag.** Lift falls and drag climbs steeply with the angle, so a stalled plane loses speed and height fast.
+- **Wing drop.** A wing held in the stall drops: the lower one, or the side the rudder (or, under power, the propeller's torque) picks. The nose swings after it and the ailerons lose most of their bite. Releasing the stick ends it; a stall flown hands off drops nothing, nor does the first 3 seconds of a take-off.
+
+**Control feel.** The controls work on the air passing over them. Standing still they do nothing (the propeller's wash gives a little), they're soft near the stall and firm from about 130 km/h up. Full back stick moves the wing a fixed amount from its trimmed angle: fast, that's a 5 g pull at the edge of the buffet; slow, it stalls the wing.
+
+**Wind.** The plane flies in the weather's wind: the one the clouds drift on, about 18 km/h on a calm day and up to 85 km/h in a sandstorm or blizzard, half as strong at the ground.
+
+- **Drift.** A steady wind carries the plane over the ground without changing how it flies. The HUD shows airspeed.
+- **Take-offs.** A wind on the nose is airspeed the plane already has, so it lifts off sooner into the wind.
+- **Slopes.** Wind blowing up a slope rises with it and carries the plane up; down the lee side it sinks. The effect fades over the first couple of hundred metres.
+- **Rough air.** Rain, snow and storms make the air bumpy, as does wind tumbling over the land low down. The gusts are a fixed pattern, so the same flight meets the same air.
+- Synthwave's sky is still.
+
+**The view and the HUD.** In a bank the horizon tips part of the way with the wings (17° at most; through a roll or a loop the view stays upright), and the HUD shows the load in g beside the altitude and climb rate. With reduced motion set in the system, the view neither tips nor shakes.
+
+**Ground effect.** Close to the ground or water the drag that comes with lift falls away (by about a third on the wheels, a tenth 2 m up), so the plane floats a little before it settles.
 
 **Hands-off behaviour.**
 
@@ -408,7 +430,7 @@ Past about 16° the wing stalls, pulls are limited to about 5 g, and thin air ab
 - **Water take-offs.** On water the hull climbs onto the step before lift-off, so the tail clears the surface.
 - **Scenery strikes.** The wings collide with trees, cacti, rocks and boulders at the height they're flying. A strike drags that wing back, yawing and rolling the plane toward it.
 
-**Simple controls** fly through the same physics. The controls command a bank angle and a climb angle, and the flight path also swings round directly, so a full turn takes about 10 seconds at any speed.
+**Simple controls** fly through the same physics, except that they catch a stalled wing before it drops. The controls command a bank angle and a climb angle, and the flight path also swings round directly, so a full turn takes about 10 seconds at any speed.
 
 ### Time of day
 

@@ -1,4 +1,4 @@
-import { CHUNK, GRID, hash, noise, random, smoothstep, cellWeights } from './world.mjs?v=realism-1';
+import { CHUNK, GRID, hash, noise, random, smoothstep, cellWeights } from './world.mjs?v=flight-1';
 import { TREELINE } from './landforms.mjs?v=climate-1';
 
 // 1.2 m cells; noise clumps decide which are filled, so meadows get thick

@@ -1,10 +1,10 @@
-import { createWorld, CHUNK, GRID } from './world.mjs?v=realism-1';
-import { createTerrain, ULTRA_GRID } from './terrain.mjs?v=realism-1';
-import { buildGrass } from './grass-data.mjs?v=realism-1';
+import { createWorld, CHUNK, GRID } from './world.mjs?v=flight-1';
+import { createTerrain, ULTRA_GRID } from './terrain.mjs?v=flight-1';
+import { buildGrass } from './grass-data.mjs?v=flight-1';
 import { buildWaterData, buildDistantWater, buildRiverWater } from './water-data.mjs?v=realism-1';
 import { buildBridges } from './bridge-data.mjs?v=classes-2';
-import { buildRoadside } from './roadside-data.mjs?v=realism-1';
-import { FAR_SIZE, ULTRA_SIZE } from './streaming-layout.mjs?v=realism-1';
+import { buildRoadside } from './roadside-data.mjs?v=flight-1';
+import { FAR_SIZE, ULTRA_SIZE } from './streaming-layout.mjs?v=flight-1';
 let world, terrain;
 self.onmessage = ({ data: job }) => {
   try {
