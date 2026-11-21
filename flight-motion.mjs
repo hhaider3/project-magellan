@@ -73,7 +73,7 @@ export function airMotion(world, x, y, z, time = 0, height = Infinity) {
 // Close to the ground or the water the wing rides on the air trapped beneath
 // it: the drag that comes with lift falls away (by a third on the wheels, a
 // tenth a couple of metres up) and it floats along before it settles.
-const groundEffect = height => Math.exp(-2.48 * (2 * (Math.max(0, height) + WING_HEIGHT) / WINGSPAN) ** .768);
+export const groundEffect = (height, wingHeight = WING_HEIGHT, span = WINGSPAN) => Math.exp(-2.48 * (2 * (Math.max(0, height) + wingHeight) / span) ** .768);
 export const SAFE_ALTITUDE = 35; // hands-off climb-out height above the ground
 // For this long after leaving the ground or water, a tail, nose or wingtip
 // touching down is part of the take-off, not a crash.
@@ -107,9 +107,9 @@ export function flightAxes(input) {
 // Attitude is a quaternion (x, y, z, w) in the model frame: +z nose, +y mast,
 // +x left wing. Body-axis rates make loops and barrel rolls possible; the
 // heading, pitch and roll angles are derived from it for rendering and HUD.
-const qMul = (a, b) => [a[3] * b[0] + a[0] * b[3] + a[1] * b[2] - a[2] * b[1], a[3] * b[1] - a[0] * b[2] + a[1] * b[3] + a[2] * b[0],
+export const qMul = (a, b) => [a[3] * b[0] + a[0] * b[3] + a[1] * b[2] - a[2] * b[1], a[3] * b[1] - a[0] * b[2] + a[1] * b[3] + a[2] * b[0],
   a[3] * b[2] + a[0] * b[1] - a[1] * b[0] + a[2] * b[3], a[3] * b[3] - a[0] * b[0] - a[1] * b[1] - a[2] * b[2]];
-function qAxis(x, y, z) {
+export function qAxis(x, y, z) {
   const angle = Math.hypot(x, y, z); if (angle < 1e-12) return [0, 0, 0, 1];
   const s = Math.sin(angle / 2) / angle; return [x * s, y * s, z * s, Math.cos(angle / 2)];
 }
@@ -129,7 +129,7 @@ export function eulerFromAttitude([x, y, z, w]) {
   const pitch = Math.asin(-clamp(m23, -1, 1));
   return Math.abs(m23) < .9999999 ? { heading: Math.atan2(m13, m33), pitch, roll: Math.atan2(m21, m22) } : { heading: Math.atan2(-m31, m11), pitch, roll: 0 };
 }
-function setAttitude(car, q) {
+export function setAttitude(car, q) {
   const n = Math.hypot(...q); [car.qx, car.qy, car.qz, car.qw] = q.map(v => v / n);
   Object.assign(car, eulerFromAttitude([car.qx, car.qy, car.qz, car.qw]));
 }
@@ -146,12 +146,12 @@ const SIMPLE_BANK = .75, SIMPLE_CLIMB = .45, SIMPLE_TURN = .5; // radians, radia
 // Climb-out builds clearance above an uphill runway. A fixed angle above
 // horizontal can instead steer straight back into it. Over deep water the
 // runway is level, regardless of the lake bed's slope beneath the hull.
-function climbOutAngle(car, ground) {
+export function climbOutAngle(car, ground) {
   const slope = car.waterDepth > .55 ? 0 : Math.max(0, -ground.pitch);
   return slope + .22 * clamp((SAFE_ALTITUDE - (car.y - ground.y)) / SAFE_ALTITUDE, 0, 1);
 }
 
-function simpleAxes(car, input, dt, ground) {
+export function simpleAxes(car, input, dt, ground) {
   const q = [car.qx, car.qy, car.qz, car.qw], mast = rotate(q, [0, 1, 0]), wing = rotate(q, [1, 0, 0]);
   const speed = car.airspeed || 1, bank = Math.atan2(wing[1], mast[1]); // + right wing down
   const turn = controlAxis(input.steer, input.left, input.right), climb = controlAxis(input.pitchAxis, input.jump, input.brake);
@@ -432,20 +432,24 @@ function fly(car, input, world, dt, groundAt) {
 // nose; the model origin is at the wheels' contact plane). The wingtips move
 // out (and, with the wings' 4° of dihedral, up) as the wings telescope; the
 // tail is the fin tops and the tailplane's trailing edge.
-const PIVOT = 1; // the renderer rotates the model about (0, 1, 0)
 const DIHEDRAL = .07; // the wing rises 7 cm for each metre out from the body
 const wingAt = x => [x, 1.18 + (Math.abs(x) - 1) * DIHEDRAL, -.2];
-function extremities(car) {
-  const span = 1 + 2.75 * smoothstep(0, 1, car.flight);
-  return [{ p: wingAt(span), side: 1 }, { p: wingAt(-span), side: -1 },
-    { p: [.9, 2.44, -4.3], tail: true }, { p: [-.9, 2.44, -4.3], tail: true }, { p: [0, 1.5, -4.62], tail: true }, { p: [0, .98, 2.95], nose: true }];
+// An airframe's outline, for what it can touch: the height the renderer turns
+// the model about, the wing from its root out to the current half span (wing:
+// the point x metres out), and the fixed tail and nose points. The ATLAS's is
+// the default; the Light Cycle brings its own (cycle-flight.mjs).
+export const ATLAS_FRAME = { pivot: 1, root: 1, span: flight => 1 + 2.75 * smoothstep(0, 1, flight), wing: wingAt,
+  points: [{ p: [.9, 2.44, -4.3], tail: true }, { p: [-.9, 2.44, -4.3], tail: true }, { p: [0, 1.5, -4.62], tail: true }, { p: [0, .98, 2.95], nose: true }] };
+function extremities(car, frame) {
+  const span = frame.span(car.flight);
+  return [{ p: frame.wing(span), side: 1 }, { p: frame.wing(-span), side: -1 }, ...frame.points];
 }
 // Lowest clearance of the wings, tail and propeller over ground or water
 // (negative when buried). Exported for tests.
-export function wingClearance(car, world) {
-  const q = [car.qx, car.qy, car.qz, car.qw];
+export function wingClearance(car, world, frame = ATLAS_FRAME) {
+  const q = [car.qx, car.qy, car.qz, car.qw], PIVOT = frame.pivot;
   let lowest = { depth: -Infinity };
-  for (const point of extremities(car)) {
+  for (const point of extremities(car, frame)) {
     const r = rotate(q, [point.p[0], point.p[1] - PIVOT, point.p[2]]);
     const x = car.x + r[0], y = car.y + PIVOT + r[1], z = car.z + r[2];
     const water = world.waterAt?.(x, z), floor = water ? water.level : world.surface(x, z);
@@ -515,17 +519,17 @@ export function stepFlight(car, input, world, dt, groundAt) {
 const WING_REACH = { tree: 1.25, cactus: .8, rock: .55, boulder: 1.5 }; // × prop size: canopy, not trunk
 const STRIKE = { tree: { scrub: .93, yaw: .16, roll: .22 }, cactus: { scrub: .96, yaw: .08, roll: .1 },
   rock: { scrub: .95, yaw: .1, roll: .14 }, boulder: { scrub: .8, yaw: .3, roll: .35 } };
-function worldPoint(car, q, p) {
-  const r = rotate(q, [p[0], p[1] - PIVOT, p[2]]);
-  return [car.x + r[0], car.y + PIVOT + r[1], car.z + r[2]];
+function worldPoint(car, q, p, pivot) {
+  const r = rotate(q, [p[0], p[1] - pivot, p[2]]);
+  return [car.x + r[0], car.y + pivot + r[1], car.z + r[2]];
 }
-export function wingStrikes(car, obstacles, world) {
+export function wingStrikes(car, obstacles, world, frame = ATLAS_FRAME) {
   if (car.flight < .3 || !obstacles?.length) return 0; // flying or taxiing with the wings out
-  const span = 1 + 2.75 * smoothstep(0, 1, car.flight);
+  const span = frame.span(car.flight), wingAt = frame.wing;
   let strikes = 0;
   for (const side of [1, -1]) { // +1 is the left wing (+x)
     const q = [car.qx, car.qy, car.qz, car.qw];
-    const root = worldPoint(car, q, wingAt(side)), tip = worldPoint(car, q, wingAt(side * span));
+    const root = worldPoint(car, q, wingAt(side * frame.root), frame.pivot), tip = worldPoint(car, q, wingAt(side * span), frame.pivot);
     const dx = tip[0] - root[0], dz = tip[2] - root[2], length2 = dx * dx + dz * dz || 1e-9;
     for (const o of obstacles) {
       const reach = (WING_REACH[o.type] ?? 0) * (o.size || 1);
@@ -539,7 +543,7 @@ export function wingStrikes(car, obstacles, world) {
       const speed = Math.hypot(car.vx, car.vy, car.vz), heavy = o.type === 'boulder';
       const broke = speed >= (heavy ? 26 : 12) && Boolean(world.breakProp);
       if (broke) world.breakProp(o, car.vx, car.vz);
-      const effect = STRIKE[o.type], lever = (1 + t * (span - 1)) / span; // 0 at the body, 1 at the tip
+      const effect = STRIKE[o.type], lever = (frame.root + t * (span - frame.root)) / span; // 0 at the body, 1 at the tip
       const scrub = broke ? effect.scrub : Math.min(effect.scrub, .7);
       car.vx *= scrub; car.vz *= scrub; car.vy *= scrub;
       // The drag on one wing swings the nose toward it and drops that wing.

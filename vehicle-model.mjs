@@ -7,7 +7,7 @@ import { SYNTHWAVE } from './synthwave.mjs?v=synth-1';
 export const VEHICLE_URLS = {
   atlas: new URL('./assets/vehicles/atlas-amphibious.glb?v=packed-1', import.meta.url),
   roadster: new URL('./assets/vehicles/roadster-rocket.glb?v=roadster-6', import.meta.url),
-  lightcycle: new URL('./assets/vehicles/light-cycle-rider.glb?v=packed-1', import.meta.url),
+  lightcycle: new URL('./assets/vehicles/light-cycle-rider.glb?v=flight-2', import.meta.url),
 };
 export const VEHICLE_URL = VEHICLE_URLS.atlas;
 export const VEHICLE_NAMES = { atlas: 'ATLAS', roadster: 'Roadster', lightcycle: 'Light Cycle' };
@@ -16,7 +16,7 @@ export const VEHICLE_NAMES = { atlas: 'ATLAS', roadster: 'Roadster', lightcycle:
 // inside the body, so they are hidden to keep car-mode draw calls unchanged.
 const FORM_ONLY = {
   Transform_To_Boat: /^(Pontoon_|Keel_Deploy|Bridge_Deck|Jet_)/,
-  Transform_To_Plane: /^(WingSeg1_|TailBoom1_|Prop_Hub)/,
+  Transform_To_Plane: /^(WingSeg1_|TailBoom1_|Prop_Hub|Flight_Nose|Flight_Tail|TailFin_)/, // the ATLAS's, and the Light Cycle's
 };
 // Scrub one of Blender's authored clips in either direction without replacing
 // meshes. The boat and plane clips animate separate nodes, so both can apply.
@@ -106,7 +106,8 @@ export async function loadVehicleModel(renderer, kind = 'atlas', look = 'studio'
   if (cycle) { required('Rider'); required('Trail_Emitter'); }
   const atlas = kind === 'atlas';
   const transformation = atlas ? createTransformation(model, gltf.animations) : null;
-  const flight = atlas ? createTransformation(model, gltf.animations, 'Transform_To_Plane') : null;
+  // The ATLAS and the Light Cycle both unfold into a plane (their own clips).
+  const flight = atlas || cycle ? createTransformation(model, gltf.animations, 'Transform_To_Plane') : null;
   transformation?.update(0); flight?.update(0);
   // Not animated by the clip: the game spins it about the shaft (model +Z).
   const propeller = atlas ? required('Propeller') : null;

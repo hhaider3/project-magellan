@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from './vendor/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from './vendor/libs/meshopt_decoder.module.js';
-import { assembleSakura, SAKURA_URL } from './sakura-model.mjs?v=flight-1';
+import { assembleSakura, SAKURA_URL } from './sakura-model.mjs?v=flight-2';
 
 export const NATURE_URL = new URL('./assets/nature/endless-nature.glb?v=packed-1', import.meta.url);
 export const PALM_URL = new URL('./assets/nature/palm-synthwave/palm-trees.glb?v=packed-1', import.meta.url);

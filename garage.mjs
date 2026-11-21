@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { createTransformation, poseRoadsterWing, thrusterNozzles } from './vehicle-model.mjs?v=realism-1';
+import { createTransformation, poseRoadsterWing, thrusterNozzles } from './vehicle-model.mjs?v=flight-2';
 import { createThrusterPlumes } from './thrusters.mjs?v=roadster-1';
 import { createCycleTrail, TRAIL_LIFE } from './cycle-trail.mjs?v=realism-1';
 
@@ -94,6 +94,8 @@ export function createShowroom() {
     const atlas = asset.kind === 'atlas';
     const s = { kind: asset.kind, model, preview: null, lift: 0, bank: 0, power: { rear: 0, lift: 0 }, wing: model.getObjectByName('Rear_Wing'), propeller: model.getObjectByName('Propeller'), propellerAngle: 0, forms: {} };
     if (atlas) for (const [name, clip] of [['boat', 'Transform_To_Boat'], ['plane', 'Transform_To_Plane']]) s.forms[name] = { rig: createTransformation(model, asset.clips, clip), progress: 0 };
+    // The bike's wheels become its jet: the intake and the exhaust turn in the plane form.
+    if (asset.kind === 'lightcycle') { s.forms.plane = { rig: createTransformation(model, asset.clips, 'Transform_To_Plane'), progress: 0 }; s.fans = ['Spinner_Front', 'Spinner_Rear'].map(name => model.getObjectByName(name)); }
     if (s.wing) {
       s.airBrake = 0;
       poseRoadsterWing(s.wing, 0);
@@ -108,11 +110,11 @@ export function createShowroom() {
     model.position.y = -s.base.min;
     if (asset.kind === 'lightcycle') {
       const under = contactPatch(.55); under.scale.set(.5, 1, 2.4); under.position.y = s.base.min + .005;
-      model.add(under);
+      model.add(under); s.patches = [under];
       for (const name of ['Wheel_Front', 'Wheel_Rear']) {
         const patch = contactPatch(.9), wheel = model.getObjectByName(name).getWorldPosition(new THREE.Vector3());
         patch.scale.set(.26, 1, .8); patch.position.set(wheel.x, s.base.min + .006, wheel.z + (model.position.z || 0));
-        model.add(patch);
+        model.add(patch); s.patches.push(patch);
       }
     }
     if (asset.kind === 'lightcycle') {
@@ -168,7 +170,9 @@ export function createShowroom() {
     if (s.forms.plane) {
       const p = s.forms.plane.progress, eased = p * p * (3 - 2 * p);
       lift = eased * (1.6 + Math.sin(time * 1.3) * .12); s.bank = eased * Math.sin(time * .7) * .12;
-      s.propellerAngle += dt * eased * 30; s.propeller.rotation.z = s.propellerAngle;
+      s.propellerAngle += dt * eased * 30;
+      if (s.propeller) s.propeller.rotation.z = s.propellerAngle;
+      if (s.fans) for (const fan of s.fans) fan.rotation.x = s.propellerAngle;
     }
     if (s.plumes) {
       const hover = s.preview === 'hover';
@@ -182,6 +186,15 @@ export function createShowroom() {
     if (s.ride) ride(s, dt, pixels);
     arrive *= Math.exp(-dt * 7);
     s.model.position.y = -s.base.min + lift; s.model.rotation.z = s.bank;
+    // The tyres' contact patches belong to the floor: as the plane form lifts
+    // off they fade away, rather than rising with it as a dark bar in the air.
+    if (s.patches) {
+      const aloft = s.forms.plane?.progress ?? 0, shown = 1 - Math.min(1, aloft * 5);
+      for (const patch of s.patches) {
+        patch.visible = shown > 0; patch.material.uniforms.uOpacity.value = (patch.userData.opacity ??= patch.material.uniforms.uOpacity.value) * shown;
+        patch.position.y = (patch.userData.floor ??= patch.position.y) - lift; // and stay on the floor while they do
+      }
+    }
     s.model.scale.setScalar(1 - arrive * .08);
     shadow.material.opacity = .5 / (1 + lift * .6);
     // The camera eases toward the frame of the form being shown.

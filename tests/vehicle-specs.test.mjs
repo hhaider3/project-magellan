@@ -4,6 +4,7 @@ import { createVehicle, stepVehicle, FIXED_DT } from '../world.mjs';
 import { VEHICLE_ORDER, SYNTH_VEHICLE_ORDER, VEHICLE_SPECS, PREVIEWS } from '../vehicle-specs.mjs';
 import { MAX_AIRSPEED } from '../flight-motion.mjs';
 import { ROADSTER } from '../roadster-motion.mjs';
+import { CYCLE_LAUNCH_SPEED, CYCLE_AIRSPEED, CYCLE_BURNER_AIRSPEED } from '../cycle-flight.mjs';
 const flat = { surface: () => 0, gradient: () => ({ x: 0, z: 0 }), roadAt: (x, z) => ({ d: 0, x, z }), props: () => [] };
 const grass = { ...flat, roadAt: () => ({ d: 20 }) }, dirt = { ...flat, roadAt: () => ({ d: 0, kind: 'dirt' }) };
 const water = { ...flat, roadAt: () => ({ d: 50 }), surface: () => -4.5, waterAt: () => ({ depth: 5, level: .5 }) };
@@ -41,6 +42,8 @@ test('the garage’s figures are the simulation’s', () => {
   near(drive('lightcycle', flat, { up: true, boost: true }, 3).to100, bike.boost100, .06, 'neon boost 0–100 km/h');
   near(drive('lightcycle', flat, { up: true, boost: true }, 3).top, bike.boostSpeed, 1, 'neon boost top speed');
   near(turnRate('lightcycle', { leanLeft: true }), bike.leanTurnRate, 1.5, 'turn rate leaning in');
+  // (tests/cycle-flight.test.mjs holds the jet to these speeds.)
+  near(CYCLE_LAUNCH_SPEED * 3.6, bike.launchSpeed, 1, 'Light Cycle launch speed'); near(CYCLE_AIRSPEED * 3.6, bike.airspeed, 2, 'Light Cycle airspeed'); near(CYCLE_BURNER_AIRSPEED * 3.6, bike.burnerAirspeed, 2, 'Light Cycle afterburner airspeed');
 });
 
 test('every car has five ratings out of 10 and its previews among its features', () => {

@@ -24,7 +24,8 @@ export function createVehiclePresentation(vehicle, supportAt = null) {
     copy(previous, current); previous.wheelAngle = current.wheelAngle;
     copy(current, next);
     if (attitude.reduce((dot, key) => dot + previous[key] * current[key], 0) < 0) for (const key of attitude) current[key] = -current[key];
-    current.wheelAngle += next.flying ? 0 : next.speed * dt / (next.wheelRadius ?? .57) * (1 - next.transform);
+    // In the air the wheels stand still, except the Light Cycle's: as the jet, they are its intake and exhaust fans.
+    current.wheelAngle += next.flying ? next.kind === 'lightcycle' ? (25 + 110 * (next.power || 0)) * next.flight * dt : 0 : next.speed * dt / (next.wheelRadius ?? .57) * (1 - next.transform);
   }
   function sample(alpha) {
     alpha = Math.min(1, Math.max(0, alpha));

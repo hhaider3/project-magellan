@@ -79,7 +79,7 @@ You need a browser with WebGL, WebAssembly and module workers. Everything else i
 | E | Roadster: boost on the rear thrusters (hold) |
 | Q E | Light Cycle: lean further left / right (it also leans by itself as it turns); leaning into a turn tightens it |
 | ↓ ↑ | Light Cycle: lift and lower the front wheel (W/S drive it) |
-| G | Roadster: suction fans on / off |
+| G | Roadster: suction fans on / off. Light Cycle: arm flight (it leaps into the air at 180 km/h and unfolds into a jet); press again to disarm, or in the air to fold and land |
 | R | Recover onto nearby clear ground |
 | C | Camera: chase, wide or bonnet |
 | V | Switch vehicle where you are: the ATLAS, the Roadster and the Light Cycle (also the ⇄ button at the top right) |
@@ -95,6 +95,8 @@ In the water the same keys drive the boat: W/S thrust, A/D steer, Shift slows do
 
 Flight has two control schemes. Every visit starts on **full controls**; press **T** (or **SIMPLE** on touch) to switch for that visit.
 
+The ATLAS and the Light Cycle both fly, with the same keys once they're in the air. They get there differently: the ATLAS unfolds its wings with **F** and takes off from a run; the Light Cycle is armed with **G** and leaps off the ground at 180 km/h, unfolding in the air. On the Light Cycle **F** stays the neon boost, which in the air is its afterburner, and **G** lands it.
+
 | Key | Full controls | Simple controls |
 | --- | --- | --- |
 | W / S | Throttle / air brake | Throttle / air brake |
@@ -102,7 +104,8 @@ Flight has two control schemes. Every visit starts on **full controls**; press *
 | Space / Shift | Climb / dive (pitch) | Climb / dive, holding level when released |
 | A / D, ← / → | Roll | Bank and turn; the wings level when released |
 | Q / E | Yaw (rudder) | — |
-| F | Fold the wings and fall to a landing as the car: the flight controls, propeller and air brakes fade as they fold | Same |
+| F (Light Cycle: G) | Fold the wings and fall to a landing as the car or the bike: the flight controls, engine and air brakes fade as they fold | Same |
+| F (Light Cycle) | Afterburner: the neon boost's four-second charge, up to 500 km/h | Same |
 
 ### Touch
 
@@ -110,7 +113,7 @@ On phones and compact windows:
 
 - **Steering slider** (lower left): slide to steer. The track stays put, and the knob stops at either end however far your finger travels.
 - **↑ / ↓**: accelerate, and brake then reverse.
-- **Light Cycle:** LIFT and LOWER fill the row over the steering slider, JUMP sits to its right, BOOST above ↑ and DRIFT above ↓.
+- **Light Cycle:** LIFT and LOWER fill the row over the steering slider, JUMP sits to its right, BOOST above ↑ and DRIFT above ↓. **FLY** arms its flight (it reads **ARMED** until the bike leaps); in the air it becomes **LAND**, LIFT and LOWER make way for the flight ring, and BOOST is the afterburner.
 - **Jump** and **Drift** sit side by side just above the slider. **FLY** is just left of the brake; in the air it becomes **LAND**, with **SIMPLE** above it. In the Roadster it's **HOVER** (hold it), with **BOOST** and **FANS** (suction on / off) beside it.
 - **Flight ring:** in the air the steering slider becomes a ring in the same spot. Drag the knob up to climb, down to dive, and sideways to roll (or turn, on simple controls). The ring stays put, the knob stops at its edge and re-centres when you let go, and ↑ / ↓ are the throttle.
 - **Tilt steering** (menu → **Settings** → **Tilt steering**, off by default): turn the phone like a steering wheel to steer; full lock is about 35° of turn. The slider steps aside, and Jump and Drift stay put. In the air, turning rolls (or turns, on simple controls), and tilting the top toward you climbs and away dives, measured from how you held the phone when the wings came out. The ring still works and takes over while you touch it. iPhones ask once for motion access when you turn it on.
@@ -242,7 +245,7 @@ Test modes keep their trip records separate from normal play. The `seed=3` world
 | Page and UI | `index.html`, `style.css` (menus, HUD, touch controls) |
 | Main loop | `game.mjs`: rendering, streaming, vehicle animation, audio, input |
 | World | `world.mjs` (terrain, props, vehicle physics), `landforms.mjs` (plains, hills, mountain ranges, dunes, mesas), `noise.mjs`, `terrain.mjs` (terrain meshes and colours), `roads.mjs` (road network, junctions, roundabouts, lanes, bridges, road maps), `rivers.mjs`, `lakes.mjs`, `streaming-layout.mjs`, `world-worker.mjs` (background generation) |
-| Vehicle | `vehicle-model.mjs` (loads the glTFs), `vehicle-presentation.mjs` (smooth motion between physics steps), `amphibious-motion.mjs` (boat), `flight-motion.mjs` (plane), `roadster-motion.mjs` (the Roadster's handling and thrusters), `controls.mjs` (steering response) |
+| Vehicle | `vehicle-model.mjs` (loads the glTFs), `vehicle-presentation.mjs` (smooth motion between physics steps), `amphibious-motion.mjs` (boat), `flight-motion.mjs` (the ATLAS as a plane), `cycle-flight.mjs` (the Light Cycle as a jet), `roadster-motion.mjs` (the Roadster's handling and thrusters), `controls.mjs` (steering response) |
 | Water | `water-data.mjs` (meshes, built in the worker), `water.mjs` (shader and wakes) |
 | Weather and sky | `daylight.mjs` (the clock, sun and moon paths, light colours), `sky.mjs` (sky dome, sun, moon, stars, clouds), `synthwave.mjs` (the synthwave look's palette, light and ground grid), `weather.mjs` (regional odds), `weather-effects.mjs` (rain, snow, fog colour), `clouds.mjs` (cloud banks), `storm.mjs` (lightning and thunder) |
 | Scenery | `scenery.mjs` (ramps, cabins, lookouts), `bridge-data.mjs` (bridge meshes, built in the worker), `roadside-data.mjs` (guardrails, signs and posts, built in the worker), `nature-models.mjs`, `grass-data.mjs`, `grass.mjs` |
@@ -432,6 +435,40 @@ All of it is measured against the air, and the air moves (see **Wind** below). P
 
 **Simple controls** fly through the same physics, except that they catch a stalled wing before it drops. The controls command a bank angle and a climb angle, and the flight path also swings round directly, so a full turn takes about 10 seconds at any speed.
 
+### The Light Cycle's flight model
+
+The Light Cycle has a flight model of its own (`cycle-flight.mjs`), built for what its model becomes: a small jet. The front wheel lies flat as the intake, the rear wheel turns aft as the exhaust, swept wings with elevons slide out of the shoulders and two canted fins rise at the tail.
+
+**Getting into the air.** With both wheels folded away it can't roll, so it has no take-off run:
+
+- **Armed on the ground** (G), it stays a bike until 180 km/h. Then it leaps, leaning as it was leaning, and unfolds over 1.6 seconds in the air. Hands off, it climbs out to about 35 m and levels.
+- **Armed in the air**, off a jump or a ramp, it unfolds once it's clear of the ground and doing at least 108 km/h.
+
+**Coming down.** It lands by becoming the bike again:
+
+- **G in the air** folds the wings; it falls and lands on its wheels.
+- **Slow** (under about 150 km/h), it lands where it touches.
+- **Fast**, it skips off its belly and flies on, unless the nose is eased down onto the ground: then it lands at speed.
+- **A wingtip, a fin or the rider** in the ground ends the flight, except in the 3 seconds after the leap.
+- **Water** is ground to it, as it is to the bike: it lands on it and the neon boost fires.
+
+**The engine.** A jet's thrust barely fades with speed: about half the craft's weight standing still, 85% of that at top speed. It spools in a third of a second. Top speed is about 400 km/h. The neon boost burns as an afterburner for its four seconds of charge, to 500 km/h.
+
+**The wing.** Thin, swept and short:
+
+- **Stall.** It flies down to about 130 km/h. Past 24° the lift only sags; there is no sharp break and no wing drop, but the drag climbs steeply and the airframe shakes.
+- **Turning.** It pulls up to 7 g, and pays for it: a 5 g turn costs about 7 m/s² of speed, more than the jet can replace. The afterburner sustains harder turns.
+- **Full stick** takes the wing to just past its stall and no further.
+
+**Momentum in its attitude.** The ATLAS's nose is steered directly. Here the roll, pitch and yaw rates are part of the state, and the air turns them:
+
+- **Pitch.** The tail is a spring toward the trimmed angle of attack and a damper on it: a pull overshoots a little and settles, at about 0.8 Hz at 250 km/h and quicker when faster.
+- **Roll.** The elevons work against the roll's own damping, so the roll builds over about a tenth of a second to 170° a second, and coasts to a stop when released.
+- **Yaw.** The fins swing the nose into a sideslip. The rudder skids the nose about 8° out of the airflow, and the wing's dihedral then rolls it into the turn; there is no flat turn.
+- **Hands off**, it holds its flight path and its bank, as the ATLAS does.
+
+It flies in the same wind and rough air as the ATLAS, and feels the ground more: its wing is low and short.
+
 ### Time of day
 
 `daylight.mjs` turns the clock into everything the scene needs:
@@ -491,7 +528,7 @@ The effects are all synthesized live:
 
 - **Engine.** A loop of uneven V8 exhaust pulses runs through a muffler response, with revs that follow six gears.
 - **Roadster.** An electric drive's whine replaces the V8, rising with road speed, with the hiss and roar of cold gas whenever the thrusters fire.
-- **Light Cycle.** A neon hum of its own: two detuned saws through a resonant filter, gliding up with speed with no gears, throbbing with the wheels' turning and opening up under power and when leaned over. Its neon boost lights with a crack and a rising chord, adds a brighter layer while it lasts and falls away when it ends. A jump zips, spray hisses behind it on water, and the wall of light adds a faint high hum.
+- **Light Cycle.** In the air its jet is the neon hum climbing with the speed over a rush of thrust, louder on the afterburner. On the ground, a neon hum of its own: two detuned saws through a resonant filter, gliding up with speed with no gears, throbbing with the wheels' turning and opening up under power and when leaned over. Its neon boost lights with a crack and a rising chord, adds a brighter layer while it lasts and falls away when it ends. A jump zips, spray hisses behind it on water, and the wall of light adds a faint high hum.
 - **Transforming.** As the ATLAS transforms, the sound crossfades to a muffled boat engine with a water jet, or to a plane engine with a propeller whoosh.
 - **Ambience.** Wind, tyre and weather sounds follow speed, surface and the weather.
 - **One-shots.** Impacts, splashes, scrapes and strikes are panned from the camera, with a short echo. Big hits briefly duck the engine.

@@ -3,6 +3,7 @@
 Blender --background --factory-startup --python scripts/build-light-cycle.py
 Pass -- --draft for a quick render pass. Outputs go to output/light-cycle.
 Pass -- --bare to build the original bike without its rider.
+Scrub frames 1–81 in either direction for the bike/plane transformation.
 Model coordinates follow Atlas: X right, Y up, Z forward.
 """
 import math
@@ -20,6 +21,8 @@ DRAFT = '--draft' in OPTIONS
 RIDING = '--bare' not in OPTIONS
 STEM = 'light-cycle-rider' if RIDING else 'light-cycle'
 TAU = math.tau
+FLIGHT_CLIP = 'Transform_To_Plane'
+PLANE_FRAME = 81
 
 
 def point(v):
@@ -196,6 +199,174 @@ def make_wheel(label, pivot, radius, half_width, mats):
     return spinner
 
 
+def flight_keys(obj, poses):
+    """Key local poses in model axes, then combine the parts as one glTF clip."""
+    for frame, position, angles, scale in poses:
+        pitch, yaw, bank = map(math.radians, angles)
+        obj.location = point(position)
+        obj.rotation_euler = (pitch, -bank, yaw)
+        obj.scale = (scale[0], scale[2], scale[1])
+        for path in ('location', 'rotation_euler', 'scale'):
+            obj.keyframe_insert(data_path=path, frame=frame)
+    data = obj.animation_data
+    action = data.action
+    action.name = obj.name + ' | Flight'
+    track = data.nla_tracks.new()
+    track.name = FLIGHT_CLIP
+    track.strips.new(FLIGHT_CLIP, poses[0][0], action)
+    data.action = None
+    bpy.context.scene.frame_set(1)
+
+
+def flight_wing(body, side, letter, mats):
+    # Each station gives span, dihedral, leading edge, trailing edge and thickness.
+    # The smaller foil slides down the spar inside the larger one. Both travel
+    # edge-on in the shoulder cassette before the root turns broadside.
+    root = empty('WingSeg1_' + letter, body.users_collection[0], body)
+    tip = empty('WingSeg2_' + letter, body.users_collection[0], root)
+
+    def foil(parent, stations):
+        profile = [(0, 0), (.045, .31), (.18, .53), (.44, .46), (.73, .26),
+                   (1, .045), (1, -.045), (.66, -.29), (.22, -.37), (.04, -.23)]
+        rings = [[(side*x, y + lift*thickness, lead + u*(trail-lead)) for u, lift in profile]
+                 for x, y, lead, trail, thickness in stations]
+        sweep('Ceramic flight foil ' + letter, rings, mats['shell'], parent)
+
+        # Flush ribbons follow the actual foil section, including the break at
+        # the outer spar. The wide graphite elevon leaves a dark trailing edge.
+        for name, start, end, height, mat in [
+            ('Leading light guide', .165, .193, .54, 'cyan'),
+            ('Guide return', .220, .232, .53, 'dim'),
+            ('Elevon skin', .735, .955, None, 'armor'),
+        ]:
+            rings = []
+            for x, y, lead, trail, thickness in stations:
+                def edge(u):
+                    h = height if height is not None else .26 - .215*(u-.73)/.27
+                    return (side*x, y + thickness*h + .002, lead + u*(trail-lead))
+                a, b = edge(start), edge(end)
+                rings.append([a, b, (b[0], b[1]-.003, b[2]), (a[0], a[1]-.003, a[2])])
+            sweep(name + ' ' + letter, rings, mats[mat], parent)
+        # A second narrow emitter faces below the leading edge.
+        pipe('Ventral guide ' + letter, [(side*x, y-.34*t, lead+.14*(trail-lead))
+             for x, y, lead, trail, t in stations], .006, mats['dim'], parent, steps=2)
+
+    inner = [(0, 0, .67, -.83, .14), (.24, .012, .63, -.88, .137),
+             (.54, .032, .49, -.84, .119), (1.03, .065, .23, -.72, .099),
+             (1.16, .074, .16, -.69, .095)]
+    outer = [(0, 0, .16, -.66, .076), (.30, .020, .045, -.66, .066),
+             (.84, .061, -.22, -.69, .047), (1.23, .105, -.411, -.72, .034),
+             (1.42, .150, -.52, -.70, .024), (1.45, .160, -.56, -.67, .019)]
+    foil(root, inner)
+    foil(tip, outer)
+    for i in range(3):
+        x = 1.18 + i*.055
+        y = .109 + i*.011
+        pipe('Wingtip bearing index ' + letter, [(side*x, y, -.51),
+             (side*(x+.012), y+.002, -.58)], .006, mats['dim'], tip, steps=1)
+    unit = (1, 1, 1)
+    folded = ((side*.080, .785, .36), (-88, side*89, 0), (.59, .66, .35))
+    flight_keys(root, [
+        (1, *folded), (10, *folded),
+        (23, (side*.195, .65, .32), (-64, side*77, 0), (.72, .90, .49)),
+        (51, (side*.19, .66, .32), (0, side*24, 0), unit),
+        (PLANE_FRAME, (side*.19, .66, .32), (0, side*24, 0), unit),
+    ])
+    nested = ((side*.04, .010, .015), (0, 0, 0), (.76, .85, .92))
+    extended = ((side*1.125, .070, 0), (0, 0, 0), unit)
+    flight_keys(tip, [(1, *nested), (32, *nested), (72, *extended), (PLANE_FRAME, *extended)])
+    return root, tip
+
+
+def build_flight(body, front, rear, fork, cowl, mats):
+    collection = body.users_collection[0]
+    unit = (1, 1, 1)
+    level = (0, 0, 0)
+    groups = []
+    # Rotate the complete wheels on separate carriers. Steering and tyre spin
+    # remain local to the original pivots and are never keyed by this clip.
+    for label, wheel, start, end, angles in [
+        ('Front', front, (0, .596, 1.09), (0, .825, 1.19), (0, 0, -90)),
+        ('Rear', rear, (0, .616, -1.10), (0, .855, -1.57), (0, 90, 0)),
+    ]:
+        carrier = empty('WheelFold_' + label, collection, wheel.parent)
+        wheel.parent = carrier
+        wheel.location.zero()
+        flight_keys(carrier, [(1, start, level, unit), (6, start, level, unit),
+                              (44, end, angles, unit), (PLANE_FRAME, end, angles, unit)])
+
+    # The cowl clocks round to the lip of the intake while the two fork arms
+    # counter-roll on the steering pivot to support the duct from the chassis.
+    rest = ((0, 0, 0), level, unit)
+    for part, locked in [(cowl, ((0, 0, 0), (81, 0, 0), unit)),
+                         (fork, ((.31, 0, -.35), (15, 0, 90), unit))]:
+        flight_keys(part, [(1, *rest), (6, *rest), (44, *locked), (PLANE_FRAME, *locked)])
+    groups.extend((fork, cowl))
+
+    nose = empty('Flight_Nose', collection, body)
+    fairing('Lance prow', [
+        (-.44, -.085, .084, .11), (-.23, -.141, .133, .22), (.06, -.129, .158, .27),
+        (.34, -.085, .128, .245), (.65, -.041, .084, .183), (1.03, -.011, .048, .093),
+        (1.30, .015, .038, .026), (1.36, .022, .030, .008),
+    ], mats['shell'], nose)
+    for side in (-1, 1):
+        pipe('Prow running light', [(side*x, y, z) for x, y, z in [
+            (.21, .052, -.21), (.27, .034, .07), (.247, .031, .34), (.185, .026, .65),
+            (.095, .022, 1.03), (.026, .027, 1.30),
+        ]], .009, mats['cyan'], nose)
+    bedded = ((0, 1.04, .49), level, (.53, .50, .25))
+    forward = ((0, 1.065, 1.04), level, unit)
+    flight_keys(nose, [(1, *bedded), (8, *bedded), (55, *forward), (PLANE_FRAME, *forward)])
+    groups.append(nose)
+
+    # The open rear tyre becomes the exhaust annulus. Three curved stator
+    # vanes tie its bearing to a tapered centrebody once the collar turns aft.
+    core = empty('Flight_Tail', collection, body)
+    fairing('Exhaust centrebody', [
+        (-.40, -.012, .012, .013), (-.30, -.060, .060, .060), (-.14, -.105, .105, .105),
+        (.04, -.119, .119, .124), (.26, -.107, .14, .147), (.62, -.062, .12, .12),
+        (1.0, -.028, .085, .086), (1.12, .015, .063, .043),
+    ], mats['armor'], core)
+    for i in range(3):
+        angle = TAU*i/3 + math.pi/2
+        rings = []
+        for r, skew, chord in [(.09, 0, .15), (.22, .12, .16), (.36, .28, .14), (.455, .38, .095)]:
+            a = angle + skew
+            rings.append([(r*math.cos(a+d), r*math.sin(a+d), z) for d, z in
+                          [(-.024/r, -chord*.45), (.016/r, -chord*.55),
+                           (.026/r, chord*.45), (-.009/r, chord*.55)]])
+        sweep('Curved exhaust vane', rings, mats['metal'], core)
+    pipe('Exhaust plug halo', [(.070*math.cos(TAU*i/24), .070*math.sin(TAU*i/24), -.277)
+                              for i in range(25)], .008, mats['cyan'], core, steps=1)
+    stowed = ((0, .78, -.02), level, (.28, .26, .28))
+    aft = ((0, .855, -1.57), level, unit)
+    flight_keys(core, [(1, *stowed), (13, *stowed), (54, *aft), (PLANE_FRAME, *aft)])
+    groups.append(core)
+
+    for side, letter in [(-1, 'L'), (1, 'R')]:
+        groups.extend(flight_wing(body, side, letter, mats))
+        fin = empty('TailFin_' + letter, collection, body)
+        fairing('Tail root fairing ' + letter, [
+            (-.54, .11, .25, .034), (-.42, -.016, .29, .067), (-.19, -.043, .23, .078),
+            (.12, -.057, .16, .072), (.37, -.039, .14, .064), (.56, .058, .12, .04),
+        ], mats['shell'], fin)
+        stations = [(0, 0, .43, -.49, .14), (.15, .23, .18, -.55, .085),
+                    (.36, .49, -.16, -.64, .046), (.47, .65, -.415, -.65, .023)]
+        sweep('Canted tail blade ' + letter, [
+            [(side*(x+offset*w), y, lead + u*(trail-lead)) for offset, u in
+             [(0, 0), (.48, .16), (.36, .55), (.05, 1), (-.05, 1), (-.36, .55), (-.48, .16)]]
+            for x, y, lead, trail, w in stations], mats['armor'], fin)
+        pipe('Tail blade tracer ' + letter, [(side*(x+.49*w), y, lead+.16*(trail-lead))
+             for x, y, lead, trail, w in stations], .009, mats['cyan'], fin, steps=2)
+        tucked = ((side*.065, .79, -.06), level, (.22, .23, .32))
+        locked = ((side*.18, 1.02, -1.09), level, unit)
+        flight_keys(fin, [(1, *tucked), (20, *tucked),
+                          (46, (side*.13, .90, -.96), level, (.45, .23, .89)),
+                          (PLANE_FRAME, *locked)])
+        groups.append(fin)
+    return groups
+
+
 def build_cycle(collection):
     mats = {
         'shell': material('Obsidian ceramic', (.009, .013, .021), .48, .23, .48),
@@ -223,6 +394,8 @@ def build_cycle(collection):
     body = empty('Body', collection, root)
     front = empty('Wheel_Front', collection, root, (0, .596, 1.09))
     rear = empty('Wheel_Rear', collection, root, (0, .616, -1.10))
+    fork = empty('Intake_Fork', collection, front)
+    cowl = empty('Intake_Cowl', collection, front)
     front_spin = make_wheel('Front', front, .594, .156, mats)
     rear_spin = make_wheel('Rear', rear, .614, .201, mats)
 
@@ -259,7 +432,7 @@ def build_cycle(collection):
 
     # The outer fender skins sit over the tyres with air between them and the rubber.
     for label, pivot, r, width, start, end in [
-        ('Front', front, .594, .156, -48, 66),
+        ('Front', cowl, .594, .156, -48, 66),
         ('Rear', rear, .614, .201, -69, 55),
     ]:
         revolve(label + ' floating fender', [
@@ -276,7 +449,7 @@ def build_cycle(collection):
             (.258, .809, .432), (.267, .980, .566), (.253, 1.120, .761),
             (.226, 1.144, .913), (.218, 1.108, 1.005), (.212, 1.014, 1.038),
             (.215, 1.003, .976), (.231, 1.018, .871), (.247, .960, .745), (.255, .807, .624),
-        ], side, .050, mats['armor'], front, bevel=.019)
+        ], side, .050, mats['armor'], fork, bevel=.019)
         # Cantilever points are in bike space and the front blade steers about the axle.
         blade.location = -front.location
 
@@ -286,7 +459,7 @@ def build_cycle(collection):
             (.257, .727, -.685), (.254, .601, -.529), (.251, .458, -.345),
         ], side, .058, mats['armor'], body, bevel=.017)
         for label, parent, x, y, z, radius in [
-            ('Front', front, .220, .444, -.094, .035),
+            ('Front', fork, .220, .444, -.094, .035),
             ('Rear', body, .267, .843, -.817, .033),
         ]:
             section = [(side*(x-.012), .012), (side*(x-.012), radius),
@@ -370,7 +543,8 @@ def build_cycle(collection):
         (-.052, 1.354, .555), (-.032, 1.358, .559), (.032, 1.358, .559), (.052, 1.354, .555),
     ], .0037, mats['dim'], body, steps=3)
 
-    return root, (body, front, front_spin, rear, rear_spin)
+    flight_groups = build_flight(body, front, rear, fork, cowl, mats)
+    return root, (body, front, front_spin, rear, rear_spin, *flight_groups)
 
 
 def suit_form(name, stations, mat, rider, *, side=1, sides=20, profile_power=1):
@@ -707,14 +881,13 @@ def studio(scene, collection):
     nodes.links.new(glare.outputs['Image'], output.inputs['Image'])
 
     if RIDING:
-        return {
-            'hero': camera('Hero camera', (5.7, 2.55, 3.9), (0, .84, .02), 4.28),
-            'rear': camera('Rear camera', (4.8, 3.1, -4.0), (0, .84, -.05), 4.20),
-        }
-    return {
-        'hero': camera('Hero camera', (5.75, 2.13, 3.65), (0, .65, .02), 4.13),
-        'rear': camera('Rear camera', (4.9, 2.38, -3.46), (0, .63, -.05), 4.05),
-    }
+        hero = camera('Hero camera', (5.7, 2.55, 3.9), (0, .84, .02), 4.28)
+        rear = camera('Rear camera', (4.8, 3.1, -4.0), (0, .84, -.05), 4.20)
+    else:
+        hero = camera('Hero camera', (5.75, 2.13, 3.65), (0, .65, .02), 4.13)
+        rear = camera('Rear camera', (4.9, 2.38, -3.46), (0, .63, -.05), 4.05)
+    flight = camera('Conversion camera', (4.4, 5.4, 6.1), (.26, .91, -.18), 6.10)
+    return {'hero': hero, 'rear': rear, 'flight': flight}
 
 
 def export_cycle(root, groups):
@@ -752,7 +925,9 @@ def export_cycle(root, groups):
     bpy.context.view_layer.objects.active = root
     bpy.ops.export_scene.gltf(filepath=str(OUT / (STEM + '.glb')), export_format='GLB',
                              use_selection=True, export_yup=True, export_extras=True,
-                             export_cameras=False, export_lights=False, export_animations=False)
+                             export_cameras=False, export_lights=False, export_animations=True,
+                             export_animation_mode='NLA_TRACKS', export_current_frame=True,
+                             export_anim_slide_to_zero=True)
 
 
 def main():
@@ -762,15 +937,21 @@ def main():
     scene = bpy.context.scene
     scene.name = 'Light Cycle Studio'
     scene.unit_settings.system = 'METRIC'
+    scene.render.fps = 50
+    scene.frame_end = PLANE_FRAME
+    scene.timeline_markers.new('BIKE', frame=1)
+    scene.timeline_markers.new('WHEELS LOCK', frame=44)
+    scene.timeline_markers.new('PLANE', frame=PLANE_FRAME)
     model = bpy.data.collections.new('01 Light Cycle')
     stage = bpy.data.collections.new('02 Studio')
     scene.collection.children.link(model)
     scene.collection.children.link(stage)
     root, groups = build_cycle(model)
+    root['flightDuration'] = (PLANE_FRAME - 1) / scene.render.fps
     if RIDING:
         groups += build_rider(groups[0])
     cameras = studio(scene, stage)
-    scene.camera = cameras['hero']
+    scene.camera = cameras['flight']
     scene.render.engine = 'CYCLES'
     scene.cycles.samples = 64
     scene.cycles.use_denoising = True
@@ -789,9 +970,9 @@ def main():
         for area in screen.areas:
             if area.type == 'VIEW_3D':
                 view = area.spaces.active
-                view.region_3d.view_distance = 4.4
+                view.region_3d.view_distance = 6.0
                 view.region_3d.view_location = point((0, .88 if RIDING else .65, 0))
-                view.region_3d.view_rotation = cameras['hero'].rotation_euler.to_quaternion()
+                view.region_3d.view_rotation = cameras['flight'].rotation_euler.to_quaternion()
                 view.region_3d.view_perspective = 'ORTHO'
                 view.shading.color_type = 'MATERIAL'
                 view.shading.studiolight_rotate_z = .5
@@ -800,11 +981,13 @@ def main():
     if not DRAFT:
         bpy.ops.wm.save_as_mainfile(filepath=str(OUT / (STEM + '.blend')))
     for name, cam in ([] if '--export-only' in OPTIONS else cameras.items()):
+        scene.frame_set(PLANE_FRAME if name == 'flight' else 1)
         scene.camera = cam
         suffix = '-draft' if DRAFT else ''
         scene.render.filepath = str(OUT / (STEM + '-' + name + suffix + '.png'))
         bpy.ops.render.render(write_still=True)
     if not DRAFT:
+        scene.frame_set(1)
         export_cycle(root, groups)
 
 

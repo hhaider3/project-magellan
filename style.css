@@ -1549,10 +1549,12 @@ body.synthwave .setup .setting b { background:rgba(32,8,62,.42); border-color:rg
 body.synthwave .setup button.setting:hover b { border-color:var(--yellow); box-shadow:0 0 12px rgba(255,79,184,.45); }
 .setup button.setting:not(.toggle) b::after { margin-left:4px; }
 
-/* The Light Cycle comes first in Synth, its home mode, and has nothing to fly. */
+/* The Light Cycle comes first in Synth, its home mode. It flies with G, not F
+   (its neon boost), so the F hint is hidden and its own shown; as the jet,
+   the wheelie buttons make way for the flight ring. */
 body.synthwave #vehicleLightcycle { order:-1; }
-body.lightcycle #flyBtn, body.lightcycle #menuFly,
-body.lightcycle .flight-control { display: none !important; }
+body.lightcycle .flight-control, body.lightcycle #menuFly { display: none !important; } /* (the menu's own line says G flies) */
+body.plane-mode #touch [data-control="wheelieUp"], body.plane-mode #touch [data-control="wheelieDown"] { display:none; }
 body.lightcycle { --accent: #71e6ff; }
 
 body:not(.lightcycle) .cycle-only { display: none !important; }

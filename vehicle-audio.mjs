@@ -306,7 +306,7 @@ export function createVehicleAudio(context, output, capacity = 10) {
     if (burble > 0 && Math.random() < dt * 6) play('pop', .03 + Math.random() * .03, (Math.random() - .5) * .3, .8 + Math.random() * .4, .1);
 
     // A direct-drive three-blade propeller: blade pass is three times the revs.
-    const blade = planeRpm / 60 * 3, prop = plane * (.012 + pull * .02 + smooth(20, 90, air) * .012);
+    const blade = planeRpm / 60 * 3, prop = plane * (1 - cycle) * (.012 + pull * .02 + smooth(20, 90, air) * .012); // (the Light Cycle's jet has none)
     set(propChop.frequency, blade, .08); set(thrum.frequency, blade, .08);
     set(propGain.gain, prop, .12); set(propDepth.gain, prop * .8, .12); set(thrumGain.gain, prop * .9, .12);
 

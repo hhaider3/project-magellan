@@ -268,9 +268,9 @@ test('a wheelie swinging the base into the ground leaves the wall standing on it
 
 test('the garage shows the wall of light behind the bike on its turntable, and clears it', async () => {
   const bytes = await readFile(new URL('../assets/vehicles/light-cycle-rider.glb', import.meta.url));
-  const { scene } = await new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).parseAsync(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength), '');
+  const { scene, animations } = await new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).parseAsync(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength), '');
   const showroom = createShowroom();
-  showroom.show({ kind: 'lightcycle', model: scene, clips: [] });
+  showroom.show({ kind: 'lightcycle', model: scene, clips: animations }); // its plane form is one of the stand's previews
   const trail = showroom.trail, view = { width: 1280, height: 720, pixels: 720 }, area = { left: 400, top: 0, right: 1280, bottom: 720 };
   const run = seconds => { for (let i = 0; i < seconds * 60; i++) showroom.render(() => {}, 1 / 60, view, area); };
   // The turntable turns the ribbon with the bike, so its shader must use the mesh's place.

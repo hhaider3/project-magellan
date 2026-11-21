@@ -1,11 +1,12 @@
-import { cycleState, stepCycle, cycleCarve, skimWorld, CYCLE_BOOST_SPEED, CYCLE_WATER_GAP } from './cycle-motion.mjs?v=cycle-5';
+import { cycleState, stepCycle, cycleCarve, skimWorld, CYCLE_BOOST_SPEED, CYCLE_WATER_GAP } from './cycle-motion.mjs?v=flight-2';
 // Shared, deterministic world and vehicle simulation. No browser or renderer required.
 import { createLakes, lakeRadius } from './lakes.mjs?v=open-start-1';
 import { createRoads, ROAD_HALF, ROAD_REACH, ROAD_CELL } from './roads.mjs?v=open-start-1';
 import { createRivers } from './rivers.mjs?v=rivers-1';
 import { stepAmphibious } from './amphibious-motion.mjs?v=open-start-1';
 import { controlAxis } from './controls.mjs?v=slider-1';
-import { stepFlight, wingStrikes } from './flight-motion.mjs?v=flight-1';
+import { stepFlight, wingStrikes } from './flight-motion.mjs?v=flight-2';
+import { stepCycleFlight, CYCLE_FRAME } from './cycle-flight.mjs?v=flight-2';
 import { ROADSTER, SUCTION, hoverWorld, overWater, roadsterAcceleration, roadsterDrag, fireThrusters, roadsterState } from './roadster-motion.mjs?v=steer-1';
 import { clamp, mix, smoothstep, hash, random, noise } from './noise.mjs?v=terrain-1';
 import { createLandforms, TREELINE, SNOW_LINE } from './landforms.mjs?v=climate-1';
@@ -539,6 +540,13 @@ export function stepVehicle(car, input, world, obstacles, dt = FIXED_DT) {
     car.jumpBuffer = 0; car.jumpHeld = !!input.jump;
     car.onIce = false;
     if (car.flight > .3) wingStrikes(car, obstacles, world);
+    resolveObstacles(car, obstacles, world); return;
+  }
+  // The Light Cycle leaps into the air and unfolds into a jet, with a flight
+  // model of its own (cycle-flight.mjs). Water is a surface to it there too.
+  if (cycle && stepCycleFlight(car, input, skimWorld(world), dt, groundAt)) {
+    car.jumpBuffer = 0; car.jumpHeld = !!input.jump; car.onIce = false;
+    if (car.flying && car.flight > .3) wingStrikes(car, obstacles, world, CYCLE_FRAME);
     resolveObstacles(car, obstacles, world); return;
   }
   // The Roadster never becomes a boat or a plane. Water is a surface its

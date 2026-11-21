@@ -3,7 +3,7 @@ export const CYCLE_LEAN = .6, CYCLE_CARVE = .35; // radians at full lean; how mu
 const TURN_LEAN = .48; // radians the bike leans by itself at full steering
 export const CYCLE_MAX_LEAN = .75; // both together
 export const CYCLE_WATER_GAP = .08; // metres: how far above the water the tyres run
-export function cycleState() { return { wheelRadius: .604, wheelie: 0, lean: 0, turnLean: 0, neonCharge: 1, neonBoost: false, neonForced: false, boostHeld: false, overWater: false, skimming: false }; }
+export function cycleState() { return { wheelRadius: .604, wheelie: 0, lean: 0, turnLean: 0, neonCharge: 1, neonBoost: false, neonForced: false, boostHeld: false, overWater: false, skimming: false, wx: 0, wy: 0, wz: 0 }; }
 // A lean with Q / E into the turn tightens it; against it, widens it. On its own it doesn't turn the bike.
 export const cycleCarve = car => 1 + Math.sign(car.steer) * car.lean / CYCLE_LEAN * CYCLE_CARVE;
 export function stepCycle(car, input, dt) {

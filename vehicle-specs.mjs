@@ -8,8 +8,8 @@ export const vehicleForTheme = (kind, synth) => vehicleOrder(synth).includes(kin
 export const VEHICLE_SPECS = {
   lightcycle: {
     name: 'Light Cycle', model: 'Light Cycle + Grid Rider',
-    tagline: 'A neon electric bike with a suited rider and a wall of light behind it.',
-    figures: { topSpeed: 301, boostSpeed: 500, accel100: .9, boost100: .2, grassSpeed: 236, dirtSpeed: 265, waterSpeed: 500, turnRate: 61, leanTurnRate: 83 },
+    tagline: 'A neon electric bike with a suited rider and a wall of light behind it. It unfolds into a jet.',
+    figures: { topSpeed: 301, boostSpeed: 500, accel100: .9, boost100: .2, grassSpeed: 236, dirtSpeed: 265, waterSpeed: 500, turnRate: 61, leanTurnRate: 83, launchSpeed: 180, airspeed: 400, burnerAirspeed: 500 },
     ratings: [
       { key: 'speed', label: 'Max speed', score: 10, detail: '301 km/h · 500 km/h neon boost' },
       { key: 'accel', label: 'Acceleration', score: 9, detail: '0–100 km/h in 0.9 s · 0.2 s boosted' },
@@ -18,6 +18,7 @@ export const VEHICLE_SPECS = {
       { key: 'steering', label: 'Steering', score: 7, detail: '61°/s at 100 km/h · 83°/s leaning in' },
     ],
     features: [
+      { key: 'plane', title: 'Flies', keys: 'G', text: 'Armed, it leaps off the ground at 180 km/h and unfolds into a jet: its wheels become the intake and the exhaust. 400 km/h, 500 on the neon afterburner. G again folds it to land on its wheels.' },
       { key: 'boost', title: 'Neon boost', keys: 'F', text: 'A charged burst up to 500 km/h for four seconds, refilling in eight. The trail turns black with neon edges.' },
       { key: 'lean', title: 'Leans', keys: 'Q / E', text: 'It leans into every turn by itself. Q and E bank it further, and leaning into a turn tightens it by a third.' },
       { key: 'wheelie', title: 'Front wheel lift', keys: '↓ / ↑', text: 'Hold down for a wheelie, up to set the front wheel back down. W / S accelerate and brake.' },
@@ -61,4 +62,4 @@ export const VEHICLE_SPECS = {
   },
 };
 // Features the garage can show on the model: ATLAS forms, Roadster thrusters, the bike's trail.
-export const PREVIEWS = { atlas: ['plane', 'boat'], roadster: ['boost', 'hover', 'wing'], lightcycle: ['boost'] };
+export const PREVIEWS = { atlas: ['plane', 'boat'], roadster: ['boost', 'hover', 'wing'], lightcycle: ['plane', 'boost'] };
