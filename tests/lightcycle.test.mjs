@@ -133,6 +133,8 @@ test('the bundled bike includes its rider, separate wheel spinners and working l
   assert.equal(rider.parent.name, 'Body');
   assert.equal(rider.getObjectByName('Identity_Disc').parent, rider);
   assert.ok(scene.getObjectByName('Trail_Emitter'));
+  // The exhaust's blades are a part of their own, for the game to spin in flight.
+  assert.ok(scene.getObjectByName('Flight_Tail').children.some(part => /^Flight_Tail__Machined/.test(part.name)));
   for (const end of ['Front', 'Rear']) {
     assert.equal(scene.getObjectByName('Spinner_' + end).parent, scene.getObjectByName('Wheel_' + end));
   }

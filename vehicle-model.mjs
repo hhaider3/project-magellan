@@ -111,6 +111,11 @@ export async function loadVehicleModel(renderer, kind = 'atlas', look = 'studio'
   transformation?.update(0); flight?.update(0);
   // Not animated by the clip: the game spins it about the shaft (model +Z).
   const propeller = atlas ? required('Propeller') : null;
+  // The Light Cycle's jet: the three curved blades in its exhaust (the titanium
+  // part of Flight_Tail) turn about the thrust line, model +Z. The clip only
+  // moves and scales Flight_Tail itself, so the game is free to spin them.
+  const turbine = cycle ? required('Flight_Tail').children.find(part => /^Flight_Tail__Machined/.test(part.name)) ?? null : null;
+  if (cycle && !turbine) throw new Error('Vehicle asset is missing its exhaust blades');
   const nozzles = roadster ? thrusterNozzles(model) : null;
   if (nozzles && !nozzles.rear.length) throw new Error('Vehicle asset is missing its thruster nozzles');
   // The Roadster's rear wing tilts on its pivot to brake (about model +X).
@@ -152,6 +157,6 @@ export async function loadVehicleModel(renderer, kind = 'atlas', look = 'studio'
     reflecting = share;
     for (const material of reflective) material.envMapIntensity = material.userData.reflection * share;
   }
-  return { kind, model, clips: gltf.animations, body, relight, reflect, wheelPivots, wheelSpinners, headMat, brakeMat, meshes, triangles, transformation, flight, propeller, nozzles, wing, lampShutters,
+  return { kind, model, clips: gltf.animations, body, relight, reflect, wheelPivots, wheelSpinners, headMat, brakeMat, meshes, triangles, transformation, flight, propeller, turbine, nozzles, wing, lampShutters,
     batching: [body, ...wheelSpinners, ...(wing ? [wing, wing.parent, lampShutters] : [])].map(group => ({ before: group.userData.sourceParts, after: group.children.filter(o => o.isMesh).length })) };
 }

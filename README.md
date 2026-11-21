@@ -469,6 +469,8 @@ The Light Cycle has a flight model of its own (`cycle-flight.mjs`), built for wh
 
 It flies in the same wind and rough air as the ATLAS, and feels the ground more: its wing is low and short.
 
+**What you see.** The three blades in the exhaust turn with the jet, faster with the throttle and on the afterburner. The wall of light still comes off the rear tyre, now the exhaust: from two opposite points on its rim, which turn as the blades do, so the ribbon winds into a swirl behind the jet. It makes a full twist about every 35 m, tightening to 20 m at full throttle.
+
 ### Time of day
 
 `daylight.mjs` turns the clock into everything the scene needs:

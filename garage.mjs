@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { createTransformation, poseRoadsterWing, thrusterNozzles } from './vehicle-model.mjs?v=flight-2';
+import { createTransformation, poseRoadsterWing, thrusterNozzles } from './vehicle-model.mjs?v=flight-3';
 import { createThrusterPlumes } from './thrusters.mjs?v=roadster-1';
 import { createCycleTrail, TRAIL_LIFE } from './cycle-trail.mjs?v=realism-1';
 
@@ -95,7 +95,7 @@ export function createShowroom() {
     const s = { kind: asset.kind, model, preview: null, lift: 0, bank: 0, power: { rear: 0, lift: 0 }, wing: model.getObjectByName('Rear_Wing'), propeller: model.getObjectByName('Propeller'), propellerAngle: 0, forms: {} };
     if (atlas) for (const [name, clip] of [['boat', 'Transform_To_Boat'], ['plane', 'Transform_To_Plane']]) s.forms[name] = { rig: createTransformation(model, asset.clips, clip), progress: 0 };
     // The bike's wheels become its jet: the intake and the exhaust turn in the plane form.
-    if (asset.kind === 'lightcycle') { s.forms.plane = { rig: createTransformation(model, asset.clips, 'Transform_To_Plane'), progress: 0 }; s.fans = ['Spinner_Front', 'Spinner_Rear'].map(name => model.getObjectByName(name)); }
+    if (asset.kind === 'lightcycle') { s.forms.plane = { rig: createTransformation(model, asset.clips, 'Transform_To_Plane'), progress: 0 }; s.fans = ['Spinner_Front', 'Spinner_Rear'].map(name => model.getObjectByName(name)); s.turbine = model.getObjectByName('Flight_Tail')?.children.find(part => /^Flight_Tail__Machined/.test(part.name)); }
     if (s.wing) {
       s.airBrake = 0;
       poseRoadsterWing(s.wing, 0);
@@ -173,6 +173,7 @@ export function createShowroom() {
       s.propellerAngle += dt * eased * 30;
       if (s.propeller) s.propeller.rotation.z = s.propellerAngle;
       if (s.fans) for (const fan of s.fans) fan.rotation.x = s.propellerAngle;
+      if (s.turbine) s.turbine.rotation.z = s.propellerAngle * .8; // the exhaust blades, slow enough to see
     }
     if (s.plumes) {
       const hover = s.preview === 'hover';
